@@ -7,6 +7,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -48,6 +49,33 @@ func main() {
 	http.HandleFunc("/alive", func(w http.ResponseWriter, r *http.Request) {
 		lastBeat.Store(time.Now().UnixNano())
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// Proxy hacia la API oficial de jugadores (gameinfo no envía CORS,
+	// así que el navegador no puede llamarla directo).
+	http.HandleFunc("/gameinfo/", func(w http.ResponseWriter, r *http.Request) {
+		lastBeat.Store(time.Now().UnixNano())
+		url := "https://gameinfo.albiononline.com/api/gameinfo" + strings.TrimPrefix(r.URL.Path, "/gameinfo")
+		if r.URL.RawQuery != "" {
+			url += "?" + r.URL.RawQuery
+		}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadGateway)
+			return
+		}
+		req.Header.Set("User-Agent", "AyudanteAlbion/1.0")
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "gameinfo no disponible", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

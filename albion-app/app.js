@@ -2858,3 +2858,267 @@ function fmRender() {
   });
   craftModules['farm'] = { get loadedOnce() { return FM.loadedOnce; }, loadPrices: fmLoad };
 })();
+
+/* ====================================================================
+   PERFIL — jugador real desde el killboard oficial (gameinfo API).
+   La API no envía CORS: se llama vía proxy local /gameinfo/* (server.py
+   y el ejecutable lo implementan igual).
+   Además: especializaciones del Destiny Board del usuario, usadas por
+   las pestañas de crafteo para calcular el costo real de Foco.
+   ==================================================================== */
+const PF = { player: null, loading: false, loadedOnce: false };
+let pfSpecs = {};
+try { pfSpecs = JSON.parse(localStorage.getItem('pfSpecs') || '{}'); } catch (e) {}
+function pfSaveSpecs() { localStorage.setItem('pfSpecs', JSON.stringify(pfSpecs)); }
+
+const PF_BRANCHES = [
+  { key: 'food',   label: 'Cocina',             specMax: 120 },
+  { key: 'alch',   label: 'Alquimia',           specMax: 120 },
+  { key: 'refine', label: 'Refinamiento',       specMax: 120 },
+  { key: 'gear',   label: 'Crafteo de equipo',  specMax: 120 },
+];
+
+/* aplica las especializaciones guardadas a los inputs de las pestañas de crafteo */
+function pfApplySpecs() {
+  for (const b of PF_BRANCHES) {
+    const s = pfSpecs[b.key];
+    if (!s) continue;
+    const spec = document.getElementById(b.key + 'Spec');
+    const mast = document.getElementById(b.key + 'Mastery');
+    if (spec && s.spec != null) spec.value = s.spec;
+    if (mast && s.mastery != null) mast.value = s.mastery;
+  }
+}
+
+function pfRenderSpecs() {
+  const box = document.getElementById('pfSpecList');
+  box.innerHTML = `
+    <div class="table-wrap"><table class="ledger">
+      <thead><tr><th>Rama</th><th class="num">Especialización (0–120)</th><th class="num">Maestría (0–100)</th><th class="num">Eficiencia (FCE)</th><th class="num">Foco: reducción</th></tr></thead>
+      <tbody>${PF_BRANCHES.map(b => {
+        const s = pfSpecs[b.key] || { spec: 0, mastery: 0 };
+        const fce = (s.spec || 0) * 250 + (s.mastery || 0) * 30;
+        const mult = Math.pow(0.5, fce / 10000);
+        return `<tr>
+          <td><b>${b.label}</b></td>
+          <td class="num"><input type="number" class="price-edit" style="width:90px" min="0" max="${b.specMax}" value="${s.spec || 0}" data-spec="${b.key}"></td>
+          <td class="num"><input type="number" class="price-edit" style="width:90px" min="0" max="100" value="${s.mastery || 0}" data-mast="${b.key}"></td>
+          <td class="num">${fmt(fce)}</td>
+          <td class="num ${mult < 1 ? 'pos' : ''}">paga el ${(mult * 100).toFixed(1)}%</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <div class="micro muted" style="margin-top:8px">Ejemplo: espec 100 + maestría 100 = 28.000 FCE → el Foco cuesta el ${(Math.pow(0.5, 28000 / 10000) * 100).toFixed(1)}% del valor base. Los valores se guardan solos y se aplican en Cocina, Alquimia, Refinamiento y Crafteo.</div>`;
+}
+
+const PF_FMT_DATE = ts => {
+  const d = new Date(ts);
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' +
+         d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+};
+
+async function pfFetch(path) {
+  const r = await fetch('/gameinfo' + path);
+  if (!r.ok) throw new Error('gameinfo HTTP ' + r.status);
+  return r.json();
+}
+
+/* reintentos: el killboard oficial es intermitente (502 frecuentes) */
+async function pfFetchRetry(path, tries = 3) {
+  for (let i = 0; i < tries; i++) {
+    try { return await pfFetch(path); }
+    catch (e) { if (i === tries - 1) throw e; await new Promise(r => setTimeout(r, 1200)); }
+  }
+}
+
+async function pfLoadPlayer(id, name) {
+  if (PF.loading) return;
+  PF.loading = true;
+  const box = document.getElementById('pfResult');
+  box.innerHTML = `<div class="panel"><div class="loading-cell">Cargando perfil de ${name}… (el killboard oficial puede tardar)</div></div>`;
+  document.getElementById('pfRefresh').style.display = '';
+  try {
+    const detail = await pfFetchRetry(`/players/${id}`);
+    // kills/muertes/gremio en paralelo; toleramos fallos parciales
+    const [kills, deaths, guild] = await Promise.all([
+      pfFetchRetry(`/players/${id}/kills`).catch(() => null),
+      pfFetchRetry(`/players/${id}/deaths`).catch(() => null),
+      detail.GuildId ? pfFetchRetry(`/guilds/${detail.GuildId}`).catch(() => null) : null,
+    ]);
+    PF.player = { id, name: detail.Name };
+    localStorage.setItem('pfPlayer', JSON.stringify(PF.player));
+    pfRender(detail, kills, deaths, guild);
+  } catch (e) {
+    box.innerHTML = `<div class="panel"><div class="loading-cell">No se pudo cargar el perfil: ${e.message}. El killboard oficial suele estar saturado — probá de nuevo en unos segundos.</div></div>`;
+  }
+  PF.loading = false;
+}
+
+function pfKillRow(ev, mode) {
+  // mode 'kill': yo maté a Victim · mode 'death': Killer me mató
+  const other = mode === 'kill' ? ev.Victim : ev.Killer;
+  const me = mode === 'kill' ? ev.Killer : ev.Victim;
+  const eq = (mode === 'kill' ? ev.Victim : ev.Victim).Equipment || {};
+  const mh = eq.MainHand ? eq.MainHand.Type : null;
+  return `<tr>
+    <td class="muted micro">${PF_FMT_DATE(ev.TimeStamp)}</td>
+    <td><div class="item-cell">${mh ? iconImg(mh, 'item-icon sm') : ''}<div>
+      <div class="item-name">${other.Name}</div>
+      <div class="item-meta">${other.GuildName || 'sin gremio'}${other.AllianceName ? ' · ' + other.AllianceName : ''}</div>
+    </div></div></td>
+    <td class="num">${other.AverageItemPower ? fmt(other.AverageItemPower) : '—'}</td>
+    <td class="num">${me.AverageItemPower ? fmt(me.AverageItemPower) : '—'}</td>
+    <td class="num ${mode === 'kill' ? 'pos' : 'neg'}">${fmt(ev.TotalVictimKillFame)}</td>
+    <td class="num muted">${ev.numberOfParticipants || 1}</td>
+  </tr>`;
+}
+
+function pfRender(d, kills, deaths, guild) {
+  const box = document.getElementById('pfResult');
+  const ls = d.LifetimeStatistics || {};
+  const pve = ls.PvE || {};
+  const gat = (ls.Gathering || {}).All || {};
+  const ratio = d.DeathFame > 0 ? d.KillFame / d.DeathFame : null;
+
+  const pveRows = [
+    ['Total PvE', pve.Total], ['Zonas reales', pve.Royal], ['Outlands', pve.Outlands],
+    ['Avalon', pve.Avalon], ['Hellgates', pve.Hellgate], ['Mazmorras corruptas', pve.CorruptedDungeon], ['Nieblas', pve.Mists],
+  ].filter(([, v]) => v);
+
+  box.innerHTML = `
+  <div class="panel">
+    <div class="flip-head" style="padding:14px">
+      <div class="item-cell">
+        <span class="chip-ico" style="width:44px;height:44px"><svg><use href="#i-user"/></svg></span>
+        <div>
+          <div class="item-name" style="font-size:1.2rem">${d.Name}</div>
+          <div class="item-meta">${d.GuildName ? `Gremio: <b>${d.GuildName}</b>` : 'Sin gremio'}${d.AllianceName ? ` · Alianza: ${d.AllianceName}${d.AllianceTag ? ' [' + d.AllianceTag + ']' : ''}` : ''}</div>
+        </div>
+      </div>
+    </div>
+    <div class="stats" style="padding:0 14px 14px">
+      <div class="stat"><div class="k">Fama de asesinatos</div><div class="v pos">${fmt(d.KillFame)}</div><div class="s">PvP total</div></div>
+      <div class="stat"><div class="k">Fama de muertes</div><div class="v neg">${fmt(d.DeathFame)}</div><div class="s">lo que te sacaron</div></div>
+      <div class="stat"><div class="k">Ratio K/D</div><div class="v ${ratio >= 1 ? 'pos' : 'neg'}">${ratio == null ? '—' : ratio.toFixed(2)}</div><div class="s">fama kills / fama muertes</div></div>
+      <div class="stat"><div class="k">Fama de crafteo</div><div class="v">${fmt((ls.Crafting || {}).Total)}</div><div class="s">total histórico</div></div>
+    </div>
+  </div>
+
+  ${guild ? `
+  <div class="panel">
+    <div class="cd-title" style="padding:14px 14px 4px">Gremio: ${guild.Name}</div>
+    <div class="stats" style="padding:0 14px 14px">
+      <div class="stat"><div class="k">Miembros</div><div class="v">${fmt(guild.MemberCount)}</div><div class="s">${guild.AllianceName ? 'alianza ' + guild.AllianceName : 'sin alianza'}</div></div>
+      <div class="stat"><div class="k">Fama de asesinatos</div><div class="v">${fmt(guild.killFame)}</div><div class="s">todo el gremio</div></div>
+      <div class="stat"><div class="k">Fama de muertes</div><div class="v">${fmt(guild.DeathFame)}</div><div class="s">todo el gremio</div></div>
+      <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${guild.Founded ? new Date(guild.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">por ${guild.FounderName || '—'}</div></div>
+    </div>
+  </div>` : ''}
+
+  <div class="panel">
+    <div class="cd-title" style="padding:14px 14px 4px">Fama PvE y recolección</div>
+    <div class="cd-grid" style="padding:0 14px 14px">
+      <div class="cd-section">
+        <div class="cd-title">PvE por zona</div>
+        ${pveRows.map(([k, v]) => `<div class="cd-line"><span>${k}</span><span>${fmt(v)}</span></div>`).join('') || '<div class="muted micro">Sin datos</div>'}
+      </div>
+      <div class="cd-section">
+        <div class="cd-title">Recolección y otros</div>
+        <div class="cd-line"><span>Recolección (total)</span><span>${fmt(gat.Total)}</span></div>
+        <div class="cd-line"><span>Pesca</span><span>${fmt(ls.FishingFame)}</span></div>
+        <div class="cd-line"><span>Granja</span><span>${fmt(ls.FarmingFame)}</span></div>
+        <div class="cd-line"><span>Crafteo</span><span>${fmt((ls.Crafting || {}).Total)}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel table-wrap">
+    <div class="cd-title" style="padding:14px 14px 4px"><svg style="width:15px;height:15px;vertical-align:-2px"><use href="#i-bolt"/></svg> Últimos asesinatos ${kills ? `(${kills.length})` : ''}</div>
+    ${kills && kills.length ? `<table class="ledger">
+      <thead><tr><th>Fecha</th><th>Víctima</th><th class="num">IP víctima</th><th class="num">IP tuya</th><th class="num">Fama</th><th class="num">Participantes</th></tr></thead>
+      <tbody>${kills.map(ev => pfKillRow(ev, 'kill')).join('')}</tbody>
+    </table>` : `<div class="loading-cell">${kills ? 'Sin asesinatos recientes.' : 'El killboard no respondió — probá «Actualizar».'}</div>`}
+  </div>
+
+  <div class="panel table-wrap">
+    <div class="cd-title" style="padding:14px 14px 4px"><svg style="width:15px;height:15px;vertical-align:-2px"><use href="#i-skull"/></svg> Últimas muertes ${deaths ? `(${deaths.length})` : ''}</div>
+    ${deaths && deaths.length ? `<table class="ledger">
+      <thead><tr><th>Fecha</th><th>Asesino</th><th class="num">IP asesino</th><th class="num">IP tuya</th><th class="num">Fama perdida</th><th class="num">Participantes</th></tr></thead>
+      <tbody>${deaths.map(ev => pfKillRow(ev, 'death')).join('')}</tbody>
+    </table>` : `<div class="loading-cell">${deaths ? 'Sin muertes recientes. 🛡️' : 'El killboard no respondió — probá «Actualizar».'}</div>`}
+  </div>
+  <div class="micro muted pad">Fuente: killboard oficial de Albion Online (servidor Américas). La fama y los eventos pueden demorar en actualizarse. IP = poder de ítem promedio en el evento.</div>`;
+}
+
+(function initPF() {
+  const inp = document.getElementById('pfSearch');
+  const res = document.getElementById('pfResults');
+  let searchTimer = null;
+  inp.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = inp.value.trim();
+    if (q.length < 3) { res.classList.remove('open'); return; }
+    searchTimer = setTimeout(async () => {
+      try {
+        const data = await pfFetch('/search?q=' + encodeURIComponent(q));
+        const players = (data.players || []).slice(0, 12);
+        res.innerHTML = players.length
+          ? players.map(p => `<div class="sr-item" data-id="${p.Id}" data-name="${p.Name}">
+              <span class="chip-ico" style="flex:none"><svg><use href="#i-user"/></svg></span>
+              <div><div class="n">${p.Name}</div><div class="m">${p.GuildName || 'sin gremio'}${p.AllianceName ? ' · ' + p.AllianceName : ''}</div></div>
+            </div>`).join('')
+          : '<div class="sr-item"><div><div class="n muted">Sin resultados</div><div class="m">Verificá el nombre exacto del personaje</div></div></div>';
+        res.classList.add('open');
+      } catch (e) {
+        res.innerHTML = `<div class="sr-item"><div><div class="n muted">Killboard no disponible (${e.message})</div><div class="m">Reintentá en unos segundos</div></div></div>`;
+        res.classList.add('open');
+      }
+    }, 450);
+  });
+  res.addEventListener('click', e => {
+    const it = e.target.closest('.sr-item[data-id]'); if (!it) return;
+    res.classList.remove('open');
+    inp.value = it.dataset.name;
+    pfLoadPlayer(it.dataset.id, it.dataset.name);
+  });
+  document.getElementById('pfRefresh').addEventListener('click', () => {
+    if (PF.player) pfLoadPlayer(PF.player.id, PF.player.name);
+  });
+
+  /* especializaciones: edición en vivo + persistencia + aplicación a pestañas */
+  pfRenderSpecs();
+  document.getElementById('pfSpecList').addEventListener('change', e => {
+    const sp = e.target.closest('[data-spec]');
+    const ma = e.target.closest('[data-mast]');
+    if (!sp && !ma) return;
+    const key = (sp || ma).dataset.spec || (sp || ma).dataset.mast;
+    if (!pfSpecs[key]) pfSpecs[key] = { spec: 0, mastery: 0 };
+    if (sp) pfSpecs[key].spec = Math.max(0, Math.min(120, parseInt(sp.value) || 0));
+    if (ma) pfSpecs[key].mastery = Math.max(0, Math.min(100, parseInt(ma.value) || 0));
+    pfSaveSpecs();
+    pfRenderSpecs();
+    pfApplySpecs();
+    // recalcular la pestaña afectada si ya tiene precios cargados
+    if (key === 'gear') {
+      if (typeof GEAR !== 'undefined' && GEAR.loadedOnce) renderGear();
+    } else {
+      const mod = craftModules[key];
+      if (mod && mod.loadedOnce && typeof mod.render === 'function') mod.render();
+    }
+  });
+
+  /* al abrir la pestaña: recordar el último jugador buscado */
+  craftModules['profile'] = {
+    get loadedOnce() { return PF.loadedOnce; },
+    loadPrices() {
+      PF.loadedOnce = true;
+      try {
+        const saved = JSON.parse(localStorage.getItem('pfPlayer') || 'null');
+        if (saved) { document.getElementById('pfSearch').value = saved.name; pfLoadPlayer(saved.id, saved.name); }
+      } catch (e) {}
+    },
+  };
+
+  /* aplicar especializaciones guardadas a las pestañas de crafteo al iniciar */
+  setTimeout(pfApplySpecs, 400);
+})();
