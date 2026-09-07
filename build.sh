@@ -30,9 +30,10 @@ python3 - << 'EOF'
 h = open('albion-app/index.html').read()
 hb = '''<script>
 /* Latido para el ejecutable de escritorio: avisa al servidor que la app
-   sigue abierta. Si no hay pestañas abiertas por unos segundos, el
-   servidor embebido se apaga solo. En el server.py normal, /alive
-   devuelve 404 y esto no hace nada. */
+   sigue abierta. El servidor tolera hasta 15 minutos sin latidos (los
+   navegadores frenan los timers de pestañas en segundo plano), así que
+   la app aguanta inactividad; solo se apaga al cerrar la pestaña de
+   verdad. En el server.py normal, /alive devuelve 404 y esto no hace nada. */
 setInterval(() => { fetch('/alive').catch(() => {}); }, 3000);
 </script>
 </body>'''
