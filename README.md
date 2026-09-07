@@ -68,11 +68,13 @@ otro con `GO_BIN=/ruta/a/go ./build.sh`).
 
 ## Pruebas
 
-`albion-app/smoke-test.js` carga la app completa en un navegador simulado (jsdom),
-recorre todas las pestañas y prueba el flujo del Registro de operaciones:
+Dos niveles, ambos sobre la app completa cargada en un navegador simulado (jsdom):
 
 ```bash
-cd albion-app && node smoke-test.js
+cd albion-app
+node smoke-test.js   # rápido: carga, 14 pestañas, flujo del Registro
+node qa-test.js      # profundo: ejercita cada módulo con precios simulados,
+                     # expande detalles, valida datos y fórmulas (26 checks)
 ```
 
 ## Datos
