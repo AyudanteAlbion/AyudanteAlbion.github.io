@@ -1,0 +1,38 @@
+AYUDANTE ALBION — EJECUTABLE
+============================
+
+USO
+---
+1. Copiá AyudanteAlbion.exe a cualquier carpeta de tu PC con Windows.
+2. Hacé doble clic.
+3. La app se abre directamente en tu navegador. No aparece ninguna
+   ventana de consola.
+4. Para cerrar: simplemente cerrá la pestaña del navegador. El programa
+   se apaga solo unos segundos después.
+
+NOTAS
+-----
+- No necesita instalación ni ningún programa adicional. Todo (íconos,
+  recetas, datos) va adentro del .exe.
+- Usa el puerto 3000; si está ocupado elige otro libre automáticamente.
+- Cómo funciona el cierre: la página envía una señal al programa cada
+  3 segundos. Si no quedan pestañas abiertas durante ~15 segundos, el
+  programa termina solo. Recargar la página o abrirla en otra pestaña
+  no lo interrumpe.
+- Al hacer doble clic tiene hasta 90 segundos de espera inicial para
+  que el navegador termine de abrir, incluso en PCs lentas.
+- Necesita internet solo para actualizar precios del mercado
+  (west.albion-online-data.com) y los íconos de ítems encantados.
+- Los precios manuales y el plan de crafteo se guardan en el navegador.
+- Si Windows SmartScreen muestra un aviso ("editor desconocido"),
+  tocá "Más información" → "Ejecutar de todas formas". Es normal en
+  ejecutables sin firma digital.
+- Si el programa quedara corriendo por algún motivo, se puede terminar
+  desde el Administrador de tareas (AyudanteAlbion.exe).
+
+PARA REGENERARLO (si la app se actualiza)
+-----------------------------------------
+Requiere Go (golang.org). Desde la carpeta albion-exe:
+  1. Copiar los archivos actualizados de albion-app/ a app/
+     (conservando el bloque <script> del latido /alive en index.html)
+  2. GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H windowsgui" -o AyudanteAlbion.exe .
