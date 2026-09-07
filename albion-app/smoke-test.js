@@ -43,7 +43,7 @@ try {
 // esperar promesas pendientes (carga del catálogo, datos)
 setTimeout(() => {
   // recorrer todas las pestañas
-  const tabs = ['home','gear','refine','alch','food','enchant','farm','flip','transmute','meld','search','ledgerlog','sg','formulas'];
+  const tabs = ['home','gear','refine','alch','food','enchant','farm','flip','transmute','meld','search','ledgerlog','profile','sg','formulas'];
   for (const t of tabs) {
     try {
       window.eval(`gotoTab('${t}')`);
