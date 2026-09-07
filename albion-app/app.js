@@ -2461,7 +2461,7 @@ function llRender() {
    Cantidades oficiales por ítem (upgraderequirements de ao-bin-dumps).
    0→1 runas · 1→2 almas · 2→3 reliquias.
    ==================================================================== */
-const EN = { data: null, byId: {}, item: null, prices: {}, loading: false };
+const EN = { data: null, byId: {}, item: null, prices: {}, loading: false, from: 0, to: 3 };
 
 async function enEnsureData() {
   if (!EN.data) {
@@ -2519,36 +2519,109 @@ function enRender() {
              save: (enchStep != null && direct != null) ? direct - enchStep : null };
   });
 
+  /* editor de precio inline: input editable + botón de reset si es manual */
+  const priceInput = (id, p, extra = '') => `
+    <span class="price-edit-wrap">
+      <input type="number" class="price-edit ${p.manual ? 'manual' : ''}" min="0" step="1"
+        value="${p.value || ''}" placeholder="sin precio"
+        data-pid="${id}" data-city="${city}" data-kind="buy" ${extra}>
+      ${p.manual ? `<button class="reset-price" data-pid="${id}" data-city="${city}" data-kind="buy" title="Volver al precio de la API">↺</button>` : ''}
+    </span>`;
+
+  /* ---- planificador de salto libre (.X → .Y) ---- */
+  const from = EN.from, to = EN.to;
+  const lvlName = l => '.' + l;
+  const fromP = from === 0 ? base : enPrice(EN.item + '@' + from);
+  const toP = to === 0 ? base : enPrice(EN.item + '@' + to);
+  const steps = rec.u.filter(([lvl]) => lvl > from && lvl <= to); // pasos necesarios
+  let fragTotal = 0, fragOk = true;
+  const stepRows = steps.map(([lvl, fragId, count]) => {
+    const fp = enPrice(fragId);
+    if (!fp.value) fragOk = false; else fragTotal += fp.value * count;
+    return { lvl, fragId, count, fp };
+  });
+  const planCost = (fromP.value && fragOk) ? fromP.value + fragTotal : null; // comprar .from + todos los fragmentos
+  const planSave = (planCost != null && toP.value) ? toP.value - planCost : null;
+  const tax = document.getElementById('enPremium').checked ? 0.04 : 0.08;
+  const sellNet = toP.value ? toP.value * (1 - tax - 0.025) : null; // impuesto + tasa de publicación
+  const planProfit = (planCost != null && sellNet != null) ? sellNet - planCost : null;
+
+  const jumpOpts = sel => [0, 1, 2, 3].map(l =>
+    `<option value="${l}"${l === sel ? ' selected' : ''}>${lvlName(l)}</option>`).join('');
+
   box.innerHTML = `
   <div class="panel table-wrap">
     <div class="flip-head" style="padding:14px 14px 4px">
       <div class="item-cell">${iconImg(EN.item, 'item-icon')}<div>
         <div class="item-name">${name}</div>
-        <div class="item-meta">Precios en ${city} · base .0: ${fmt(base.value || null)}</div>
+        <div class="item-meta">Precios en ${city} · editá cualquier precio si el mercado está vacío</div>
       </div></div>
     </div>
     <table class="ledger">
       <thead><tr>
         <th>Nivel</th><th>Fragmentos necesarios</th>
+        <th class="num">Precio fragmento</th>
         <th class="num">Costo fragmentos</th>
         <th class="num">Nivel anterior + encantar</th>
         <th class="num">Comprar directo</th>
         <th class="num">Conviene</th>
       </tr></thead>
-      <tbody>${rows.map(r => `
+      <tbody>
+        <tr>
+          <td><b>.0</b> <span class="muted micro">(base)</span></td>
+          <td class="muted micro" colspan="3">precio del ítem sin encantar</td>
+          <td class="num" colspan="2">${priceInput(EN.item, base)}</td>
+          <td></td>
+        </tr>
+        ${rows.map(r => `
         <tr>
           <td><b>.${r.lvl - 1} → .${r.lvl}</b></td>
-          <td><div class="item-cell">${iconImg(r.fragId, 'item-icon sm')}<span>${fmt(r.count)} ${FRAG_ES(r.fragId)} ${r.frag.value ? 'a ' + fmt(r.frag.value) : '(sin precio)'}</span></div></td>
+          <td><div class="item-cell">${iconImg(r.fragId, 'item-icon sm')}<span>${fmt(r.count)} ${FRAG_ES(r.fragId)}</span></div></td>
+          <td class="num">${priceInput(r.fragId, r.frag)}</td>
           <td class="num">${r.frag.value ? fmt(r.frag.value * r.count) : '—'}</td>
           <td class="num">${r.enchStep != null ? fmt(r.enchStep) : '—'}</td>
-          <td class="num">${r.direct != null ? fmt(r.direct) : '—'}</td>
+          <td class="num">${priceInput(EN.item + '@' + r.lvl, r.target)}</td>
           <td class="num ${r.save == null ? '' : r.save > 0 ? 'pos' : 'neg'}">${
             r.save == null ? '—' :
             r.save > 0 ? `Encantar (ahorrás ${fmt(r.save)})` : `Comprar directo (${fmt(-r.save)} más barato)`}</td>
-        </tr>`).join('')}</tbody>
+        </tr>`).join('')}
+      </tbody>
     </table>
-    <div class="micro muted pad">«Nivel anterior + encantar» = comprar el ítem un nivel abajo en ${city} y pagar los fragmentos. Cantidades oficiales del juego para este ítem. El encantado en el Transmutador no tiene costo de plata adicional. Editá precios desde el Buscador si el mercado está vacío.</div>
+    <div class="micro muted pad">«Nivel anterior + encantar» = comprar el ítem un nivel abajo en ${city} y pagar los fragmentos. Cantidades oficiales del juego para este ítem. El encantado en el Transmutador no tiene costo de plata adicional. Los precios editados quedan guardados como manuales (↺ para volver a la API).</div>
+  </div>
+
+  <div class="panel">
+    <div class="cd-title" style="padding:14px 14px 0">Planificador de salto</div>
+    <div class="toggles inline" style="padding:10px 14px">
+      <div class="control"><label>Desde</label><select id="enFrom">${jumpOpts(from)}</select></div>
+      <div class="control"><label>Hasta</label><select id="enTo">${jumpOpts(to)}</select></div>
+    </div>
+    ${from >= to ? '<div class="loading-cell">Elegí un nivel de destino mayor que el de origen.</div>' : `
+    <div class="cd-grid" style="padding:0 14px 14px">
+      <div class="cd-section">
+        <div class="cd-title">Materiales para ${lvlName(from)} → ${lvlName(to)}</div>
+        <div class="cd-line"><span>Comprar ${name} ${lvlName(from)}</span><span>${fromP.value ? fmt(fromP.value) : '<b class="neg">sin precio</b>'}</span></div>
+        ${stepRows.map(s => `
+        <div class="cd-line"><span>${fmt(s.count)} ${FRAG_ES(s.fragId)} (paso .${s.lvl - 1}→.${s.lvl})</span>
+          <span>${s.fp.value ? fmt(s.fp.value * s.count) : '<b class="neg">sin precio</b>'}</span></div>`).join('')}
+        <div class="cd-line total"><span>Costo total del plan</span><span>${planCost != null ? fmt(planCost) : '—'}</span></div>
+      </div>
+      <div class="cd-section cd-summary">
+        <div class="cd-title">Resultado</div>
+        <div class="cd-line"><span>Comprar ${lvlName(to)} directo</span><span>${toP.value ? fmt(toP.value) : '—'}</span></div>
+        <div class="cd-line ${planSave == null ? '' : planSave > 0 ? 'pos' : 'neg'}"><span>Ahorro encantando</span>
+          <span>${planSave == null ? '—' : (planSave > 0 ? '+' : '') + fmt(planSave)}</span></div>
+        <div class="cd-line muted"><span>Venta ${lvlName(to)} neta (impuesto ${(tax * 100).toFixed(0)}% + publicación 2,5%)</span>
+          <span>${sellNet != null ? fmt(sellNet) : '—'}</span></div>
+        <div class="cd-line total ${planProfit == null ? '' : planProfit > 0 ? 'pos' : 'neg'}"><span>Ganancia si lo vendés</span>
+          <span>${planProfit == null ? '—' : (planProfit > 0 ? '+' : '') + fmt(planProfit)}</span></div>
+      </div>
+    </div>`}
+    <div class="micro muted pad">El plan compra el ítem en ${lvlName(from)} y aplica todos los pasos de fragmentos hasta ${lvlName(to)}. La ganancia asume que vendés en ${city} al precio de ${lvlName(to)} mostrado arriba.</div>
   </div>`;
+
+  document.getElementById('enFrom').addEventListener('change', e => { EN.from = +e.target.value; enRender(); });
+  document.getElementById('enTo').addEventListener('change', e => { EN.to = +e.target.value; enRender(); });
 }
 (function initEN() {
   document.getElementById('enCity').innerHTML = CITIES.map(c => `<option${c === 'Caerleon' ? ' selected' : ''}>${c}</option>`).join('');
@@ -2580,6 +2653,24 @@ function enRender() {
   document.getElementById('enCity').addEventListener('change', () => { if (EN.item) enLoad(); });
   document.getElementById('enPremium').addEventListener('change', () => { if (EN.item) enRender(); });
   document.getElementById('enRefresh').addEventListener('click', enLoad);
+
+  /* precios editables dentro del resultado: guardar override manual y recalcular */
+  const box = document.getElementById('enResult');
+  box.addEventListener('change', e => {
+    const inp = e.target.closest('.price-edit'); if (!inp) return;
+    const k = mpKey(inp.dataset.pid, inp.dataset.city, inp.dataset.kind);
+    const v = parseFloat(inp.value);
+    if (!inp.value || isNaN(v) || v < 0) delete manualPrices[k];
+    else manualPrices[k] = v;
+    saveManual();
+    enRender();
+  });
+  box.addEventListener('click', e => {
+    const reset = e.target.closest('.reset-price'); if (!reset) return;
+    delete manualPrices[mpKey(reset.dataset.pid, reset.dataset.city, reset.dataset.kind)];
+    saveManual();
+    enRender();
+  });
 })();
 
 /* ====================================================================

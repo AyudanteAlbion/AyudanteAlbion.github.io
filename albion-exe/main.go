@@ -75,13 +75,16 @@ func main() {
 	// Gracia inicial: 90 s para que el navegador arranque aunque sea lento.
 	lastBeat.Store(time.Now().Add(75 * time.Second).UnixNano())
 
-	// Vigilante: sin latidos por 15 s → apagar. El latido llega cada 3 s,
-	// así que recargas de página o pausas breves no lo disparan.
+	// Vigilante: sin latidos por 15 MINUTOS → apagar. El latido llega cada
+	// 3 s con la pestaña activa; los navegadores lo frenan hasta ~1/min en
+	// pestañas en segundo plano, por eso la ventana es generosa: podés dejar
+	// la app abierta sin usarla hasta 15 minutos y sigue funcionando.
+	// Solo se apaga cuando cerraste la pestaña de verdad.
 	go func() {
-		t := time.NewTicker(3 * time.Second)
+		t := time.NewTicker(15 * time.Second)
 		defer t.Stop()
 		for range t.C {
-			if time.Since(time.Unix(0, lastBeat.Load())) > 15*time.Second {
+			if time.Since(time.Unix(0, lastBeat.Load())) > 15*time.Minute {
 				os.Exit(0)
 			}
 		}
