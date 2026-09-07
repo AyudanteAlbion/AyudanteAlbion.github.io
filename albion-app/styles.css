@@ -99,7 +99,7 @@ a:hover { text-decoration: underline; }
 .dd-menu::before { content: ""; position: absolute; top: -10px; left: 0; right: 0; height: 10px; }
 .tab-dd.open .dd-menu { opacity: 1; visibility: visible; transform: none; }
 .dd-item {
-  display: flex; align-items: flex-start; gap: 11px; width: 100%;
+  display: flex; align-items: center; gap: 11px; width: 100%;
   background: none; border: none; font: inherit; color: var(--text);
   text-align: left; padding: 10px 12px; border-radius: 7px; cursor: pointer;
   transition: background .1s;
@@ -108,7 +108,6 @@ a:hover { text-decoration: underline; }
 .dd-item.active .dd-name { color: var(--accent); }
 .dd-ico { font-size: 1.15rem; line-height: 1.3; }
 .dd-name { display: block; font-weight: 600; font-size: .9rem; }
-.dd-desc { display: block; font-size: .74rem; color: var(--muted); margin-top: 1px; }
 
 .gold-chip {
   display: flex; align-items: center; gap: 6px; font-size: 0.82rem;
