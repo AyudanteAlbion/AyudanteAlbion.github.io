@@ -1755,6 +1755,10 @@ function renderTrans() {
           </span></div>
         <div class="cd-line"><span>Venta neta (impuestos descontados)</span><span>${fmt(x.sellNet)}</span></div>
         <div class="cd-line total"><span>Ganancia por unidad</span><span class="${x.profit == null ? '' : x.profit > 0 ? 'pos' : 'neg'}">${x.profit == null ? '—' : fmt(x.profit)}</span></div>
+        <div class="cd-actions">
+          ${x.buy.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.in}','buy',${x.buy.value},'${buyCity}')" title="Anotar la compra del recurso de origen en el Registro">✎ Registrar compra</button>` : ''}
+          ${x.sell.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.out}','sell',${x.sell.value},'${sellCity}')" title="Anotar la venta del recurso transmutado en el Registro">✎ Registrar venta</button>` : ''}
+        </div>
       </div>
     </div></td></tr>`;
   }).join('');
@@ -2257,12 +2261,12 @@ function psRender(id) {
     box.innerHTML = '<div class="panel"><div class="loading-cell">Sin datos de mercado para este ítem.</div></div>';
     return;
   }
-  // mejor precio de venta global (para resaltar)
-  let bestSell = Infinity, bestBuy = 0;
+  // mejor precio de venta global (para resaltar) + ciudad de cada mejor precio
+  let bestSell = Infinity, bestBuy = 0, bestSellCity = '', bestBuyCity = '';
   for (const c of cities) for (const q in grid[c]) {
     const v = grid[c][q];
-    if (v.sell > 0 && v.sell < bestSell) bestSell = v.sell;
-    if (v.buy > bestBuy) bestBuy = v.buy;
+    if (v.sell > 0 && v.sell < bestSell) { bestSell = v.sell; bestSellCity = c; }
+    if (v.buy > bestBuy) { bestBuy = v.buy; bestBuyCity = c; }
   }
   box.innerHTML = `
   <div class="panel table-wrap">
@@ -2271,6 +2275,8 @@ function psRender(id) {
         <div class="item-name">${name}${PS.ench ? ' .' + PS.ench : ''}</div>
         <div class="item-meta">${id} · venta más barata: <b class="pos">${fmt(bestSell === Infinity ? null : bestSell)}</b> · mejor orden de compra: <b>${fmt(bestBuy || null)}</b></div>
       </div></div>
+      ${bestSell !== Infinity ? `<button class="btn micro-btn" onclick="llPrefill('${id}','buy',${bestSell},'${bestSellCity}')" title="Anotar la compra al precio más barato (${bestSellCity}) en el Registro">✎ Registrar compra</button>` : ''}
+      ${bestBuy ? `<button class="btn micro-btn" onclick="llPrefill('${id}','sell',${bestBuy},'${bestBuyCity}')" title="Anotar la venta a la mejor orden de compra (${bestBuyCity}) en el Registro">✎ Registrar venta</button>` : ''}
     </div>
     <table class="ledger">
       <thead><tr><th>Ciudad</th><th>Calidad</th><th class="num">Venta (más barato)</th><th class="num">Orden de compra (mejor)</th></tr></thead>
