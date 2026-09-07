@@ -565,3 +565,6 @@ img { max-width: 100%; }
   .check input { width: 18px; height: 18px; }
   .reset-price { width: 32px; height: 32px; }
 }
+
+/* botones «Registrar» dentro de los detalles expandidos */
+.cd-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
