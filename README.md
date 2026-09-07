@@ -52,13 +52,27 @@ python3 server.py
 # abrir http://localhost:3000
 ```
 
-## Compilar el .exe de Windows
+## Compilar la distribución (exe + zip)
+
+Todo el proceso está automatizado en un solo script:
 
 ```bash
-cd albion-exe
-# 1. sincronizar la app dentro de albion-exe/app/ (con el script de build)
-# 2. compilar:
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H windowsgui" -o AyudanteAlbion.exe .
+./build.sh              # verifica sintaxis, corre la prueba de humo, sincroniza,
+                        # compila el .exe y genera el .zip
+./build.sh --skip-tests # lo mismo, sin la prueba de humo
+```
+
+Requisitos: `node` (con `jsdom` instalado en `albion-app/`), `python3`, `zip` y Go
+(si no está en `/tmp/go/bin/go`, el script lo descarga solo; también podés indicar
+otro con `GO_BIN=/ruta/a/go ./build.sh`).
+
+## Pruebas
+
+`albion-app/smoke-test.js` carga la app completa en un navegador simulado (jsdom),
+recorre todas las pestañas y prueba el flujo del Registro de operaciones:
+
+```bash
+cd albion-app && node smoke-test.js
 ```
 
 ## Datos
