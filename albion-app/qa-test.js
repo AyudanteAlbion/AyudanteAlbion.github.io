@@ -32,6 +32,14 @@ window.fetch = (url) => {
       data = [{ price: 4000, timestamp: new Date().toISOString() }];
     } else if (u.includes('/gameinfo/search')) {
       data = { players: [{ Id: 'qa1', Name: 'TestPlayer', GuildName: 'QA Guild', AllianceName: '' }], guilds: [] };
+    } else if (u.includes('/gameinfo/players/qa1/topkills')) {
+      data = [{ EventId: 71, TimeStamp: '2026-09-01T10:00:00Z', TotalVictimKillFame: 999999, numberOfParticipants: 5,
+        Killer: { Name: 'TestPlayer', GuildName: 'QA Guild', AverageItemPower: 1500 },
+        Victim: { Name: 'TopVictim', GuildName: 'Otros', AverageItemPower: 1450, Equipment: { MainHand: { Type: 'T8_MAIN_SWORD' } } } }];
+    } else if (u.includes('/gameinfo/players/qa1/solokills')) {
+      data = [{ EventId: 72, TimeStamp: '2026-09-02T10:00:00Z', TotalVictimKillFame: 55555, numberOfParticipants: 1,
+        Killer: { Name: 'TestPlayer', GuildName: 'QA Guild', AverageItemPower: 1500 },
+        Victim: { Name: 'SoloVictim', GuildName: 'Otros', AverageItemPower: 1200, Equipment: { MainHand: { Type: 'T6_MAIN_DAGGER' } } } }];
     } else if (u.includes('/gameinfo/players/qa1/kills') || u.includes('/gameinfo/players/qa1/deaths')) {
       data = [{ EventId: 1, TimeStamp: '2026-09-07T12:00:00Z', TotalVictimKillFame: 12345, numberOfParticipants: 2,
         Killer: { Name: 'TestPlayer', GuildName: 'QA Guild', AverageItemPower: 1400 },
@@ -40,6 +48,10 @@ window.fetch = (url) => {
       data = { Name: 'TestPlayer', Id: 'qa1', GuildName: 'QA Guild', GuildId: 'g9', AllianceName: '', AllianceTag: '',
         KillFame: 1000000, DeathFame: 500000, FameRatio: 2,
         LifetimeStatistics: { PvE: { Total: 99999 }, Gathering: { All: { Total: 5555 } }, Crafting: { Total: 7777 }, FishingFame: 1, FarmingFame: 2 } };
+    } else if (u.includes('/gameinfo/guilds/g9/top')) {
+      data = [{ EventId: 81, TimeStamp: '2026-09-05T10:00:00Z', TotalVictimKillFame: 777777,
+        Killer: { Name: 'GuildStar', GuildName: 'QA Guild' },
+        Victim: { Name: 'GuildVictim', GuildName: 'Otros' } }];
     } else if (u.includes('/gameinfo/guilds/g9')) {
       data = { Name: 'QA Guild', MemberCount: 42, killFame: 123, DeathFame: 456, FounderName: 'Fundador', Founded: '2024-01-01T00:00:00Z', AllianceName: '' };
     }
@@ -70,7 +82,9 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   try {
     const tr = $('foodBody').querySelector('tr.clickable');
     if (tr) { tr.click(); await sleep(200);
-      check($('foodBody').querySelector('.craft-detail') !== null, 'Cocina: detalle expandido OK', 'Cocina: no se expandió el detalle'); }
+      check($('foodBody').querySelector('.craft-detail') !== null, 'Cocina: detalle expandido OK', 'Cocina: no se expandió el detalle');
+      const regBtns = $('foodBody').querySelectorAll('.craft-detail [onclick^="llPrefill"]');
+      check(regBtns.length >= 2, `Cocina: ${regBtns.length} botones «Registrar» en el detalle`, 'Cocina: faltan botones Registrar en el detalle'); }
   } catch (e) { errors.push('Cocina expandir: ' + e.message); }
 
   // ── ALQUIMIA ──
@@ -104,6 +118,8 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       check(res.includes('nivel') || res.includes('Nivel') || res.length > 300,
         'Encantado: comparación renderizada tras elegir ítem',
         'Encantado: resultado vacío → ' + res.slice(0,150));
+      const enReg = $('enResult').querySelectorAll('[onclick^="llPrefill"]');
+      check(enReg.length >= 2, `Encantado: ${enReg.length} botones «Registrar» en el planificador`, 'Encantado: faltan botones Registrar');
     }
   } catch (e) { errors.push('Encantado: ' + e.message); }
 
@@ -111,6 +127,12 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   window.eval(`gotoTab('farm')`); await sleep(800);
   check(rowsIn('fmBody') > 5, `Granja: ${rowsIn('fmBody')} filas`, 'Granja: tabla vacía → ' + bodyOf('fmBody').slice(0,150));
   check(($('fmStats')?.textContent || '').length > 10, 'Granja: stats renderizadas', 'Granja: stats vacías');
+  try {
+    const ftr = $('fmBody').querySelector('tr.clickable');
+    if (ftr) { ftr.click(); await sleep(250);
+      const fReg = $('fmBody').querySelectorAll('[onclick^="llPrefill"]');
+      check(fReg.length === 2, 'Granja: detalle con 2 botones «Registrar»', `Granja: ${fReg.length} botones Registrar (esperaba 2)`); }
+  } catch (e) { errors.push('Granja expandir: ' + e.message); }
 
   // ── FLIPPING ──
   window.eval(`gotoTab('flip')`); await sleep(300);
@@ -129,6 +151,12 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   window.eval(`gotoTab('transmute')`); await sleep(900);
   const trB = window.document.querySelector('#tab-transmute tbody');
   check(trB && trB.querySelectorAll('tr').length > 3, 'Transmutación: tabla poblada', 'Transmutación: tabla vacía');
+  try {
+    const ttr = trB && trB.querySelector('tr.clickable');
+    if (ttr) { ttr.click(); await sleep(250);
+      const tReg = trB.querySelectorAll('[onclick^="llPrefill"]');
+      check(tReg.length === 2, 'Transmutación: detalle con 2 botones «Registrar»', `Transmutación: ${tReg.length} botones Registrar (esperaba 2)`); }
+  } catch (e) { errors.push('Transmutación expandir: ' + e.message); }
 
   // ── ARTEFACTOS ──
   window.eval(`gotoTab('meld')`); await sleep(1200);
@@ -147,6 +175,8 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       hit.click(); await sleep(700);
       const res = bodyOf('psResult');
       check(res.includes('Caerleon') || res.includes('Martlock'), 'Buscador: matriz de ciudades renderizada', 'Buscador: sin matriz → ' + res.slice(0,150));
+      const psReg = $('psResult').querySelectorAll('[onclick^="llPrefill"]');
+      check(psReg.length === 2, 'Buscador: 2 botones «Registrar» en cabecera', `Buscador: ${psReg.length} botones Registrar (esperaba 2)`);
       const hist = JSON.parse(window.localStorage.getItem('psHistory') || '[]');
       check(hist.length === 1, 'Buscador: historial guardado', 'Buscador: historial no se guardó');
     }
@@ -172,6 +202,16 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     window.URL.revokeObjectURL = () => {};
     $('llExport').click(); await sleep(100);
     check(csvOk, 'Registro: exportación CSV dispara descarga', 'Registro: CSV no generó blob');
+    // Resumen por ítem: 1 grupo (T4_BAG), P&L +20.000, +2.000/unidad vendida
+    window.document.querySelector('#llFilter [data-f="byitem"]').click(); await sleep(150);
+    const gRows = $('llBody').querySelectorAll('tr');
+    const gTxt = $('llBody').textContent;
+    check(gRows.length === 1 && gTxt.includes('+20.000') && gTxt.includes('+2.000'),
+      'Registro: resumen por ítem agrupa y calcula P&L +20.000 (+2.000/u)',
+      `Registro: resumen por ítem mal → ${gRows.length} filas, ${gTxt.slice(0,150)}`);
+    window.document.querySelector('#llFilter [data-f="all"]').click(); await sleep(150);
+    check(window.document.querySelector('#llTable thead').textContent.includes('Fecha') && $('llBody').querySelectorAll('tr').length === 2,
+      'Registro: vuelta del resumen a la vista cronológica', 'Registro: no restaura la vista normal tras el resumen');
   } catch (e) { errors.push('Registro: ' + e.message); }
 
   // ── PERFIL ──
@@ -188,6 +228,27 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       check(t.includes('1.000.000') || t.includes('1,000,000'), 'Perfil: fama de asesinatos renderizada', 'Perfil: falta killfame');
       check(t.includes('QA Guild') && t.includes('42'), 'Perfil: panel de gremio', 'Perfil: falta gremio');
       check(t.includes('Rival'), 'Perfil: tablas de kills/muertes', 'Perfil: faltan eventos');
+      // chips de modo de kills: Mejores (topkills) y En solitario (solokills)
+      const chipTop = window.document.querySelector('#pfKillChips [data-kmode="top"]');
+      if (!chipTop) errors.push('Perfil: faltan chips de modo de kills');
+      else {
+        chipTop.click(); await sleep(500);
+        check(bodyOf('pfResult').includes('TopVictim'), 'Perfil: chip «Mejores» carga topkills', 'Perfil: topkills no cargó');
+        const chipSolo = window.document.querySelector('#pfKillChips [data-kmode="solo"]');
+        chipSolo.click(); await sleep(500);
+        check(bodyOf('pfResult').includes('SoloVictim'), 'Perfil: chip «En solitario» carga solokills', 'Perfil: solokills no cargó');
+        window.document.querySelector('#pfKillChips [data-kmode="recent"]').click(); await sleep(300);
+        check(bodyOf('pfResult').includes('Rival'), 'Perfil: vuelta a «Recientes» desde caché', 'Perfil: no volvió a recientes');
+      }
+      // top semanal del gremio
+      const gbtn = $('pfGuildTopBtn');
+      if (!gbtn) errors.push('Perfil: falta botón de top semanal del gremio');
+      else {
+        gbtn.click(); await sleep(500);
+        const gbox = $('pfGuildTopBox');
+        check(gbox && gbox.style.display !== 'none' && gbox.textContent.includes('GuildVictim'),
+          'Perfil: top semanal del gremio renderizado', 'Perfil: top del gremio vacío → ' + (gbox ? gbox.textContent.slice(0,120) : 'sin caja'));
+      }
     }
     // especializaciones → FCE y aplicación a Cocina
     const sp = window.document.querySelector('[data-spec="food"]');
