@@ -2866,7 +2866,12 @@ function fmRender() {
    Además: especializaciones del Destiny Board del usuario, usadas por
    las pestañas de crafteo para calcular el costo real de Foco.
    ==================================================================== */
-const PF = { player: null, loading: false, loadedOnce: false };
+const PF = { player: null, loading: false, loadedOnce: false, kills: null, deaths: null, guildId: null, expandedEv: null };
+const PF_SLOTS = [
+  ['MainHand', 'Mano principal'], ['OffHand', 'Mano secundaria'], ['Head', 'Cabeza'],
+  ['Armor', 'Pecho'], ['Shoes', 'Pies'], ['Cape', 'Capa'], ['Bag', 'Bolsa'],
+  ['Mount', 'Montura'], ['Potion', 'Poción'], ['Food', 'Comida'],
+];
 let pfSpecs = {};
 try { pfSpecs = JSON.parse(localStorage.getItem('pfSpecs') || '{}'); } catch (e) {}
 function pfSaveSpecs() { localStorage.setItem('pfSpecs', JSON.stringify(pfSpecs)); }
@@ -2946,6 +2951,8 @@ async function pfLoadPlayer(id, name) {
       detail.GuildId ? pfFetchRetry(`/guilds/${detail.GuildId}`).catch(() => null) : null,
     ]);
     PF.player = { id, name: detail.Name };
+    PF.kills = kills; PF.deaths = deaths; PF.guildId = detail.GuildId || null;
+    PF.expandedEv = null;
     localStorage.setItem('pfPlayer', JSON.stringify(PF.player));
     pfRender(detail, kills, deaths, guild);
   } catch (e) {
@@ -2958,9 +2965,11 @@ function pfKillRow(ev, mode) {
   // mode 'kill': yo maté a Victim · mode 'death': Killer me mató
   const other = mode === 'kill' ? ev.Victim : ev.Killer;
   const me = mode === 'kill' ? ev.Killer : ev.Victim;
-  const eq = (mode === 'kill' ? ev.Victim : ev.Victim).Equipment || {};
+  const eq = ev.Victim.Equipment || {};
   const mh = eq.MainHand ? eq.MainHand.Type : null;
-  return `<tr>
+  const evKey = mode + ':' + ev.EventId;
+  const open = PF.expandedEv === evKey;
+  let html = `<tr class="clickable ${open ? 'expanded' : ''}" data-ev="${evKey}">
     <td class="muted micro">${PF_FMT_DATE(ev.TimeStamp)}</td>
     <td><div class="item-cell">${mh ? iconImg(mh, 'item-icon sm') : ''}<div>
       <div class="item-name">${other.Name}</div>
@@ -2971,9 +2980,42 @@ function pfKillRow(ev, mode) {
     <td class="num ${mode === 'kill' ? 'pos' : 'neg'}">${fmt(ev.TotalVictimKillFame)}</td>
     <td class="num muted">${ev.numberOfParticipants || 1}</td>
   </tr>`;
+  if (open) html += pfEvDetail(ev);
+  return html;
+}
+
+/* fila expandida: equipo completo del asesino y de la víctima, con íconos */
+function pfEvDetail(ev) {
+  const gearCol = who => {
+    const eq = who.Equipment || {};
+    const rows = PF_SLOTS
+      .filter(([slot]) => eq[slot])
+      .map(([slot, label]) => {
+        const it = eq[slot];
+        const ench = it.Type.includes('@') ? '.' + it.Type.split('@')[1] : '';
+        return `<div class="cd-line"><span style="display:flex;align-items:center;gap:8px">${iconImg(it.Type, 'item-icon sm')}${label}</span>
+          <span class="muted micro">${catalogName(it.Type.split('@')[0])}${ench} ${it.Quality > 1 ? '· calidad ' + it.Quality : ''}</span></div>`;
+      }).join('');
+    return rows || '<div class="muted micro">Sin datos de equipo</div>';
+  };
+  const inv = (ev.Victim.Inventory || []).filter(Boolean);
+  return `<tr class="craft-detail"><td colspan="6">
+    <div class="cd-grid">
+      <div class="cd-section">
+        <div class="cd-title">⚔ ${ev.Killer.Name} (asesino) · IP ${fmt(ev.Killer.AverageItemPower) || '—'}</div>
+        ${gearCol(ev.Killer)}
+      </div>
+      <div class="cd-section">
+        <div class="cd-title">💀 ${ev.Victim.Name} (víctima) · IP ${fmt(ev.Victim.AverageItemPower) || '—'}</div>
+        ${gearCol(ev.Victim)}
+        ${inv.length ? `<div class="cd-line muted" style="margin-top:6px"><span>Inventario perdido</span><span>${inv.length} ítems</span></div>` : ''}
+      </div>
+    </div>
+  </td></tr>`;
 }
 
 function pfRender(d, kills, deaths, guild) {
+  PF.lastRender = { d, kills, deaths, guild };
   const box = document.getElementById('pfResult');
   const ls = d.LifetimeStatistics || {};
   const pve = ls.PvE || {};
@@ -3012,6 +3054,9 @@ function pfRender(d, kills, deaths, guild) {
       <div class="stat"><div class="k">Fama de asesinatos</div><div class="v">${fmt(guild.killFame)}</div><div class="s">todo el gremio</div></div>
       <div class="stat"><div class="k">Fama de muertes</div><div class="v">${fmt(guild.DeathFame)}</div><div class="s">todo el gremio</div></div>
       <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${guild.Founded ? new Date(guild.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">por ${guild.FounderName || '—'}</div></div>
+    </div>
+    <div id="pfMembersBox" style="padding:0 14px 14px">
+      <button class="btn" id="pfMembersBtn">Ver miembros del gremio (ranking de fama)</button>
     </div>
   </div>` : ''}
 
@@ -3083,6 +3128,46 @@ function pfRender(d, kills, deaths, guild) {
   });
   document.getElementById('pfRefresh').addEventListener('click', () => {
     if (PF.player) pfLoadPlayer(PF.player.id, PF.player.name);
+  });
+
+  /* clics dentro del resultado: expandir eventos, ver miembros, abrir perfil de un miembro */
+  document.getElementById('pfResult').addEventListener('click', async e => {
+    const tr = e.target.closest('tr[data-ev]');
+    if (tr) {
+      PF.expandedEv = PF.expandedEv === tr.dataset.ev ? null : tr.dataset.ev;
+      if (PF.lastRender) pfRender(PF.lastRender.d, PF.lastRender.kills, PF.lastRender.deaths, PF.lastRender.guild);
+      return;
+    }
+    const mbtn = e.target.closest('#pfMembersBtn');
+    if (mbtn && PF.guildId) {
+      mbtn.textContent = 'Cargando miembros…'; mbtn.disabled = true;
+      try {
+        const members = await pfFetchRetry(`/guilds/${PF.guildId}/members`);
+        const sorted = [...members].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
+        document.getElementById('pfMembersBox').innerHTML = `
+          <div class="table-wrap"><table class="ledger">
+            <thead><tr><th>#</th><th>Jugador</th><th class="num">Fama de asesinatos</th><th class="num">Fama de muertes</th><th class="num">Ratio</th></tr></thead>
+            <tbody>${sorted.map((m, i) => `
+              <tr class="clickable" data-member-id="${m.Id}" data-member-name="${m.Name}" title="Ver el perfil de ${m.Name}">
+                <td class="muted">${i + 1}</td>
+                <td><b>${m.Name}</b></td>
+                <td class="num">${fmt(m.KillFame)}</td>
+                <td class="num">${fmt(m.DeathFame)}</td>
+                <td class="num ${(m.KillFame || 0) >= (m.DeathFame || 0) ? 'pos' : 'neg'}">${m.DeathFame > 0 ? ((m.KillFame || 0) / m.DeathFame).toFixed(2) : '—'}</td>
+              </tr>`).join('')}</tbody>
+          </table></div>
+          <div class="micro muted" style="margin-top:6px">${sorted.length} miembros, ordenados por fama de asesinatos. Hacé clic en uno para ver su perfil.</div>`;
+      } catch (err) {
+        mbtn.textContent = 'El killboard no respondió — probá de nuevo'; mbtn.disabled = false;
+      }
+      return;
+    }
+    const member = e.target.closest('tr[data-member-id]');
+    if (member) {
+      document.getElementById('pfSearch').value = member.dataset.memberName;
+      window.scrollTo({ top: 0 });
+      pfLoadPlayer(member.dataset.memberId, member.dataset.memberName);
+    }
   });
 
   /* especializaciones: edición en vivo + persistencia + aplicación a pestañas */
