@@ -576,6 +576,10 @@ function createCraftModule(cfg) {
           <div class="cd-line muted"><span>Tasa de estación</span><span>− ${fmt(c.stationFee)}</span></div>
           <div class="cd-line muted"><span>Ingreso neto (lote de ${r.amount}, tras impuestos)</span><span>${fmt(c.revenue)}</span></div>
           <div class="cd-line total ${c.profit > 0 ? 'pos' : 'neg'}"><span>Ganancia por lote</span><span>${isNaN(c.profit) ? '—' : (c.profit > 0 ? '+' : '') + fmt(c.profit)}</span></div>
+          <div class="cd-actions">
+            <button class="btn micro-btn" onclick="llPrefill('${r.id}','craft',${((c.matCost || 0) + (c.stationFee || 0)) / (r.amount || 1)},'')" title="Anotar el crafteo (materiales + estación, por unidad) en el Registro">✎ Registrar crafteo</button>
+            ${sellEp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.id}','sell',${sellEp.value},'${opts.sellCity}')" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
+          </div>
         </div>
       </div>
     </td></tr>`;
@@ -2615,6 +2619,10 @@ function enRender() {
           <span>${sellNet != null ? fmt(sellNet) : '—'}</span></div>
         <div class="cd-line total ${planProfit == null ? '' : planProfit > 0 ? 'pos' : 'neg'}"><span>Ganancia si lo vendés</span>
           <span>${planProfit == null ? '—' : (planProfit > 0 ? '+' : '') + fmt(planProfit)}</span></div>
+        <div class="cd-actions">
+          ${fromP.value ? `<button class="btn micro-btn" onclick="llPrefill('${from === 0 ? EN.item : EN.item + '@' + from}','buy',${fromP.value},'${city}')" title="Anotar la compra del ítem ${lvlName(from)} en el Registro">✎ Registrar compra ${lvlName(from)}</button>` : ''}
+          ${toP.value ? `<button class="btn micro-btn" onclick="llPrefill('${to === 0 ? EN.item : EN.item + '@' + to}','sell',${toP.value},'${city}')" title="Anotar la venta del ítem ${lvlName(to)} en el Registro">✎ Registrar venta ${lvlName(to)}</button>` : ''}
+        </div>
       </div>
     </div>`}
     <div class="micro muted pad">El plan compra el ítem en ${lvlName(from)} y aplica todos los pasos de fragmentos hasta ${lvlName(to)}. La ganancia asume que vendés en ${city} al precio de ${lvlName(to)} mostrado arriba.</div>
@@ -2818,6 +2826,10 @@ function fmRender() {
         ${r.offspring ? `<div class="cd-line"><span>Crías extra por ciclo</span><span>${r.offspring.toFixed(2)}</span></div>` : ''}
         <div class="cd-line"><span>Ciclo</span><span>${r.cycleDays < 1.05 ? Math.round(r.cycleDays * 24) + ' h' : r.cycleDays.toFixed(1) + ' días'}</span></div>
         <div class="cd-line total"><span>Ganancia por unidad</span><span class="${r.unit > 0 ? 'pos' : 'neg'}">${fmt(r.unit)}</span></div>
+        <div class="cd-actions">
+          ${bp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.inId}','buy',${bp.value},'${city}')" title="Anotar la compra de ${r.keeper ? 'animales' : (r.f.kind === 'plant' ? 'semillas' : 'crías')} en el Registro">✎ Registrar compra</button>` : ''}
+          ${sp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.outId}','sell',${sp.value},'${city}')" title="Anotar la venta del producto en el Registro">✎ Registrar venta</button>` : ''}
+        </div>
       </div>
     </div></td></tr>`;
   }).join('');
