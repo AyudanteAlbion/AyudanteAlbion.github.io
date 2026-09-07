@@ -99,7 +99,7 @@ function mpKey(id, city, kind) { return `${id}|${city}|${kind}`; }
 /* ---------- pestañas ---------- */
 // Grupos de pestañas por dropdown: su trigger se marca activo cuando la actual es una de sus herramientas
 const DD_GROUPS = [
-  { dd: 'craftDd', btn: 'craftDdBtn', keys: ['gear', 'refine', 'alch', 'food'] },
+  { dd: 'craftDd', btn: 'craftDdBtn', keys: ['gear', 'refine', 'alch', 'food', 'enchant', 'farm'] },
   { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute'] },
 ];
 function gotoTab(key) {
@@ -844,6 +844,8 @@ function showFlipDetail(id) {
     <div class="detail-head">
       ${iconImg(id, 'item-icon')}
       <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id} · matriz de precios en las 7 ciudades</div></div>
+      ${f.bestBuy ? `<button class="btn micro-btn" onclick="llPrefill('${id}','buy',${f.bestBuy.price},'${f.bestBuy.city}')" title="Anotar la compra en el Registro de operaciones">✎ Registrar compra</button>` : ''}
+      ${f.bestSell ? `<button class="btn micro-btn" onclick="llPrefill('${id}','sell',${f.bestSell.price},'${f.bestSell.city}')" title="Anotar la venta en el Registro de operaciones">✎ Registrar venta</button>` : ''}
       <button class="btn detail-close" onclick="this.closest('#flipDetail').style.display='none'">Cerrar</button>
     </div>
     <div class="table-wrap"><table class="matrix">
@@ -1175,6 +1177,10 @@ function gearDetailRow(r, c, o) {
         <div class="cd-line muted"><span>Diarios: venta llenos (neto)</span><span>+ ${fmt(j.revenue)}</span></div>` : ''}
         <div class="cd-line muted"><span>Ingreso por el ítem (tras impuestos${o.sellBM ? ', sin tasa de publicación' : ''})</span><span>${fmt(c.revenue)}</span></div>
         <div class="cd-line total ${c.profit > 0 ? 'pos' : 'neg'}"><span>Ganancia por unidad</span><span>${isNaN(c.profit) ? '—' : (c.profit > 0 ? '+' : '') + fmt(c.profit)}</span></div>
+        <div class="cd-actions">
+          <button class="btn micro-btn" onclick="llPrefill('${r.id}','craft',${(c.matCost || 0) + (c.stationFee || 0)},'')" title="Anotar el crafteo (costo de materiales + estación) en el Registro">✎ Registrar crafteo</button>
+          ${c.sellPrice ? `<button class="btn micro-btn" onclick="llPrefill('${r.id}','sell',${c.sellPrice},'${o.sellBM ? 'Black Market' : sellKey[1]}')" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
+        </div>
       </div>
     </div>
   </td></tr>`;
@@ -2326,6 +2332,19 @@ function psRender(id) {
 const LL = { rows: [], filter: 'all', item: null };
 try { LL.rows = JSON.parse(localStorage.getItem('tradeLog') || '[]'); } catch (e) {}
 function llSave() { localStorage.setItem('tradeLog', JSON.stringify(LL.rows)); }
+
+/* Prefill desde otras pestañas: botones «Registrar» en Flipping/Crafteo */
+function llPrefill(id, type, price, city) {
+  LL.item = id;
+  document.getElementById('llItem').value = catalogName(id);
+  document.getElementById('llType').value = type;
+  document.getElementById('llQty').value = 1;
+  document.getElementById('llPrice').value = price && isFinite(price) ? Math.round(price) : '';
+  const sel = document.getElementById('llCity');
+  sel.value = city && [...sel.options].some(o => o.value === city) ? city : '—';
+  gotoTab('ledgerlog');
+  document.getElementById('llQty').focus();
+}
 const LL_TYPE_ES = { buy: 'Compra', sell: 'Venta', craft: 'Crafteo' };
 
 function llRender() {

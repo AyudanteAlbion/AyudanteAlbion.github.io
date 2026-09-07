@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=40">
+<link rel="stylesheet" href="styles.css?v=41">
 <link rel="icon" href="img/logo-app.png">
 </head>
 <body>
@@ -187,6 +187,46 @@
         <li>Ordená por ganancia, margen o plata por Foco.</li>
       </ul>
       <button class="btn primary">Ir a Cocina →</button>
+    </div>
+
+    <div class="panel home-card" data-goto="enchant">
+      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-spark"/></svg></span><h2>Encantado</h2></div>
+      <p>¿Comprar el ítem encantado o <b>encantarlo vos con fragmentos</b>? La respuesta, nivel por nivel.</p>
+      <ul>
+        <li>Cantidades oficiales de runas, almas y reliquias por pieza.</li>
+        <li>Ahorro exacto en plata y en porcentaje para .1, .2 y .3.</li>
+      </ul>
+      <button class="btn primary">Ir a Encantado →</button>
+    </div>
+
+    <div class="panel home-card" data-goto="farm">
+      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-sprout"/></svg></span><h2>Granja</h2></div>
+      <p>Rentabilidad de tu <b>isla personal</b>: cultivos, cría de animales y productores de huevos y leche.</p>
+      <ul>
+        <li>Ganancia por parcela y por día, con semilla devuelta y crías extra.</li>
+        <li>Premium, Foco y cantidad de parcelas configurables.</li>
+      </ul>
+      <button class="btn primary">Ir a Granja →</button>
+    </div>
+
+    <div class="panel home-card" data-goto="search">
+      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-search"/></svg></span><h2>Buscador de precios</h2></div>
+      <p>El precio de <b>cualquier ítem del juego</b> en las 7 ciudades y el Mercado Negro, al instante.</p>
+      <ul>
+        <li>Todas las calidades, de Normal a Obra maestra.</li>
+        <li>Historial de búsquedas recientes con un clic.</li>
+      </ul>
+      <button class="btn primary">Ir al Buscador →</button>
+    </div>
+
+    <div class="panel home-card" data-goto="ledgerlog">
+      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-book"/></svg></span><h2>Registro de operaciones</h2></div>
+      <p>Tu <b>diario de mercado personal</b>: anotá compras, ventas y crafteos, y mirá tu ganancia real.</p>
+      <ul>
+        <li>P&amp;L total y de los últimos 7 días, calculado solo.</li>
+        <li>Exportá todo a CSV compatible con Excel.</li>
+      </ul>
+      <button class="btn primary">Ir al Registro →</button>
     </div>
 
     <div class="panel home-card" data-goto="formulas">
@@ -633,7 +673,7 @@
 <section id="tab-formulas" class="tab-panel">
   <div class="panel doc">
     <h2>Fórmulas utilizadas</h2>
-    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos.</p>
+    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos; la 10 y la 11, Encantado y Granja.</p>
 
     <h3>1 · Tasa de retorno de recursos (RRR)</h3>
     <p>Los bonos son aditivos y luego se convierten a tasa de retorno:</p>
@@ -690,6 +730,21 @@ valor_esperado (EV) = Σ (venta_neta de cada artefacto del pool) / tamaño_del_p
 ganancia_esperada = EV − costo_tirada
 incertidumbre de una sesión = desviación_estándar × √tiradas</pre>
     <p>El resultado es <b>uniforme</b> entre los artefactos posibles del pool (mismo tier y tipo de fragmento). Los no comerciables cuentan como valor 0. El EV es un promedio: la mediana indica el resultado típico y el % de tiradas ganadoras cuántos resultados cubren el costo. Con pocas tiradas domina la suerte; con muchas, el resultado converge al EV.</p>
+
+    <h3>10 · Encantado con fragmentos</h3>
+    <pre>costo_encantar = precio_ítem_nivel_anterior + N × precio_fragmento
+ahorro = precio_ítem_encantado − costo_encantar   [conviene encantar si ahorro > 0]</pre>
+    <p>Cada pieza usa una <b>cantidad fija N de fragmentos del mismo tier</b>, extraída de los datos oficiales del juego: runas para .0→.1, almas para .1→.2 y reliquias para .2→.3. La cantidad depende del tipo de pieza (por ejemplo: arma a dos manos 384, armadura/bolsa/capa 192, casco/zapatos 96). El salto .3→.4 no usa fragmentos —se craftea con materiales encantados—, por eso la herramienta cubre hasta .3. Encantar no tiene costo de plata ni de Foco: solo el ítem base y los fragmentos.</p>
+
+    <h3>11 · Granja e isla personal</h3>
+    <pre>Cultivos:  costo_neto_semilla = precio_semilla × (1 − semilla_devuelta)
+           ganancia_unidad = venta_neta_cosecha − costo_neto_semilla
+Crías:     ganancia_unidad = venta_neta_adulto × (1 + crías_extra) − precio_cría − alimento
+Productores: ganancia_ciclo = venta_neta_producto − alimento   [el animal no se consume]
+
+por_parcela_día = ganancia_unidad × rendimiento / días_de_ciclo
+rendimiento = 9 por parcela   (13,5 con premium: +50%)</pre>
+    <p><b>Semilla devuelta</b>: cada cultivo tiene una probabilidad oficial de devolver semillas al cosechar (por ejemplo, el nabo devuelve ~0,73 por planta), que descuenta el costo real de la semilla. <b>Crías extra</b>: al crecer, los animales tienen una probabilidad de generar crías adicionales, que se suman como ingreso. El <b>Foco</b> multiplica el rendimiento según el bono propio de cada especie, y la venta neta descuenta el impuesto de mercado (4% u 8% sin/con premium). Los ciclos usan los tiempos reales del juego: 22 h para cultivos y productores, y el tiempo de crecimiento propio de cada animal.</p>
 
     <h3>Fuentes de datos</h3>
     <ul>
@@ -754,6 +809,6 @@ incertidumbre de una sesión = desviación_estándar × √tiradas</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=40"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>
