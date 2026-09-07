@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=45">
+<link rel="stylesheet" href="styles.css?v=46">
 <link rel="icon" href="img/logo-app.png">
 </head>
 <body>
@@ -686,7 +686,7 @@
 <section id="tab-formulas" class="tab-panel">
   <div class="panel doc">
     <h2>Fórmulas utilizadas</h2>
-    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos; la 10 y la 11, Encantado y Granja.</p>
+    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos; la 10 y la 11, Encantado y Granja; la 12, el costo de Foco según tu Perfil.</p>
 
     <h3>1 · Tasa de retorno de recursos (RRR)</h3>
     <p>Los bonos son aditivos y luego se convierten a tasa de retorno:</p>
@@ -759,10 +759,16 @@ por_parcela_día = ganancia_unidad × rendimiento / días_de_ciclo
 rendimiento = 9 por parcela   (13,5 con premium: +50%)</pre>
     <p><b>Semilla devuelta</b>: cada cultivo tiene una probabilidad oficial de devolver semillas al cosechar (por ejemplo, el nabo devuelve ~0,73 por planta), que descuenta el costo real de la semilla. <b>Crías extra</b>: al crecer, los animales tienen una probabilidad de generar crías adicionales, que se suman como ingreso. El <b>Foco</b> multiplica el rendimiento según el bono propio de cada especie, y la venta neta descuenta el impuesto de mercado (4% u 8% sin/con premium). Los ciclos usan los tiempos reales del juego: 22 h para cultivos y productores, y el tiempo de crecimiento propio de cada animal.</p>
 
+    <h3>12 · Costo de Foco y especializaciones (Perfil)</h3>
+    <pre>FCE = especialización × 250 + maestría × 30
+foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
+    <p>Cada rama del Destiny Board acumula <b>eficiencia de costo de Foco (FCE)</b>: cada 10.000 puntos, el costo de Foco se reduce a la mitad. Ejemplos: espec 50 + maestría 50 = 14.000 FCE → pagás el 38% del Foco base; espec 100 + maestría 100 = 28.000 FCE → pagás el 14,4%; espec 120 + maestría 100 = 33.000 FCE → pagás el 10,2%. Los valores cargados en <b>Perfil</b> se aplican automáticamente en todas las pestañas de crafteo: el «focus N» que ves en cada ítem ya es tu costo real.</p>
+
     <h3>Fuentes de datos</h3>
     <ul>
       <li>Precios en tiempo real: <a href="https://www.albion-online-data.com/" target="_blank" rel="noopener">Albion Online Data Project</a> (servidor Americas/West).</li>
       <li>Recetas, Foco y valores de ítems: volcado oficial de datos del juego (ao-data / ao-bin-dumps).</li>
+      <li>Perfil de jugador, asesinatos y gremios: killboard oficial de Albion Online (gameinfo, servidor Américas).</li>
       <li>Íconos de ítems: servicio oficial de renderizado de Albion Online.</li>
     </ul>
   </div>
@@ -845,6 +851,6 @@ rendimiento = 9 por parcela   (13,5 con premium: +50%)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>

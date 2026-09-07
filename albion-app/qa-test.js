@@ -30,6 +30,18 @@ window.fetch = (url) => {
       }
     } else if (u.includes('/gold')) {
       data = [{ price: 4000, timestamp: new Date().toISOString() }];
+    } else if (u.includes('/gameinfo/search')) {
+      data = { players: [{ Id: 'qa1', Name: 'TestPlayer', GuildName: 'QA Guild', AllianceName: '' }], guilds: [] };
+    } else if (u.includes('/gameinfo/players/qa1/kills') || u.includes('/gameinfo/players/qa1/deaths')) {
+      data = [{ EventId: 1, TimeStamp: '2026-09-07T12:00:00Z', TotalVictimKillFame: 12345, numberOfParticipants: 2,
+        Killer: { Name: 'TestPlayer', GuildName: 'QA Guild', AverageItemPower: 1400 },
+        Victim: { Name: 'Rival', GuildName: 'Otros', AverageItemPower: 1300, Equipment: { MainHand: { Type: 'T4_MAIN_SWORD' } } } }];
+    } else if (u.includes('/gameinfo/players/qa1')) {
+      data = { Name: 'TestPlayer', Id: 'qa1', GuildName: 'QA Guild', GuildId: 'g9', AllianceName: '', AllianceTag: '',
+        KillFame: 1000000, DeathFame: 500000, FameRatio: 2,
+        LifetimeStatistics: { PvE: { Total: 99999 }, Gathering: { All: { Total: 5555 } }, Crafting: { Total: 7777 }, FishingFame: 1, FarmingFame: 2 } };
+    } else if (u.includes('/gameinfo/guilds/g9')) {
+      data = { Name: 'QA Guild', MemberCount: 42, killFame: 123, DeathFame: 456, FounderName: 'Fundador', Founded: '2024-01-01T00:00:00Z', AllianceName: '' };
     }
   } catch (e) { /* vacío */ }
   return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
@@ -161,6 +173,32 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     $('llExport').click(); await sleep(100);
     check(csvOk, 'Registro: exportación CSV dispara descarga', 'Registro: CSV no generó blob');
   } catch (e) { errors.push('Registro: ' + e.message); }
+
+  // ── PERFIL ──
+  window.eval(`gotoTab('profile')`); await sleep(200);
+  try {
+    $('pfSearch').value = 'TestPlayer';
+    $('pfSearch').dispatchEvent(new window.Event('input', { bubbles: true }));
+    await sleep(700);
+    const hit = window.document.querySelector('#pfResults .sr-item[data-id]');
+    if (!hit) errors.push('Perfil: búsqueda sin resultados');
+    else {
+      hit.click(); await sleep(900);
+      const t = bodyOf('pfResult');
+      check(t.includes('1.000.000') || t.includes('1,000,000'), 'Perfil: fama de asesinatos renderizada', 'Perfil: falta killfame');
+      check(t.includes('QA Guild') && t.includes('42'), 'Perfil: panel de gremio', 'Perfil: falta gremio');
+      check(t.includes('Rival'), 'Perfil: tablas de kills/muertes', 'Perfil: faltan eventos');
+    }
+    // especializaciones → FCE y aplicación a Cocina
+    const sp = window.document.querySelector('[data-spec="food"]');
+    sp.value = '100'; sp.dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(100);
+    const ma = window.document.querySelector('[data-mast="food"]');
+    ma.value = '100'; ma.dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(200);
+    const specTxt = window.document.getElementById('pfSpecList').textContent;
+    check(specTxt.includes('28.000'), 'Perfil: FCE 28.000 calculado', 'Perfil: FCE incorrecto');
+    const foodSpec = $('foodSpec');
+    check(foodSpec && foodSpec.value === '100', 'Perfil: spec aplicada a Cocina', 'Perfil: spec no llegó a Cocina');
+  } catch (e) { errors.push('Perfil: ' + e.message); }
 
   // ── VALIDACIÓN NUMÉRICA independiente: Granja T4 zanahoria ──
   try {

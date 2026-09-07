@@ -4,11 +4,11 @@ AYUDANTE ALBION — EJECUTABLE
 USO
 ---
 1. Copiá AyudanteAlbion.exe a cualquier carpeta de tu PC con Windows.
-2. Hacé doble clic.
+2. Hacé doble clic (vas a ver el ícono del yunque dorado).
 3. La app se abre directamente en tu navegador. No aparece ninguna
    ventana de consola.
 4. Para cerrar: simplemente cerrá la pestaña del navegador. El programa
-   se apaga solo unos segundos después.
+   se apaga solo unos minutos después.
 
 NOTAS
 -----
@@ -16,14 +16,17 @@ NOTAS
   recetas, datos) va adentro del .exe.
 - Usa el puerto 3000; si está ocupado elige otro libre automáticamente.
 - Cómo funciona el cierre: la página envía una señal al programa cada
-  3 segundos. Si no quedan pestañas abiertas durante ~15 segundos, el
-  programa termina solo. Recargar la página o abrirla en otra pestaña
-  no lo interrumpe.
+  3 segundos. El programa tolera hasta 15 MINUTOS sin señales (los
+  navegadores pausan las pestañas en segundo plano), así que podés
+  dejar la app abierta sin usarla y sigue funcionando. Solo se apaga
+  cuando cerrás la pestaña de verdad.
 - Al hacer doble clic tiene hasta 90 segundos de espera inicial para
   que el navegador termine de abrir, incluso en PCs lentas.
-- Necesita internet solo para actualizar precios del mercado
-  (west.albion-online-data.com) y los íconos de ítems encantados.
-- Los precios manuales y el plan de crafteo se guardan en el navegador.
+- Necesita internet para actualizar precios del mercado
+  (west.albion-online-data.com), los íconos de ítems encantados y la
+  pestaña Perfil (killboard oficial de Albion, gameinfo.albiononline.com).
+- Los precios manuales, el plan de crafteo, tus especializaciones y tu
+  personaje del Perfil se guardan en el navegador.
 - Si Windows SmartScreen muestra un aviso ("editor desconocido"),
   tocá "Más información" → "Ejecutar de todas formas". Es normal en
   ejecutables sin firma digital.
@@ -32,7 +35,7 @@ NOTAS
 
 PARA REGENERARLO (si la app se actualiza)
 -----------------------------------------
-Requiere Go (golang.org). Desde la carpeta albion-exe:
-  1. Copiar los archivos actualizados de albion-app/ a app/
-     (conservando el bloque <script> del latido /alive en index.html)
-  2. GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H windowsgui" -o AyudanteAlbion.exe .
+Requiere Go (golang.org). Desde la raíz del repositorio:
+  ./build.sh
+El script verifica la app, sincroniza los archivos, compila el .exe
+(con el ícono incluido vía rsrc_windows_amd64.syso) y genera el .zip.
