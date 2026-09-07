@@ -20,6 +20,15 @@ Herramientas de mercado y crafteo para **Albion Online** (servidor Américas / W
 | 🔍 **Buscador de precios** | Cualquier ítem, 7 ciudades + Mercado Negro, todas las calidades |
 | 📒 **Registro de operaciones** | Diario personal de compras/ventas con P&L y exportación CSV |
 
+## 📥 Descargas
+
+**[⬇️ Descargar AyudanteAlbion.exe](https://github.com/Guallama31/AyudanteAlbion/releases/latest)** — en la sección **Releases** del repositorio.
+
+- `AyudanteAlbion.exe`: doble clic y la app se abre en tu navegador. Se apaga sola al cerrar la pestaña.
+- `AyudanteAlbion.zip`: paquete completo (.exe + código fuente).
+
+> El `.exe` compilado no está en el código fuente del repositorio (los binarios no van al historial de git); siempre se descarga desde Releases.
+
 ## Estructura del repositorio
 
 ```
