@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opciones de botones — Spetsnaz Grail</title>
+<style>
+:root {
+  --bg: #0e1117; --panel: #141821; --panel-2: #1b2130; --border: #252b3a;
+  --border-strong: #303950; --text: #d5dae4; --muted: #808697;
+  --accent: #3179f5; --gold: #e5b45b; --discord: #5865f2; --twitch: #9146ff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  padding: 40px 20px; line-height: 1.5;
+}
+.wrap { max-width: 880px; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin-bottom: 6px; }
+.sub { color: var(--muted); font-size: .9rem; margin-bottom: 30px; }
+.opt {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 24px; margin-bottom: 18px;
+}
+.opt-num { color: var(--gold); font-weight: 700; font-size: .8rem; letter-spacing: .1em; }
+.opt h2 { font-size: 1.05rem; margin: 2px 0 4px; }
+.opt p { color: var(--muted); font-size: .84rem; margin-bottom: 16px; }
+.row { display: flex; gap: 14px; flex-wrap: wrap; }
+a.b {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 210px; padding: 12px 24px; font: inherit; font-weight: 600;
+  font-size: .92rem; text-decoration: none; cursor: pointer; text-align: center;
+  transition: all .2s ease;
+}
+
+/* 1 — Sólido clásico (actual mejorado) */
+.s1w { background: var(--accent); color: #fff; border: none; border-radius: 7px; }
+.s1w:hover { background: #4a8bff; transform: translateY(-1px); }
+.s1d { background: var(--discord); color: #fff; border: none; border-radius: 7px; }
+.s1d:hover { background: #6b76ff; transform: translateY(-1px); }
+
+/* 2 — Contorno fantasma */
+.s2 { background: transparent; border-radius: 7px; }
+.s2w { border: 1.5px solid var(--gold); color: var(--gold); }
+.s2w:hover { background: rgba(229,180,91,.12); box-shadow: 0 0 18px -6px var(--gold); }
+.s2d { border: 1.5px solid var(--discord); color: #aab4ff; }
+.s2d:hover { background: rgba(88,101,242,.12); box-shadow: 0 0 18px -6px var(--discord); }
+
+/* 3 — Glassmorphism */
+.s3 { background: rgba(255,255,255,.07); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.16); border-radius: 12px; color: var(--text); }
+.s3:hover { background: rgba(255,255,255,.13); border-color: rgba(255,255,255,.3); transform: translateY(-2px); }
+
+/* 4 — Neón glow */
+.s4 { background: transparent; border-radius: 8px; }
+.s4w { border: 1px solid var(--gold); color: var(--gold); box-shadow: 0 0 12px -4px var(--gold), inset 0 0 12px -8px var(--gold); text-shadow: 0 0 8px rgba(229,180,91,.5); }
+.s4w:hover { box-shadow: 0 0 24px -4px var(--gold), inset 0 0 20px -8px var(--gold); }
+.s4d { border: 1px solid var(--discord); color: #aab4ff; box-shadow: 0 0 12px -4px var(--discord), inset 0 0 12px -8px var(--discord); text-shadow: 0 0 8px rgba(88,101,242,.6); }
+.s4d:hover { box-shadow: 0 0 24px -4px var(--discord), inset 0 0 20px -8px var(--discord); }
+
+/* 5 — Gradiente animado */
+.s5 { border: none; border-radius: 8px; color: #fff; background-size: 200% auto; }
+.s5w { background-image: linear-gradient(100deg, #c98e2e, #e5b45b, #c98e2e); }
+.s5d { background-image: linear-gradient(100deg, #4650c9, #5865f2, #7c86ff, #5865f2, #4650c9); }
+.s5:hover { background-position: right center; transform: translateY(-1px); }
+.s5w { color: #17130a; }
+
+/* 6 — Borde degradado (AI/pro) */
+.s6 { position: relative; background: var(--panel-2); border: none; border-radius: 8px; color: var(--text); z-index: 0; }
+.s6::before { content: ""; position: absolute; inset: -1.5px; border-radius: 9px; z-index: -1; }
+.s6w::before { background: linear-gradient(120deg, #e5b45b, #7c5c1e, #e5b45b); }
+.s6d::before { background: linear-gradient(120deg, #5865f2, #232a66, #5865f2); }
+.s6:hover { background: #232a3b; }
+
+/* 7 — Neo-brutalista */
+.s7 { border-radius: 6px; font-weight: 700; }
+.s7w { background: var(--gold); color: #17130a; border: 2px solid #17130a; box-shadow: 4px 4px 0 #000; }
+.s7d { background: var(--discord); color: #fff; border: 2px solid #17130a; box-shadow: 4px 4px 0 #000; }
+.s7:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #000; }
+
+/* 8 — Píldora suave con ícono resaltado */
+.s8 { border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border-strong); color: var(--text); padding-left: 16px; }
+.s8 .ico { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: .85rem; }
+.s8w .ico { background: rgba(229,180,91,.18); }
+.s8d .ico { background: rgba(88,101,242,.22); }
+.s8w:hover { border-color: var(--gold); color: var(--gold); }
+.s8d:hover { border-color: var(--discord); color: #aab4ff; }
+
+/* 9 — Elevado 3D */
+.s9 { border-radius: 8px; color: #fff; border: none; }
+.s9w { background: linear-gradient(180deg, #f0c473, #c98e2e); color: #17130a; box-shadow: 0 4px 0 #7c5c1e, 0 8px 16px -6px rgba(0,0,0,.5); }
+.s9d { background: linear-gradient(180deg, #6b76ff, #4650c9); box-shadow: 0 4px 0 #2c3494, 0 8px 16px -6px rgba(0,0,0,.5); }
+.s9:hover { transform: translateY(2px); }
+.s9w:hover { box-shadow: 0 2px 0 #7c5c1e, 0 5px 10px -5px rgba(0,0,0,.5); }
+.s9d:hover { box-shadow: 0 2px 0 #2c3494, 0 5px 10px -5px rgba(0,0,0,.5); }
+
+/* 10 — Barrido de luz (shimmer) */
+.s10 { position: relative; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--panel-2); color: var(--text); }
+.s10::after { content: ""; position: absolute; top: 0; left: -80%; width: 60%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.13), transparent); transform: skewX(-20deg); transition: left .45s ease; }
+.s10:hover::after { left: 120%; }
+.s10w:hover { border-color: var(--gold); color: var(--gold); }
+.s10d:hover { border-color: var(--discord); color: #aab4ff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Opciones de estilo — botones Spetsnaz Grail</h1>
+  <p class="sub">10 estilos aplicados a los dos botones reales. Pasá el ratón por encima de cada uno para ver su efecto.</p>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 1</span><h2>Sólido clásico por marca</h2>
+    <p>Cada botón con su color de marca pleno: azul de la app y violeta Discord. Directo y de máximo contraste — el estándar de conversión.</p>
+    <div class="row"><a class="b s1w" href="#">🌐 Página web</a><a class="b s1d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 2</span><h2>Contorno fantasma con halo</h2>
+    <p>Solo borde y texto en color (dorado del gremio + violeta Discord); al hover se rellenan levemente y emiten un halo. Elegante y liviano.</p>
+    <div class="row"><a class="b s2 s2w" href="#">🌐 Página web</a><a class="b s2 s2d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 3</span><h2>Glassmorphism</h2>
+    <p>Vidrio esmerilado translúcido con borde de luz. Ambos botones iguales, discretos y modernos — estilo Apple/SaaS premium.</p>
+    <div class="row"><a class="b s3" href="#">🌐 Página web</a><a class="b s3" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 4</span><h2>Neón gamer</h2>
+    <p>Borde y texto brillantes con resplandor neón que se intensifica al hover. La opción más "gaming", a juego con un gremio de Albion.</p>
+    <div class="row"><a class="b s4 s4w" href="#">🌐 Página web</a><a class="b s4 s4d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 5</span><h2>Gradiente con movimiento</h2>
+    <p>Relleno degradado (dorado / violeta) que se desplaza al hover. Vistoso sin efectos de luz.</p>
+    <div class="row"><a class="b s5 s5w" href="#">🌐 Página web</a><a class="b s5 s5d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 6</span><h2>Borde degradado</h2>
+    <p>Cuerpo oscuro con un anillo degradado fino alrededor (dorado / violeta). El look "botón pro" de las apps de IA.</p>
+    <div class="row"><a class="b s6 s6w" href="#">🌐 Página web</a><a class="b s6 s6d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 7</span><h2>Neo-brutalista</h2>
+    <p>Colores planos, borde negro grueso y sombra dura desplazada; al hover el botón "se hunde" sobre su sombra. Con mucha personalidad.</p>
+    <div class="row"><a class="b s7 s7w" href="#">🌐 Página web</a><a class="b s7 s7d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 8</span><h2>Píldora con ícono resaltado</h2>
+    <p>Forma redondeada total, fondo sobrio y el emoji dentro de una ficha circular de color. Minimalista y ordenado.</p>
+    <div class="row">
+      <a class="b s8 s8w" href="#"><span class="ico">🌐</span> Página web</a>
+      <a class="b s8 s8d" href="#"><span class="ico">💬</span> Servidor de Discord</a>
+    </div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 9</span><h2>Elevado 3D</h2>
+    <p>Relleno degradado vertical con "canto" inferior tipo tecla; al hover se presiona físicamente. Táctil y llamativo.</p>
+    <div class="row"><a class="b s9 s9w" href="#">🌐 Página web</a><a class="b s9 s9d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+
+  <div class="opt"><span class="opt-num">OPCIÓN 10</span><h2>Barrido de luz (shimmer)</h2>
+    <p>Botón sobrio de la paleta actual, pero al hover un destello de luz lo recorre en diagonal. Sutil y muy pulido.</p>
+    <div class="row"><a class="b s10 s10w" href="#">🌐 Página web</a><a class="b s10 s10d" href="#">💬 Servidor de Discord</a></div>
+  </div>
+</div>
+</body>
+</html>

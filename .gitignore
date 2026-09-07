@@ -1,0 +1,21 @@
+# Artefactos generados (se recompilan, no van al repo)
+AyudanteAlbion.zip
+albion-exe/AyudanteAlbion.exe
+albion-exe/app/
+
+# Dependencias
+node_modules/
+
+# Basura de sistema y cachés
+__pycache__/
+.cache/
+.local/
+.npm/
+*.tar.gz
+.DS_Store
+Thumbs.db
+
+# Carpetas del entorno de trabajo (no son parte del proyecto)
+go/
+uploads/
+.config/
