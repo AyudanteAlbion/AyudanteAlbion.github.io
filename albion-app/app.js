@@ -2373,6 +2373,45 @@ function llRender() {
     <div class="stat"><div class="k">P&L total</div><div class="v ${pnl >= 0 ? 'pos' : 'neg'}">${fmt(pnl)}</div><div class="s">ventas − compras − crafteos</div></div>
     <div class="stat"><div class="k">P&L últimos 7 días</div><div class="v ${pnl7 >= 0 ? 'pos' : 'neg'}">${fmt(pnl7)}</div><div class="s">${last7.length} operaciones</div></div>`;
   const body = document.getElementById('llBody');
+  const thead = document.querySelector('#llTable thead tr');
+
+  /* ---- vista «Resumen por ítem»: agrupa todas las operaciones ---- */
+  if (LL.filter === 'byitem') {
+    thead.innerHTML = `<th>Ítem</th><th class="num">Compradas</th><th class="num">Crafteadas</th><th class="num">Vendidas</th>
+      <th class="num">Invertido</th><th class="num">Recuperado</th><th class="num">P&L</th><th class="num">P&L por unidad vendida</th><th></th>`;
+    const byItem = {};
+    for (const r of LL.rows) {
+      const k = r.id;
+      const g = byItem[k] = byItem[k] || { id: k, name: r.name, buyQ: 0, craftQ: 0, sellQ: 0, spent: 0, earned: 0 };
+      if (r.type === 'sell') { g.sellQ += r.qty; g.earned += r.qty * r.price; }
+      else { g[r.type === 'buy' ? 'buyQ' : 'craftQ'] += r.qty; g.spent += r.qty * r.price; }
+    }
+    const groups = Object.values(byItem).sort((a, b) => (b.earned - b.spent) - (a.earned - a.spent));
+    if (!groups.length) {
+      body.innerHTML = '<tr><td colspan="9" class="loading-cell">Sin operaciones registradas.</td></tr>';
+      return;
+    }
+    body.innerHTML = groups.map(g => {
+      const p = g.earned - g.spent;
+      const perU = g.sellQ > 0 ? p / g.sellQ : null;
+      return `<tr>
+        <td><div class="item-cell">${iconImg(g.id, 'item-icon sm')}<span>${g.name || catalogName(g.id)}</span></div></td>
+        <td class="num">${g.buyQ ? fmt(g.buyQ) : '—'}</td>
+        <td class="num">${g.craftQ ? fmt(g.craftQ) : '—'}</td>
+        <td class="num">${g.sellQ ? fmt(g.sellQ) : '—'}</td>
+        <td class="num">${fmt(g.spent)}</td>
+        <td class="num">${fmt(g.earned)}</td>
+        <td class="num ${p >= 0 ? 'pos' : 'neg'}"><b>${(p > 0 ? '+' : '') + fmt(p)}</b></td>
+        <td class="num ${perU == null ? '' : perU >= 0 ? 'pos' : 'neg'}">${perU == null ? '—' : (perU > 0 ? '+' : '') + fmt(perU)}</td>
+        <td></td>
+      </tr>`;
+    }).join('');
+    return;
+  }
+
+  thead.innerHTML = `<th>Fecha</th><th>Ítem</th><th>Tipo</th>
+    <th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Total</th>
+    <th>Ciudad</th><th>Nota</th><th></th>`;
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="9" class="loading-cell">Sin operaciones registradas.</td></tr>';
     return;
