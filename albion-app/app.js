@@ -2866,7 +2866,8 @@ function fmRender() {
    Además: especializaciones del Destiny Board del usuario, usadas por
    las pestañas de crafteo para calcular el costo real de Foco.
    ==================================================================== */
-const PF = { player: null, loading: false, loadedOnce: false, kills: null, deaths: null, guildId: null, expandedEv: null };
+const PF = { player: null, loading: false, loadedOnce: false, kills: null, deaths: null, guildId: null, expandedEv: null,
+             killMode: 'recent', topkills: null, solokills: null, guildTop: null };
 const PF_SLOTS = [
   ['MainHand', 'Mano principal'], ['OffHand', 'Mano secundaria'], ['Head', 'Cabeza'],
   ['Armor', 'Pecho'], ['Shoes', 'Pies'], ['Cape', 'Capa'], ['Bag', 'Bolsa'],
@@ -2953,6 +2954,7 @@ async function pfLoadPlayer(id, name) {
     PF.player = { id, name: detail.Name };
     PF.kills = kills; PF.deaths = deaths; PF.guildId = detail.GuildId || null;
     PF.expandedEv = null;
+    PF.killMode = 'recent'; PF.topkills = null; PF.solokills = null; PF.guildTop = null;
     localStorage.setItem('pfPlayer', JSON.stringify(PF.player));
     pfRender(detail, kills, deaths, guild);
   } catch (e) {
@@ -3055,9 +3057,11 @@ function pfRender(d, kills, deaths, guild) {
       <div class="stat"><div class="k">Fama de muertes</div><div class="v">${fmt(guild.DeathFame)}</div><div class="s">todo el gremio</div></div>
       <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${guild.Founded ? new Date(guild.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">por ${guild.FounderName || '—'}</div></div>
     </div>
-    <div id="pfMembersBox" style="padding:0 14px 14px">
+    <div id="pfMembersBox" style="padding:0 14px 14px; display:flex; gap:8px; flex-wrap:wrap">
       <button class="btn" id="pfMembersBtn">Ver miembros del gremio (ranking de fama)</button>
+      <button class="btn" id="pfGuildTopBtn">Mejores asesinatos del gremio (semana)</button>
     </div>
+    <div id="pfGuildTopBox" style="padding:0 14px 14px; display:none"></div>
   </div>` : ''}
 
   <div class="panel">
@@ -3078,11 +3082,23 @@ function pfRender(d, kills, deaths, guild) {
   </div>
 
   <div class="panel table-wrap">
-    <div class="cd-title" style="padding:14px 14px 4px"><svg style="width:15px;height:15px;vertical-align:-2px"><use href="#i-bolt"/></svg> Últimos asesinatos ${kills ? `(${kills.length})` : ''}</div>
-    ${kills && kills.length ? `<table class="ledger">
-      <thead><tr><th>Fecha</th><th>Víctima</th><th class="num">IP víctima</th><th class="num">IP tuya</th><th class="num">Fama</th><th class="num">Participantes</th></tr></thead>
-      <tbody>${kills.map(ev => pfKillRow(ev, 'kill')).join('')}</tbody>
-    </table>` : `<div class="loading-cell">${kills ? 'Sin asesinatos recientes.' : 'El killboard no respondió — probá «Actualizar».'}</div>`}
+    <div class="cd-title" style="padding:14px 14px 4px"><svg style="width:15px;height:15px;vertical-align:-2px"><use href="#i-bolt"/></svg> Asesinatos</div>
+    <div class="chips" style="padding:4px 14px 8px" id="pfKillChips">
+      <button class="chip ${PF.killMode === 'recent' ? 'active' : ''}" data-kmode="recent">Recientes ${kills ? `(${kills.length})` : ''}</button>
+      <button class="chip ${PF.killMode === 'top' ? 'active' : ''}" data-kmode="top">Mejores (por fama)</button>
+      <button class="chip ${PF.killMode === 'solo' ? 'active' : ''}" data-kmode="solo">En solitario</button>
+    </div>
+    ${(() => {
+      const src = PF.killMode === 'top' ? PF.topkills : PF.killMode === 'solo' ? PF.solokills : kills;
+      if (src === undefined || (PF.killMode !== 'recent' && src === null))
+        return '<div class="loading-cell">Cargando…</div>';
+      if (!src) return `<div class="loading-cell">El killboard no respondió — probá «Actualizar».</div>`;
+      if (!src.length) return `<div class="loading-cell">${PF.killMode === 'solo' ? 'Sin asesinatos en solitario registrados.' : PF.killMode === 'top' ? 'Sin datos de mejores asesinatos.' : 'Sin asesinatos recientes.'}</div>`;
+      return `<table class="ledger">
+        <thead><tr><th>Fecha</th><th>Víctima</th><th class="num">IP víctima</th><th class="num">IP tuya</th><th class="num">Fama</th><th class="num">Participantes</th></tr></thead>
+        <tbody>${src.map(ev => pfKillRow(ev, 'kill')).join('')}</tbody>
+      </table>`;
+    })()}
   </div>
 
   <div class="panel table-wrap">
@@ -3136,6 +3152,52 @@ function pfRender(d, kills, deaths, guild) {
     if (tr) {
       PF.expandedEv = PF.expandedEv === tr.dataset.ev ? null : tr.dataset.ev;
       if (PF.lastRender) pfRender(PF.lastRender.d, PF.lastRender.kills, PF.lastRender.deaths, PF.lastRender.guild);
+      return;
+    }
+    const kchip = e.target.closest('#pfKillChips [data-kmode]');
+    if (kchip && PF.player) {
+      PF.killMode = kchip.dataset.kmode;
+      PF.expandedEv = null;
+      const rerender = () => { if (PF.lastRender) pfRender(PF.lastRender.d, PF.lastRender.kills, PF.lastRender.deaths, PF.lastRender.guild); };
+      rerender();
+      // carga perezosa de top/solo la primera vez
+      if (PF.killMode === 'top' && PF.topkills === null) {
+        try { PF.topkills = await pfFetchRetry(`/players/${PF.player.id}/topkills`); }
+        catch (err) { PF.topkills = false; }
+        rerender();
+      } else if (PF.killMode === 'solo' && PF.solokills === null) {
+        try { PF.solokills = await pfFetchRetry(`/players/${PF.player.id}/solokills`); }
+        catch (err) { PF.solokills = false; }
+        rerender();
+      }
+      return;
+    }
+    const gtop = e.target.closest('#pfGuildTopBtn');
+    if (gtop && PF.guildId) {
+      gtop.textContent = 'Cargando…'; gtop.disabled = true;
+      const box = document.getElementById('pfGuildTopBox');
+      try {
+        const top = await pfFetchRetry(`/guilds/${PF.guildId}/top?range=week`);
+        box.style.display = '';
+        box.innerHTML = top && top.length ? `
+          <div class="table-wrap"><table class="ledger">
+            <thead><tr><th>Fecha</th><th>Asesino</th><th>Víctima</th><th class="num">IP víctima</th><th class="num">Fama</th></tr></thead>
+            <tbody>${top.slice(0, 10).map(ev => `<tr>
+              <td class="muted micro">${PF_FMT_DATE(ev.TimeStamp)}</td>
+              <td><b>${ev.Killer.Name}</b></td>
+              <td><div class="item-cell">${ev.Victim.Equipment?.MainHand ? iconImg(ev.Victim.Equipment.MainHand.Type, 'item-icon sm') : ''}<div>
+                <div class="item-name">${ev.Victim.Name}</div>
+                <div class="item-meta">${ev.Victim.GuildName || 'sin gremio'}</div></div></div></td>
+              <td class="num">${ev.Victim.AverageItemPower ? fmt(ev.Victim.AverageItemPower) : '—'}</td>
+              <td class="num pos">${fmt(ev.TotalVictimKillFame)}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>
+          <div class="micro muted" style="margin-top:6px">Los 10 mejores asesinatos del gremio en los últimos 7 días, por fama.</div>`
+          : '<div class="loading-cell">Sin asesinatos del gremio esta semana.</div>';
+        gtop.style.display = 'none';
+      } catch (err) {
+        gtop.textContent = 'El killboard no respondió — probá de nuevo'; gtop.disabled = false;
+      }
       return;
     }
     const mbtn = e.target.closest('#pfMembersBtn');
