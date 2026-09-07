@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=44">
+<link rel="stylesheet" href="styles.css?v=45">
 <link rel="icon" href="img/logo-app.png">
 </head>
 <body>
@@ -66,6 +66,7 @@
           </button>
         </div>
       </div>
+      <button class="tab" data-tab="profile">Perfil</button>
       <button class="tab" data-tab="sg">SG</button>
       <button class="tab" data-tab="formulas">Fórmulas</button>
     </nav>
@@ -100,6 +101,8 @@
   <symbol id="i-sprout" viewBox="0 0 24 24"><path d="M12 22V12"/><path d="M12 12C12 7 8 4 3 4c0 5 3 8 9 8z"/><path d="M12 10c0-4 3-6 9-6 0 4-3 8-9 8z"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h7"/><path d="M9 12h7"/><path d="M9 16h4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+  <symbol id="i-skull" viewBox="0 0 24 24"><path d="M12 3a8 8 0 0 0-8 8c0 3 1.5 5 3.5 6.2V20h9v-2.8C18.5 16 20 14 20 11a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.4"/><circle cx="15" cy="11" r="1.4"/></symbol>
 </svg>
 
 <!-- ============ TAB: INICIO ============ -->
@@ -227,6 +230,16 @@
         <li>Exportá todo a CSV compatible con Excel.</li>
       </ul>
       <button class="btn primary">Ir al Registro →</button>
+    </div>
+
+    <div class="panel home-card" data-goto="profile">
+      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-user"/></svg></span><h2>Perfil</h2></div>
+      <p>Tu <b>personaje real</b> del juego: fama, asesinatos, muertes y gremio desde el killboard oficial.</p>
+      <ul>
+        <li>Buscá por nombre y mirá tu historial PvP con equipo e IP.</li>
+        <li>Cargá tus especializaciones: el costo de Foco se calcula solo.</li>
+      </ul>
+      <button class="btn primary">Ir al Perfil →</button>
     </div>
 
     <div class="panel home-card" data-goto="formulas">
@@ -756,6 +769,29 @@ rendimiento = 9 por parcela   (13,5 con premium: +50%)</pre>
 </section>
 
 <!-- ============ TAB: SG (Spetsnaz Grail) ============ -->
+<!-- ============ TAB: PERFIL ============ -->
+<section id="tab-profile" class="tab-panel">
+  <div class="panel controls">
+    <div class="flip-head">
+      <div class="search-wrap">
+        <input type="search" id="pfSearch" placeholder="Buscá tu personaje por nombre… (ej: FraxuzVe)" class="search big">
+        <div class="search-results" id="pfResults"></div>
+      </div>
+      <div class="toggles inline">
+        <button class="btn primary" id="pfRefresh" style="display:none">↻ Actualizar</button>
+      </div>
+    </div>
+    <div class="micro muted">Datos del killboard oficial de Albion Online (servidor Américas). Buscá el nombre exacto o parcial del personaje; los datos de fama, muertes y asesinatos se actualizan con cierto retraso desde el juego.</div>
+  </div>
+  <div id="pfResult"><div class="panel"><div class="loading-cell">Buscá tu personaje para ver su perfil, historial PvP y gremio.</div></div></div>
+
+  <div class="panel" id="pfSpecPanel">
+    <div class="cd-title" style="padding:14px 14px 0">Mis especializaciones (Destiny Board)</div>
+    <div class="micro muted" style="padding:6px 14px">Cargá el nivel de especialización (0–120) y maestría (0–100) de las ramas que usás. Las pestañas de crafteo van a usar estos valores automáticamente para calcular el <b>costo real de Foco</b> por ítem: cada 10.000 puntos de eficiencia (espec ×250 + maestría ×30) el costo de Foco se reduce a la mitad.</div>
+    <div id="pfSpecList" style="padding:8px 14px 14px"></div>
+  </div>
+</section>
+
 <section id="tab-sg" class="tab-panel">
   <div class="panel home-hero sg-hero">
     <img class="home-hero-logo" src="img/logo.png" alt="Spetsnaz Grail">
@@ -809,6 +845,6 @@ rendimiento = 9 por parcela   (13,5 con premium: +50%)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>
