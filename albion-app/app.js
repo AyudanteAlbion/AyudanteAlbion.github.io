@@ -2342,8 +2342,9 @@ function renderMeldSim() {
 
 /* ====================================================================
    BOTONES GLOBALES DE LA BARRA (buscador de precios / registro)
+   («.top-action» sin data-tab, como ⚡ Anti-pausa, no navegan)
    ==================================================================== */
-document.querySelectorAll('.top-action').forEach(btn =>
+document.querySelectorAll('.top-action[data-tab]').forEach(btn =>
   btn.addEventListener('click', () => gotoTab(btn.dataset.tab)));
 
 /* ====================================================================
@@ -3899,6 +3900,7 @@ async function twFetch(chan) {
 async function twCheckAll() {
   if (TW.checking || !TW.chs.length) return;
   TW.checking = true;
+  TW.lastAt = Date.now();
   try {
     for (const c of TW.chs) {
       const st = twParse(await twFetch(c.chan));
@@ -3929,3 +3931,126 @@ async function twCheckAll() {
     if (p && p.classList.contains('active')) twCheckAll();
   }, 60e3);
 })();
+
+/* ====================================================================
+   ⚡ ANTI-PAUSA (keep-alive) — con la pestaña abierta, la app NUNCA se
+   interrumpe; solo para cuando el usuario la cierra (o desactiva esto).
+   Los navegadores «pausan» pestañas de 3 formas y cada una se cubre así:
+   1) Tab freezing (ahorro de memoria)  → una Web Lock abierta excluye a
+      la página del congelamiento en Chromium.
+   2) Throttling de timers en 2.º plano → mientras la pestaña «reproduce
+      multimedia» no la frenan; reproducimos en loop ruido a ~-44 dB
+      (inaudible, pero el navegador lo cuenta como reproducción; se ve el
+      altavocito 🔊 en la pestaña, por eso hay botón para apagarlo).
+   3) Suspensión del equipo            → Wake Lock de pantalla mientras la
+      pestaña está visible (mirar la app sin que se apague el monitor).
+   Además kaRunDue(): si algo quedó vencido durante una pausa (alertas,
+   Twitch), se ejecuta en cuanto la pestaña vuelve/queda enfocada, en vez
+   de esperar al próximo ciclo. Con el .exe, los fetch de /alive también
+   siguen corriendo → el auto-apagado solo ocurre al cerrar la pestaña.
+   ==================================================================== */
+const KA = { on: true, ac: null, src: null, playing: false, lockCtl: null, lockHeld: false, wake: null, gestured: false };
+try { KA.on = localStorage.getItem('kaOn') !== '0'; } catch (e) {}
+
+function kaPaint() {
+  const b = document.getElementById('kaBtn');
+  if (!b) return;
+  b.classList.toggle('ka-on', KA.on);
+  b.setAttribute('aria-pressed', String(KA.on));
+  b.title = KA.on
+    ? '⚡ Anti-pausa ACTIVO: el navegador no congela ni limita la app en segundo plano. Clic para apagar.'
+    : '⚡ Anti-pausa apagado: el navegador puede frenar los timers con la pestaña de fondo. Clic para activar.';
+}
+/* ruido blanco a ~-44 dB en loop: «reproduciendo» a efectos de throttling,
+   imperceptible a oídos humanos */
+function kaHush() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx || !KA.on) return;
+  try {
+    KA.ac = KA.ac || new Ctx();
+    if (!KA.src) {
+      const sr = KA.ac.sampleRate, n = Math.max(2048, Math.floor(sr * 2));
+      const buf = KA.ac.createBuffer(1, n, sr);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) ch[i] = Math.random() * 0.012 - 0.006;
+      KA.src = KA.ac.createBufferSource();
+      KA.src.buffer = buf;
+      KA.src.loop = true;
+      KA.src.connect(KA.ac.destination);
+    }
+    if (KA.ac.state === 'suspended') KA.ac.resume().catch(() => {});
+    if (!KA.playing) { KA.src.start(0); KA.playing = true; }
+  } catch (e) {}
+}
+function kaHushStop() {
+  try { if (KA.playing && KA.src) KA.src.stop(); } catch (e) {}
+  KA.src = null; KA.playing = false;
+  try { if (KA.ac) KA.ac.suspend(); } catch (e) {}
+}
+function kaLock() {
+  if (!navigator.locks || !navigator.locks.request || KA.lockHeld || KA.lockCtl) return;
+  try {
+    KA.lockCtl = new AbortController();
+    navigator.locks.request('albion-app-keep-alive', { signal: KA.lockCtl.signal }, () => {
+      KA.lockHeld = true;
+      return new Promise(() => {}); // nunca se libera: mientras vive la página, vive el lock
+    }).catch(() => { KA.lockHeld = false; KA.lockCtl = null; });
+  } catch (e) {}
+}
+function kaLockStop() { try { if (KA.lockCtl) KA.lockCtl.abort(); } catch (e) {} KA.lockHeld = false; KA.lockCtl = null; }
+function kaWake() {
+  if (!('wakeLock' in navigator) || !KA.on || document.hidden || KA.wake) return;
+  navigator.wakeLock.request('screen').then(w => {
+    KA.wake = w;
+    // Chrome lo suelta solo al ocultar la pestaña: se vuelve a pedir al volver
+    w.addEventListener('release', () => {
+      KA.wake = null;
+      if (KA.on && !document.hidden) setTimeout(kaWake, 1200);
+    });
+  }).catch(() => {});
+}
+function kaWakeStop() { try { if (KA.wake) KA.wake.release(); } catch (e) {} KA.wake = null; }
+
+/* atrasos vencidos → ejecutar ya, no esperar el próximo ciclo */
+function kaRunDue() {
+  if (document.hidden) return;
+  try {
+    if (typeof WA !== 'undefined' && !WA.running && WA.list.some(a => a.on)
+        && (!WA.nextAt || Date.now() > WA.nextAt + 2e4)) {
+      clearTimeout(WA.timer);
+      waTick();
+    }
+    const sg = document.getElementById('tab-sg');
+    if (typeof TW !== 'undefined' && TW.chs.length && sg && sg.classList.contains('active')
+        && Date.now() - (TW.lastAt || 0) > 75e3) twCheckAll();
+  } catch (e) {}
+}
+function kaStart() {
+  kaPaint();
+  if (!KA.on) return;
+  kaLock();
+  kaWake();
+  if (!KA.gestured) { // el audio necesita un gesto del usuario: engancharse al 1.º clic/tecla
+    KA.gestured = true;
+    ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => kaHush(), { once: true }));
+  }
+  kaHush(); // si el permiso ya estaba concedido, arranca igual
+}
+function kaStop() { kaHushStop(); kaLockStop(); kaWakeStop(); }
+
+document.getElementById('kaBtn').addEventListener('click', () => {
+  KA.on = !KA.on;
+  try { localStorage.setItem('kaOn', KA.on ? '1' : '0'); } catch (e) {}
+  if (KA.on) kaStart(); else kaStop();
+  kaPaint();
+  waToast('⚡ Anti-pausa', KA.on
+    ? 'Activado: la app sigue corriendo con la pestaña de fondo (el navegador muestra 🔊).'
+    : 'Apagado: con la pestaña de fondo el navegador puede frenar alertas y precios.');
+});
+document.addEventListener('visibilitychange', () => {
+  if (KA.on && !document.hidden) { kaWake(); kaHush(); }
+  kaRunDue();
+});
+window.addEventListener('focus', kaRunDue);
+document.addEventListener('resume', kaRunDue); // Page Lifecycle: descongela → catch-up
+kaStart();

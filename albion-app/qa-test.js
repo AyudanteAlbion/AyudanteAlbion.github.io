@@ -269,6 +269,38 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     window.fetch = saveFetch;
   } catch (e) { errors.push('Twitch: ' + e.message); }
 
+  // ── ⚡ ANTI-PAUSA: nunca congelar la app mientras la pestaña está abierta ──
+  try {
+    check(!!$('kaBtn') && $('kaBtn').classList.contains('ka-on'),
+      'Anti-pausa: botón en la barra, activo por defecto', 'Anti-pausa: botón ausente o estado inicial apagado');
+    check(window.eval('typeof kaRunDue') === 'function' && window.eval('typeof kaHush') === 'function'
+        && window.eval('typeof kaLock') === 'function' && window.eval('typeof kaWake') === 'function',
+      'Anti-pausa: lock + wake + hush presentes (jsdom sin AudioContext degrada sin romper)', 'Anti-pausa: faltan funciones');
+    // toggle off → persiste; toggle on → vuelve (verificable por DOM + localStorage)
+    $('kaBtn').click(); await sleep(80);
+    check(window.localStorage.getItem('kaOn') === '0' && !$('kaBtn').classList.contains('ka-on')
+        && $('kaBtn').getAttribute('aria-pressed') === 'false',
+      'Anti-pausa: clic lo apaga y persiste en localStorage', 'Anti-pausa: toggle off no aplicó → ' + window.localStorage.getItem('kaOn'));
+    $('kaBtn').click(); await sleep(80);
+    check(window.localStorage.getItem('kaOn') === '1' && $('kaBtn').classList.contains('ka-on'),
+      'Anti-pausa: clic lo reactiva', 'Anti-pausa: toggle on no aplicó');
+    // catch-up: con una alerta activa y el tick vencido, kaRunDue dispara waTick YA.
+    // se crea la alerta por la UI real y se espían waTick/waSchedule (globales reasignables)
+    window.eval('window.__origTick = waTick; window.__origSch = waSchedule; waSchedule = function(){}; waTick = async () => { window.__kaSpy = (window.__kaSpy||0) + 1; };');
+    window.eval(`waPrefillFlip('T4_BAG')`); await sleep(120);
+    $('waThreshold').value = '100000';
+    $('waAdd').click(); await sleep(120);
+    const kaAlerts = JSON.parse(window.localStorage.getItem('priceAlerts') || '[]');
+    check(kaAlerts.length === 1 && kaAlerts[0].on === true, 'Anti-pausa: alerta creada por la UI queda activa', 'Anti-pausa: setup de alerta falló → ' + JSON.stringify(kaAlerts));
+    window.dispatchEvent(new window.Event('focus')); await sleep(150);
+    check(window.eval('window.__kaSpy') === 1, 'Anti-pausa: catch-up dispara el tick vencido al volver', 'Anti-pausa: kaRunDue no re-disparó waTick → spy=' + window.eval('window.__kaSpy'));
+    const delBtn = window.document.querySelector('[data-wa-del]');
+    if (delBtn) delBtn.click(); await sleep(80);
+    window.eval('waTick = window.__origTick; waSchedule = window.__origSch;');
+    check(JSON.parse(window.localStorage.getItem('priceAlerts') || '[]').length === 0,
+      'Anti-pausa: limpieza del test', 'Anti-pausa: quedó una alerta de test');
+  } catch (e) { errors.push('Anti-pausa: ' + e.message); }
+
   // ── TRANSMUTACIÓN ──
   window.eval(`gotoTab('transmute')`); await sleep(900);
   const trB = window.document.querySelector('#tab-transmute tbody');
@@ -447,8 +479,8 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
 
   // ── BOTONES GLOBALES de la barra ──
   try {
-    const btns = window.document.querySelectorAll('.top-action');
-    check(btns.length === 2, 'Barra superior: 2 botones globales', `Barra: ${btns.length} botones (esperaba 2)`);
+    const btns = window.document.querySelectorAll('.top-action[data-tab]');
+    check(btns.length === 2, 'Barra superior: 2 botones de navegación', `Barra: ${btns.length} botones (esperaba 2)`);
     btns[0].click(); await sleep(100);
     const active = window.document.querySelector('.tab-panel.active');
     check(active && (active.id === 'tab-search' || active.id === 'tab-ledgerlog'),
