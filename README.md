@@ -2,13 +2,14 @@
 
 ![Portada](docs/hero.jpg)
 
-Calculadora de mercado y crafteo para Albion Online (servidor Américas / West), hecha para el gremio Spetsnaz Grail.
+Calculadora de mercado y crafteo para Albion Online (servidor West), hecha para el gremio Spetsnaz Grail.
 
-Combina las recetas reales del juego con precios de mercado de la comunidad para responder una sola pregunta: cuánto ganás (o perdés) en cada operación. Corre como página web local o como ejecutable de escritorio.
+Combina las recetas reales del juego con precios de mercado de la comunidad para responder una sola pregunta: cuánto ganás (o perdés) en cada operación. Accede a la página web o descarga el ejecutable de escritorio.
 
+- Accede a la App: https://ayudantealbion.github.io
+- Descarga y notas de versión: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io
 - Web del gremio: https://spetsnazgrail.com
 - Discord: https://discord.gg/cqG7rDmUSJ
-- Descarga y notas de versión: https://github.com/Guallama31/AyudanteAlbion/releases/latest
 
 ## Módulos
 
