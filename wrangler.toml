@@ -1,0 +1,5 @@
+# Config que lee el build de Cloudflare (repo conectado) desde la raiz del proyecto.
+# Apunta al proxy del worker; sin este archivo, el build no encuentra el codigo.
+name = "ayudantealbion"
+main = "worker/index.js"
+compatibility_date = "2026-09-01"
