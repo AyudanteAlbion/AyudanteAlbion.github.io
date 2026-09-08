@@ -4,7 +4,7 @@
 
 Calculadora de mercado y crafteo para Albion Online (servidor Américas / West), hecha para el gremio Spetsnaz Grail.
 
-Combina las recetas reales del juego con precios de mercado de la comunidad para responder una sola pregunta: cuánto ganás (o perdés) en cada operación. Corre como página web local o como ejecutable de escritorio; no tiene backend propio ni guarda datos en servidores.
+Combina las recetas reales del juego con precios de mercado de la comunidad para responder una sola pregunta: cuánto ganás (o perdés) en cada operación. Corre como página web local o como ejecutable de escritorio.
 
 - Web del gremio: https://spetsnazgrail.com
 - Discord: https://discord.gg/cqG7rDmUSJ
