@@ -68,6 +68,15 @@ Requisitos: `node` (con `jsdom` instalado en `albion-app/`), `python3`, `zip` y 
 (si no está en `/tmp/go/bin/go`, el script lo descarga solo; también podés indicar
 otro con `GO_BIN=/ruta/a/go ./build.sh`).
 
+### Publicar una release (automático)
+
+No hace falta compilar nada a mano: **pushead un tag `v*`** y GitHub Actions corre
+`build.sh` en un runner y publica la release con `AyudanteAlbion.exe` + `AyudanteAlbion.zip`.
+
+```bash
+git tag -a v1.2.0 -m "v1.2.0 — resumen" && git push origin v1.2.0
+```
+
 ## Pruebas
 
 Dos niveles, ambos sobre la app completa cargada en un navegador simulado (jsdom):
