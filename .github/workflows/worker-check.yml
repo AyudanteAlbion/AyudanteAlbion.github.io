@@ -1,0 +1,28 @@
+# Sonda temporal: prueba el worker de Cloudflare desde un runner con red.
+name: Chequeo Worker
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/worker-check.yml']
+jobs:
+  sonda:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probar
+        run: |
+          probe() {
+            local u="$1" out hdr body
+            out=$( { curl -s -m 25 -D - -o /tmp/b -w 'HTTPCODE=%{http_code} ' "$u"; } 2>/dev/null || true )
+            hdr=$(printf '%s' "$out" | grep -iE '^(HTTP/|access-control-allow-origin|content-type|HTTPCODE)' | tr -d '\r' | paste -sd' | ' - || true)
+            body=$(head -c 180 /tmp/b 2>/dev/null | tr '\n\r' '  ' | sed 's/%/%25/g' || true)
+            printf '::error::%s => [%s] BODY=%s\n' "$u" "${hdr:-sin respuesta}" "$body"
+          }
+          rm -f /tmp/b
+          W="https://ayudantealbion.josemesina21.workers.dev"
+          probe "$W/health"
+          probe "$W/twitch/uptime/gaules"
+          probe "$W/gameinfo/players/Tobias"
+          probe "$W/gameinfo/search?q=hat"
+          probe "$W/noexiste"
+          echo listo
