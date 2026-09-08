@@ -1,0 +1,47 @@
+# Publica albion-app/ como sitio estático en GitHub Pages.
+# Solo copia lo que la web necesita: la carpeta de datos, los íconos y
+# los tres archivos de la app. server.py, los tests y las herramientas de
+# desarrollo quedan afuera a propósito.
+name: Publicar en la web
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'albion-app/index.html'
+      - 'albion-app/app.js'
+      - 'albion-app/styles.css'
+      - 'albion-app/data/**'
+      - 'albion-app/icons/**'
+      - 'albion-app/img/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar sitio
+        run: |
+          mkdir _site
+          cp albion-app/index.html albion-app/app.js albion-app/styles.css _site/
+          cp -r albion-app/data albion-app/icons albion-app/img _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Desplegar
+        id: deployment
+        uses: actions/deploy-pages@v4

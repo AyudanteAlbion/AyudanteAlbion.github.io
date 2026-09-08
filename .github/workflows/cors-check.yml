@@ -1,0 +1,19 @@
+# Chequeo puntual desde un runner de GitHub (acá no hay red): verifica si
+# las APIs aceptan llamadas directas del navegador. Se borra enseguida.
+name: Chequeo CORS
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cors-check.yml']
+jobs:
+  sonda:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probar headers CORS
+        run: |
+          for u in "https://decapi.me/twitch/id/gaules" "https://west.albion-online-data.com/api/v2/stats/cities/" "https://gameinfo.albiononline.com/api/gameinfo/search?q=hat"; do
+            echo "=== $u"
+            curl -s -m 15 -D - -o /dev/null -H 'Origin: https://guallama31.github.io' "$u" \
+              | grep -iE "^HTTP|^access-control" || echo "(sin respuesta)"
+          done
