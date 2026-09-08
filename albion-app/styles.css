@@ -353,6 +353,9 @@ a:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .home-hero { padding: 26px 14px 20px; }
   .home-hero h1 { font-size: 1.4rem; }
+  /* en pantallas chicas el crédito pasa a ser una pastilla centrada bajo la bajada */
+  .sg-credit { position: static; margin: 10px auto 0; }
+  .sg-credit .sg-credit-go { opacity: 1; transform: none; }
 }
 
 /* ---- íconos SVG (ficha con contorno — opción 5) ---- */
@@ -380,7 +383,20 @@ a:hover { text-decoration: underline; }
 .sg-soon-ico { margin-bottom: 4px; }
 
 /* ---- Spetsnaz Grail ---- */
-.home-sg-btn { position: relative; margin-top: 6px; }
+/* crédito sutil en el hero (reemplaza al botón dorado grande): pastillita arriba a la derecha */
+.sg-credit {
+  position: absolute; top: 12px; right: 14px; z-index: 1;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 10px 4px 5px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: .72rem; color: var(--muted); line-height: 1;
+  background: rgba(229, 180, 91, .04); border: 1px solid var(--border);
+  transition: color .14s, border-color .14s, background .14s;
+}
+.sg-credit img { width: 18px; height: 18px; border-radius: 50%; }
+.sg-credit b { font-weight: 600; color: rgba(229, 180, 91, .8); white-space: nowrap; }
+.sg-credit .sg-credit-go { display: inline-block; opacity: 0; transform: translateX(-3px); transition: opacity .14s, transform .14s; }
+.sg-credit:hover { color: var(--text); border-color: var(--accent); background: rgba(229, 180, 91, .09); }
+.sg-credit:hover .sg-credit-go { opacity: 1; transform: none; }
 .sg-links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; position: relative; }
 .btn-shimmer {
   position: relative; overflow: hidden;
