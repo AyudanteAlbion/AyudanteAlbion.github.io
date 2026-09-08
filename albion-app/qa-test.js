@@ -162,6 +162,20 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       const det = bodyOf('flipDetail');
       check(det.includes('Registrar'), 'Flipping: detalle con botones «Registrar»', 'Flipping: detalle sin botones Registrar'); }
   } catch (e) { errors.push('Flipping detalle: ' + e.message); }
+  // ruta fija: fijar origen y verificar que la columna «Comprar en» lo respeta
+  try {
+    check($('flipFrom') && $('flipFrom').options.length === 8 && $('flipTo').options.length === 8,
+      'Flipping: selects de ruta con 7 ciudades + «Mejor ciudad»', 'Flipping: selects de ruta mal poblados');
+    $('flipFrom').value = 'Lymhurst';
+    $('flipFrom').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(300);
+    const r = $('flipBody').querySelector('tr.clickable');
+    const buyTd = r ? r.querySelectorAll('td')[2].textContent : '';
+    check(buyTd.includes('Lymhurst'), 'Flipping: origen fijo respetado (compra en Lymhurst)', 'Flipping: origen fijo ignorado → ' + buyTd);
+    $('flipTo').value = 'Lymhurst';
+    $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
+    check($('flipFrom').value === '', 'Flipping: colisión origen=destino resetea el otro select', 'Flipping: colisión de ruta no manejada');
+    $('flipTo').value = ''; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(200);
+  } catch (e) { errors.push('Flipping ruta: ' + e.message); }
 
   // ── TRANSMUTACIÓN ──
   window.eval(`gotoTab('transmute')`); await sleep(900);
