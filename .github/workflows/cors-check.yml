@@ -13,7 +13,8 @@ jobs:
       - name: Probar headers CORS
         run: |
           for u in "https://decapi.me/twitch/id/gaules" "https://west.albion-online-data.com/api/v2/stats/cities/" "https://gameinfo.albiononline.com/api/gameinfo/search?q=hat"; do
-            echo "=== $u"
-            curl -s -m 15 -D - -o /dev/null -H 'Origin: https://guallama31.github.io' "$u" \
-              | grep -iE "^HTTP|^access-control" || echo "(sin respuesta)"
+            out=$( { curl -s -m 15 -D - -o /dev/null -H 'Origin: https://guallama31.github.io' "$u" | grep -iE "^HTTP|^access-control" | tr -d '\r' | paste -sd' ' -; } || echo "(sin respuesta)")
+            [ -z "$out" ] && out="(sin respuesta)"
+            echo "::error::$u => $out"
           done
+          echo "listo"
