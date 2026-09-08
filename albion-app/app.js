@@ -3510,7 +3510,7 @@ function pfRender(d, kills, deaths, guild) {
    🔔 ALERTAS DE PRECIO — monitor mientras la app está abierta.
    Un temporizador global verifica cada N minutos (fetch agrupado con el
    mismo chunker de fetchPrices → una sola tanda de requests por ciclo),
-   dispara con toast + sonido + notificación del navegador (opcional) y
+   dispara con toast + aviso sonoro suave + notificación del navegador (opcional) y
    persiste en localStorage ('priceAlerts' + 'alertSettings').
    Sin servidor ni service worker: si cerrás la pestaña, no hay alertas.
    ==================================================================== */
@@ -3636,6 +3636,9 @@ function waToast(title, msg, cls) {
   while (stack.children.length > 4) stack.firstChild.remove();
   setTimeout(() => d.remove(), 15000);
 }
+/* único sonido de toda la app: un aviso breve y suave (dos senoidales
+   lejanas, volumen bajo, ataque y caída lentos) cuando una alerta de
+   precio que el usuario creó pasa a cumplirse. Nada más reproduce audio. */
 function waBeep() {
   if (!WA.sound) return;
   try {
@@ -3644,18 +3647,18 @@ function waBeep() {
     WA.ac = WA.ac || new Ctx();
     if (WA.ac.state === 'suspended') WA.ac.resume().catch(() => {});
     const t = WA.ac.currentTime;
-    [[880, 0], [1318.5, 0.16]].forEach(([f, dt]) => {
+    [[659.25, 0], [880, 0.18]].forEach(([f, dt]) => {
       const o = WA.ac.createOscillator();
       const g = WA.ac.createGain();
       o.type = 'sine';
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t + dt);
-      g.gain.exponentialRampToValueAtTime(0.12, t + dt + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.045, t + dt + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.55);
       o.connect(g);
       g.connect(WA.ac.destination);
       o.start(t + dt);
-      o.stop(t + dt + 0.32);
+      o.stop(t + dt + 0.6);
     });
   } catch (e) {}
 }
@@ -3931,23 +3934,21 @@ async function twCheckAll() {
 })();
 
 /* ====================================================================
-   ⚡ ANTI-PAUSA (keep-alive) — con la pestaña abierta, la app NUNCA se
-   interrumpe; solo para cuando el usuario la cierra (o desactiva esto).
-   Los navegadores «pausan» pestañas de 3 formas y cada una se cubre así:
-   1) Tab freezing (ahorro de memoria)  → una Web Lock abierta excluye a
-      la página del congelamiento en Chromium.
-   2) Throttling de timers en 2.º plano → mientras la pestaña «reproduce
-      multimedia» no la frenan; reproducimos en loop ruido a ~-44 dB
-      (inaudible, pero el navegador lo cuenta como reproducción; se ve el
-      altavocito 🔊 en la pestaña, por eso hay botón para apagarlo).
-   3) Suspensión del equipo            → Wake Lock de pantalla mientras la
-      pestaña está visible (mirar la app sin que se apague el monitor).
-   Además kaRunDue(): si algo quedó vencido durante una pausa (alertas,
-   Twitch), se ejecuta en cuanto la pestaña vuelve/queda enfocada, en vez
-   de esperar al próximo ciclo. Con el .exe, los fetch de /alive también
-   siguen corriendo → el auto-apagado solo ocurre al cerrar la pestaña.
+   ⚡ ANTI-PAUSA (keep-alive) — con la pestaña abierta, la app no se
+   congela. NO reproduce ningún sonido (política de la app: silencio, con
+   la única excepción del aviso suave de las alertas de precio). Cubre:
+   1) Tab freezing / discard (ahorro de memoria) → una Web Lock abierta
+      excluye a la página del congelamiento en Chromium/Edge.
+   2) Suspensión del equipo → Wake Lock de pantalla mientras la pestaña
+      está visible; el navegador lo suelta al ocultarla y se re-pide solos.
+   Lo que NO se combate es el throttling de timers en segundo plano: con
+   la pestaña de fondo un ciclo de verificación puede demorar hasta 1 min
+   más. kaRunDue() lo amortigua: todo lo vencido corre en cuanto la
+   pestaña vuelve a estar visible o enfocada. Con el .exe el latido
+   /alive sigue saliendo (1/min bajo throttle) y la gracia de 15 min lo
+   banca sin problema.
    ==================================================================== */
-const KA = { on: true, ac: null, src: null, playing: false, lockCtl: null, lockHeld: false, wake: null, gestured: false };
+const KA = { on: true, lockCtl: null, lockHeld: false, wake: null };
 try { KA.on = localStorage.getItem('kaOn') !== '0'; } catch (e) {}
 
 function kaPaint() {
@@ -3956,34 +3957,8 @@ function kaPaint() {
   b.classList.toggle('ka-on', KA.on);
   b.setAttribute('aria-pressed', String(KA.on));
   b.title = KA.on
-    ? '⚡ Anti-pausa ACTIVO: el navegador no congela ni limita la app en segundo plano. Clic para apagar.'
-    : '⚡ Anti-pausa apagado: el navegador puede frenar los timers con la pestaña de fondo. Clic para activar.';
-}
-/* ruido blanco a ~-44 dB en loop: «reproduciendo» a efectos de throttling,
-   imperceptible a oídos humanos */
-function kaHush() {
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx || !KA.on) return;
-  try {
-    KA.ac = KA.ac || new Ctx();
-    if (!KA.src) {
-      const sr = KA.ac.sampleRate, n = Math.max(2048, Math.floor(sr * 2));
-      const buf = KA.ac.createBuffer(1, n, sr);
-      const ch = buf.getChannelData(0);
-      for (let i = 0; i < n; i++) ch[i] = Math.random() * 0.012 - 0.006;
-      KA.src = KA.ac.createBufferSource();
-      KA.src.buffer = buf;
-      KA.src.loop = true;
-      KA.src.connect(KA.ac.destination);
-    }
-    if (KA.ac.state === 'suspended') KA.ac.resume().catch(() => {});
-    if (!KA.playing) { KA.src.start(0); KA.playing = true; }
-  } catch (e) {}
-}
-function kaHushStop() {
-  try { if (KA.playing && KA.src) KA.src.stop(); } catch (e) {}
-  KA.src = null; KA.playing = false;
-  try { if (KA.ac) KA.ac.suspend(); } catch (e) {}
+    ? '⚡ Anti-pausa ACTIVO: la pestaña no se congela en segundo plano (sin sonido). Clic para apagar.'
+    : '⚡ Anti-pausa apagado: el navegador puede limitar la app con la pestaña de fondo. Clic para activar.';
 }
 function kaLock() {
   if (!navigator.locks || !navigator.locks.request || KA.lockHeld || KA.lockCtl) return;
@@ -4028,13 +4003,8 @@ function kaStart() {
   if (!KA.on) return;
   kaLock();
   kaWake();
-  if (!KA.gestured) { // el audio necesita un gesto del usuario: engancharse al 1.º clic/tecla
-    KA.gestured = true;
-    ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => kaHush(), { once: true }));
-  }
-  kaHush(); // si el permiso ya estaba concedido, arranca igual
 }
-function kaStop() { kaHushStop(); kaLockStop(); kaWakeStop(); }
+function kaStop() { kaLockStop(); kaWakeStop(); }
 
 document.getElementById('kaBtn').addEventListener('click', () => {
   KA.on = !KA.on;
@@ -4042,11 +4012,11 @@ document.getElementById('kaBtn').addEventListener('click', () => {
   if (KA.on) kaStart(); else kaStop();
   kaPaint();
   waToast('⚡ Anti-pausa', KA.on
-    ? 'Activado: la app sigue corriendo con la pestaña de fondo (el navegador muestra 🔊).'
-    : 'Apagado: con la pestaña de fondo el navegador puede frenar alertas y precios.');
+    ? 'Activado: la app no se congela con la pestaña de fondo. Todo en silencio.'
+    : 'Apagado: el navegador puede frenar alertas y precios en segundo plano; al volver se recupera lo vencido.');
 });
 document.addEventListener('visibilitychange', () => {
-  if (KA.on && !document.hidden) { kaWake(); kaHush(); }
+  if (KA.on && !document.hidden) kaWake();
   kaRunDue();
 });
 window.addEventListener('focus', kaRunDue);

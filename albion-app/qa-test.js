@@ -273,9 +273,9 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   try {
     check(!!$('kaBtn') && $('kaBtn').classList.contains('ka-on'),
       'Anti-pausa: botón en la barra, activo por defecto', 'Anti-pausa: botón ausente o estado inicial apagado');
-    check(window.eval('typeof kaRunDue') === 'function' && window.eval('typeof kaHush') === 'function'
-        && window.eval('typeof kaLock') === 'function' && window.eval('typeof kaWake') === 'function',
-      'Anti-pausa: lock + wake + hush presentes (jsdom sin AudioContext degrada sin romper)', 'Anti-pausa: faltan funciones');
+    check(window.eval('typeof kaRunDue') === 'function' && window.eval('typeof kaLock') === 'function'
+        && window.eval('typeof kaWake') === 'function' && window.eval('typeof kaHush') === 'undefined',
+      'Anti-pausa: lock + wake presentes y cero audio (el loop silencioso fue eliminado)', 'Anti-pausa: funciones inesperadas o quedó audio');
     // toggle off → persiste; toggle on → vuelve (verificable por DOM + localStorage)
     $('kaBtn').click(); await sleep(80);
     check(window.localStorage.getItem('kaOn') === '0' && !$('kaBtn').classList.contains('ka-on')
