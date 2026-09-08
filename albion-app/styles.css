@@ -567,3 +567,17 @@ img { max-width: 100%; }
 
 /* botones «Registrar» dentro de los detalles expandidos */
 .cd-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* ---- favoritos ---- */
+.fav-btn.on { border-color: var(--accent); color: var(--accent); }
+.home-favs { padding: 16px; margin-bottom: 18px; }
+.home-favs-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.home-favs-head h2 { margin: 0; font-size: 1.05rem; color: var(--accent); }
+.home-fav-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.fav-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border, #2a3040); border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.02); }
+.fav-row:hover { border-color: var(--accent); }
+.fav-info { flex: 1; min-width: 0; }
+.fav-info .n { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fav-info .m { font-size: 0.7rem; color: var(--muted, #8a93a5); }
+.fav-del { background: none; border: none; color: var(--muted, #8a93a5); cursor: pointer; font-size: 0.85rem; padding: 2px 6px; border-radius: 6px; }
+.fav-del:hover { color: #e46262; background: rgba(228,98,98,0.1); }

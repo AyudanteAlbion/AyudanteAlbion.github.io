@@ -167,6 +167,55 @@ document.getElementById('tab-home').addEventListener('click', e => {
 });
 
 /* ====================================================================
+   FAVORITOS — marcá recetas/ítems con ★ y velos juntos en Inicio
+   ==================================================================== */
+const FAV = { list: [] };
+try { FAV.list = JSON.parse(localStorage.getItem('favorites') || '[]'); } catch (e) {}
+const FAV_TABS = { food: 'Cocina', alch: 'Alquimia', refine: 'Refinamiento', gear: 'Crafteo', enchant: 'Encantado', farm: 'Granja', flip: 'Flipping', transmute: 'Transmutación' };
+function favSave() { localStorage.setItem('favorites', JSON.stringify(FAV.list)); favRenderHome(); }
+function favHas(tab, id) { return FAV.list.some(f => f.tab === tab && f.id === id); }
+function favBtnHtml(tab, id, name) {
+  const on = favHas(tab, id);
+  return `<button class="btn micro-btn fav-btn ${on ? 'on' : ''}" data-fav-tab="${tab}" data-fav-id="${id}" data-fav-name="${String(name || id).replace(/"/g, '&quot;')}" title="${on ? 'Quitar de favoritos' : 'Guardar en favoritos (aparece en Inicio)'}">${on ? '★ Favorito' : '☆ Favorito'}</button>`;
+}
+function favRenderHome() {
+  const box = document.getElementById('homeFavs');
+  if (!box) return;
+  if (!FAV.list.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  document.getElementById('homeFavList').innerHTML = FAV.list.map(f => `
+    <div class="fav-row" data-fav-goto="${f.tab}" title="Ir a ${FAV_TABS[f.tab] || f.tab}">
+      ${iconImg(f.id, 'item-icon sm')}
+      <div class="fav-info"><div class="n">${f.name}</div><div class="m">${FAV_TABS[f.tab] || f.tab}</div></div>
+      <button class="fav-del" data-fav-del="${f.tab}|${f.id}" title="Quitar de favoritos">✕</button>
+    </div>`).join('');
+}
+document.addEventListener('click', e => {
+  const star = e.target.closest('.fav-btn');
+  if (star) {
+    const tab = star.dataset.favTab, id = star.dataset.favId;
+    if (favHas(tab, id)) FAV.list = FAV.list.filter(f => !(f.tab === tab && f.id === id));
+    else FAV.list.push({ tab, id, name: star.dataset.favName || id, ts: Date.now() });
+    favSave();
+    const on = favHas(tab, id);
+    star.classList.toggle('on', on);
+    star.textContent = on ? '★ Favorito' : '☆ Favorito';
+    star.title = on ? 'Quitar de favoritos' : 'Guardar en favoritos (aparece en Inicio)';
+    return;
+  }
+  const del = e.target.closest('[data-fav-del]');
+  if (del) {
+    const [tab, id] = del.dataset.favDel.split('|');
+    FAV.list = FAV.list.filter(f => !(f.tab === tab && f.id === id));
+    favSave();
+    return;
+  }
+  const go = e.target.closest('[data-fav-goto]');
+  if (go) gotoTab(go.dataset.favGoto);
+});
+favRenderHome();
+
+/* ====================================================================
    MOTOR DE CRAFTEO — una instancia por pestaña (Cocina, Alquimia)
    ==================================================================== */
 const craftModules = {};
@@ -524,6 +573,7 @@ function createCraftModule(cfg) {
 
   /* ---- detalle expandible con precios editables ---- */
   function detailRow(r, c, opts) {
+    const name = r.name_es || r.name_en || r.id;
     const kind = opts.useBuy ? 'buy' : 'sell';
     const ingRows = r.resources.map(res => {
       const ing = m.DATA.ingredients[res.id] || {};
@@ -579,6 +629,7 @@ function createCraftModule(cfg) {
           <div class="cd-actions">
             <button class="btn micro-btn" onclick="llPrefill('${r.id}','craft',${((c.matCost || 0) + (c.stationFee || 0)) / (r.amount || 1)},'')" title="Anotar el crafteo (materiales + estación, por unidad) en el Registro">✎ Registrar crafteo</button>
             ${sellEp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.id}','sell',${sellEp.value},'${opts.sellCity}')" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
+            ${favBtnHtml(P, r.id, name)}
           </div>
         </div>
       </div>
@@ -850,6 +901,7 @@ function showFlipDetail(id) {
       <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id} · matriz de precios en las 7 ciudades</div></div>
       ${f.bestBuy ? `<button class="btn micro-btn" onclick="llPrefill('${id}','buy',${f.bestBuy.price},'${f.bestBuy.city}')" title="Anotar la compra en el Registro de operaciones">✎ Registrar compra</button>` : ''}
       ${f.bestSell ? `<button class="btn micro-btn" onclick="llPrefill('${id}','sell',${f.bestSell.price},'${f.bestSell.city}')" title="Anotar la venta en el Registro de operaciones">✎ Registrar venta</button>` : ''}
+      ${favBtnHtml('flip', id, catalogName(id))}
       <button class="btn detail-close" onclick="this.closest('#flipDetail').style.display='none'">Cerrar</button>
     </div>
     <div class="table-wrap"><table class="matrix">
@@ -1108,6 +1160,7 @@ function renderGear() {
 }
 
 function gearDetailRow(r, c, o) {
+  const name = r.name_es || r.name_en || r.id;
   const kind = o.useBuy ? 'buy' : 'sell';
   const rrr = o.rrrFor ? o.rrrFor(r) : o.rrr;
   const ingRows = r.resources.map(res => {
@@ -1184,6 +1237,7 @@ function gearDetailRow(r, c, o) {
         <div class="cd-actions">
           <button class="btn micro-btn" onclick="llPrefill('${r.id}','craft',${(c.matCost || 0) + (c.stationFee || 0)},'')" title="Anotar el crafteo (costo de materiales + estación) en el Registro">✎ Registrar crafteo</button>
           ${c.sellPrice ? `<button class="btn micro-btn" onclick="llPrefill('${r.id}','sell',${c.sellPrice},'${o.sellBM ? 'Black Market' : sellKey[1]}')" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
+          ${favBtnHtml('gear', r.id, name)}
         </div>
       </div>
     </div>
@@ -1758,6 +1812,7 @@ function renderTrans() {
         <div class="cd-actions">
           ${x.buy.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.in}','buy',${x.buy.value},'${buyCity}')" title="Anotar la compra del recurso de origen en el Registro">✎ Registrar compra</button>` : ''}
           ${x.sell.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.out}','sell',${x.sell.value},'${sellCity}')" title="Anotar la venta del recurso transmutado en el Registro">✎ Registrar venta</button>` : ''}
+          ${favBtnHtml('transmute', r.out, transName(r.type, r.tt, r.te))}
         </div>
       </div>
     </div></td></tr>`;
@@ -2699,6 +2754,7 @@ function enRender() {
         <div class="cd-actions">
           ${fromP.value ? `<button class="btn micro-btn" onclick="llPrefill('${from === 0 ? EN.item : EN.item + '@' + from}','buy',${fromP.value},'${city}')" title="Anotar la compra del ítem ${lvlName(from)} en el Registro">✎ Registrar compra ${lvlName(from)}</button>` : ''}
           ${toP.value ? `<button class="btn micro-btn" onclick="llPrefill('${to === 0 ? EN.item : EN.item + '@' + to}','sell',${toP.value},'${city}')" title="Anotar la venta del ítem ${lvlName(to)} en el Registro">✎ Registrar venta ${lvlName(to)}</button>` : ''}
+          ${favBtnHtml('enchant', EN.item, name)}
         </div>
       </div>
     </div>`}
@@ -2906,6 +2962,7 @@ function fmRender() {
         <div class="cd-actions">
           ${bp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.inId}','buy',${bp.value},'${city}')" title="Anotar la compra de ${r.keeper ? 'animales' : (r.f.kind === 'plant' ? 'semillas' : 'crías')} en el Registro">✎ Registrar compra</button>` : ''}
           ${sp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.outId}','sell',${sp.value},'${city}')" title="Anotar la venta del producto en el Registro">✎ Registrar venta</button>` : ''}
+          ${favBtnHtml('farm', r.outId, FM_NAME(r.outId))}
         </div>
       </div>
     </div></td></tr>`;
