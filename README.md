@@ -1,109 +1,111 @@
-# ⚔️ Ayudante Albion
+# Ayudante Albion
 
-Herramientas de mercado y crafteo para **Albion Online** (servidor Américas / West), creada para el gremio **Spetsnaz Grail**.
+Calculadora de mercado y crafteo para Albion Online (servidor Américas / West), hecha para el gremio Spetsnaz Grail.
 
-🌐 Web del gremio: https://spetsnazgrail.com · 💬 Discord: https://discord.gg/cqG7rDmUSJ
+Combina las recetas reales del juego con precios de mercado de la comunidad para responder una sola pregunta: cuánto ganás (o perdés) en cada operación. Corre como página web local o como ejecutable de escritorio; no tiene backend propio ni guarda datos en servidores.
 
-## Herramientas
+- Web del gremio: https://spetsnazgrail.com
+- Discord: https://discord.gg/cqG7rDmUSJ
+- Descarga y notas de versión: https://github.com/Guallama31/AyudanteAlbion/releases/latest
 
-| Herramienta | Descripción |
+## Módulos
+
+| Módulo | Qué hace |
 |---|---|
-| 🍲 **Cocina** | Rentabilidad de crafteo de comida (Caerleon) con RRR, foco y bonos |
-| ⚒️ **Crafteo de equipo** | Armas y armaduras con ciudad de especialización |
-| 🪵 **Refinamiento** | Madera, mineral, piedra, piel y fibra |
-| ⚗️ **Alquimia** | Pociones (Brecilien) |
-| ✨ **Encantado** | Comprar directo vs. encantar con fragmentos (cantidades oficiales del juego) |
-| 🌾 **Granja** | Cultivos, animales y productores — ganancia diaria por parcela |
-| 📈 **Flipping** | 7 ciudades + Mercado Negro, ciudad origen/destino elegibles (o automático) |
-| 🔔 **Alertas de precio** | Te avisa (toast, sonido o notificación) mientras la app está abierta |
-| 🔄 **Transmutación** | Costo de subir tier/encantamiento vs. comprar |
-| 🧩 **Artefactos** | Fusión de fragmentos (melding) con valor esperado por estrategia |
-| 🔍 **Buscador de precios** | Cualquier ítem, 7 ciudades + Mercado Negro, todas las calidades |
-| 📒 **Registro de operaciones** | Diario personal de compras/ventas con P&L y exportación CSV |
-| 👤 **Perfil** | Tu personaje real: fama, kills/muertes, gremio (killboard oficial) + especializaciones que calculan tu costo de Foco |
+| Cocina | Rentabilidad de crafteo de comida en Caerleon con RRR, foco y especialización de ciudad |
+| Crafteo de equipo | Armas y armaduras por ciudad de especialización, con el diario de recetas disponible |
+| Refinamiento | Madera, mineral, piedra, piel y fibra, tiers completos |
+| Alquimia | Pociones y tinturas hechas en Brecilien |
+| Encantado | Comprar el ítem encantado vs. encantar con fragmentos, con las cantidades oficiales |
+| Granja | Cultivos, animales y productores; ganancia diaria por parcela |
+| Flipping | Mejor ruta de compra/venta entre las 7 ciudades, neto de impuestos; origen y destino fijables y se recuerdan |
+| Alertas de precio | Vigilan un ítem mientras la app está abierta y avisan cuando conviene comprar, vender o flippear |
+| Transmutación | Costo de subir tier o encantamiento pagando plata, comparado contra comprar el destino |
+| Artefactos | Valor esperado del melding de fragmentos según la estrategia elegida |
+| Buscador de precios | Cualquier ítem, todas las calidades, las 7 ciudades más el Mercado Negro, con historial |
+| Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem y exportación CSV |
+| Perfil | Fama, kills y muertes del personaje real desde el killboard oficial, más el cálculo del costo de Foco según tus especializaciones |
+| Gremio | Enlaces de Spetsnaz Grail y creadores del gremio con estado EN VIVO / OFFLINE de su canal de Twitch |
+| Fórmulas | Referencia de todas las cuentas que usa la app, para poder verificarlas |
 
-## 📥 Descargas
+Comportamientos comunes a las herramientas de cálculo:
 
-**[⬇️ Descargar AyudanteAlbion.exe](https://github.com/Guallama31/AyudanteAlbion/releases/latest)** — en la sección **Releases** del repositorio.
+- Todo precio es editable a mano por ítem, ciudad y calidad, con un botón para volver al valor de la API.
+- Cada receta o ítem se puede marcar como favorito y aparece agrupado en la pantalla de inicio.
+- Filtros, rutas, favoritos y registros se guardan en `localStorage` del navegador; desde el Registro de operaciones se exportan o importan como un único JSON de respaldo.
 
-- `AyudanteAlbion.exe`: doble clic y la app se abre en tu navegador. Se apaga sola al cerrar la pestaña.
-- `AyudanteAlbion.zip`: paquete completo (.exe + código fuente).
+## Ejecutable de escritorio
 
-> El `.exe` compilado no está en el código fuente del repositorio (los binarios no van al historial de git); siempre se descarga desde Releases.
+`AyudanteAlbion.exe` para Windows 10/11 x64. Al abrirlo levanta un servidor local en el puerto 3000 (usa otro si está ocupado), abre el navegador y sirve la app embebida: no requiere instalación, administración ni conexión más que para consultar los precios.
 
-**⚡ Anti-pausa** (activa por defecto): mientras la pestaña esté abierta, la app no se interrumpe —
-usa Web Lock (no freezing), audio inaudible (el navegador no limita los timers en segundo plano) y
-Wake Lock (no se apaga la pantalla con la app a la vista), con «catch-up» de lo vencido al volver.
-El botón ⚡ de la barra la apaga si preferís que el navegador ahorre recursos; cerrá la pestaña nomás
-y todo se libera solo.
+Se apaga solo cuando la pestaña se cierra de verdad: la página envía un latido cada pocos segundos y el servidor se retira tras 15 minutos sin latidos. Mientras la pestaña esté abierta, el modo anti-pausa (activo por defecto) evita que el navegador congele o limite la app en segundo plano, usando una Web Lock, un loop de audio inaudible y Wake Lock con la app a la vista; el botón de rayo en la barra superior lo desactiva si preferís que el navegador ahorre recursos. La preferencia queda guardada.
 
-## Estructura del repositorio
+## Desarrollo
+
+La app es HTML, CSS y JavaScript puro, sin framework ni paso de build:
 
 ```
-albion-app/     ← la aplicación web (HTML/CSS/JS puro, sin build)
-  index.html
-  app.js        ← toda la lógica y fórmulas
+albion-app/
+  index.html          estructura y todas las vistas
+  app.js              lógica, fórmulas y render
   styles.css
-  server.py     ← servidor local de desarrollo (puerto 3000)
-  data/         ← recetas y datos extraídos de ao-bin-dumps
-  icons/        ← 3.300+ íconos de ítems (locales)
-  img/          ← logos e imágenes
-albion-exe/     ← ejecutable de escritorio para Windows (Go)
-  main.go       ← servidor embebido + apertura de navegador + auto-apagado
+  server.py           servidor de desarrollo con dos proxies (ver abajo)
+  data/               recetas y tablas extraídas de ao-bin-dumps
+  icons/              íconos de ítems en local
+albion-exe/
+  main.go             servidor embebido en Go para el .exe
+.github/workflows/
+  release.yml         build y publicación automáticos al crear un tag
+build.sh              verificación, .exe y .zip en un solo comando
 ```
 
-## Ejecutar en local
+Para trabajar localmente:
 
 ```bash
 cd albion-app
-python3 server.py
-# abrir http://localhost:3000
+python3 server.py     # http://localhost:3000
 ```
 
-## Compilar la distribución (exe + zip)
+El `server.py` no es un simple servidor estático: expone `/gameinfo/*` y `/twitch/*` como proxies, porque la API de jugadores de Albion no envía CORS y DecAPI tampoco garantiza permitirlo. El `.exe` incluye los mismos dos proxies, por eso perfil y estado de Twitch funcionan igual en ambos entornos.
 
-Todo el proceso está automatizado en un solo script:
+### Pruebas
 
-```bash
-./build.sh              # verifica sintaxis, corre la prueba de humo, sincroniza,
-                        # compila el .exe y genera el .zip
-./build.sh --skip-tests # lo mismo, sin la prueba de humo
-```
-
-Requisitos: `node` (con `jsdom` instalado en `albion-app/`), `python3`, `zip` y Go
-(si no está en `/tmp/go/bin/go`, el script lo descarga solo; también podés indicar
-otro con `GO_BIN=/ruta/a/go ./build.sh`).
-
-### Publicar una release (automático)
-
-No hace falta compilar nada a mano: **pushead un tag `v*`** y GitHub Actions corre
-`build.sh` en un runner y publica la release con `AyudanteAlbion.exe` + `AyudanteAlbion.zip`.
-
-```bash
-git tag -a v1.2.0 -m "v1.2.0 — resumen" && git push origin v1.2.0
-```
-
-## Pruebas
-
-Dos niveles, ambos sobre la app completa cargada en un navegador simulado (jsdom):
+Dos niveles, ambos contra la app completa cargada en un navegador simulado (jsdom):
 
 ```bash
 cd albion-app
-node smoke-test.js   # rápido: carga, 16 pestañas, flujo del Registro
-node qa-test.js      # profundo: ejercita cada módulo con precios simulados,
-                     # expande detalles, valida datos y fórmulas, flipping con
-                     # origen/destino fijos, alertas de precio y ↺ de precio manual
+npm install --no-save jsdom   # única dependencia, no se comitea
+node smoke-test.js            # carga todas las pestañas y el flujo del Registro
+node qa-test.js               # ejercita cada módulo con precios simulados,
+                              # expande detalles y verifica fórmulas, rutas de
+                              # flipping, alertas de precio y precios manuales
 ```
 
-## Datos
+`qa-test` es el que hay que correr después de tocar `app.js`; el smoke alcanza para cambios de HTML o CSS.
 
-- **Precios en tiempo real**: [Albion Online Data Project](https://www.albion-online-data.com/) — solo servidor **Américas (West)**.
-- **Recetas y datos del juego**: [ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps).
-- **Perfil de jugador**: killboard oficial de Albion Online (gameinfo API), vía proxy local `/gameinfo/*` porque esa API no envía CORS.
-- **Estado en vivo de Twitch** (creadores de SG): vía [DecAPI](https://decapi.me/), sin clave; fallback por proxy local `/twitch/*` si el servicio no manda CORS.
+### Compilar y publicar
 
-Los precios tienen la antigüedad del último escaneo de la comunidad; todos los valores son editables manualmente en la app.
+`./build.sh` verifica sintaxis, corre el smoke test, sincroniza la app hacia `albion-exe/app/`, compila el `.exe` (Go con `GOOS=windows`) y arma el `.zip`. Necesita `node`, `python3`, `zip` y Go; si no encuentra Go en `/tmp/go/bin/go` lo descarga, o se le indica otro con `GO_BIN`.
 
----
+Para publicar no se compila a mano: se crea un tag y GitHub Actions hace todo.
 
-*Hecho por y para la comunidad de Spetsnaz Grail.*
+```bash
+git tag -a v1.2.3 -m "resumen" && git push origin v1.2.3
+```
+
+El workflow corre `build.sh` en un runner y publica `AyudanteAlbion.exe` y `AyudanteAlbion.zip` como assets de la release. Los binarios no van al historial de git.
+
+## Datos y límites
+
+| Dato | Fuente |
+|---|---|
+| Precios de mercado | [Albion Online Data Project](https://www.albion-online-data.com/), solo servidor Américas (West) |
+| Recetas y estadísticas del juego | [ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps) |
+| Killboard y perfil de jugador | API oficial de Albion (gameinfo), vía proxy local |
+| Estado de Twitch | [DecAPI](https://decapi.me/), sin clave ni registro, con fallback por proxy local |
+
+Los precios reflejan el último escaneo de la comunidad, que puede tener varios minutos de demora. El Mercado Negro solo publica órdenes de compra (te compra a vos); por eso ahí la comparación se hace contra ese bid y no contra un precio de venta. Las alertas de precio solo funcionan con la app abierta, porque no hay servidor ni service worker de por medio. Todo cálculo es orientativo: el juego cambia, y ninguna de estas APIs lo garantiza.
+
+## Créditos
+
+Desarrollado por SheniaLiam para el gremio Spetsnaz Grail. Los íconos y datos provienen de los proyectos comunitarios de arriba; el killboard es de Sandbox Interactive.
