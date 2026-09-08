@@ -773,6 +773,22 @@ document.addEventListener('click', e => {
 document.getElementById('refreshFlip').addEventListener('click', () => loadFlipPrices(flipItems));
 ['flipPremium','flipSetup'].forEach(id => document.getElementById(id).addEventListener('input', renderFlip));
 
+/* ---- ruta fija: selects de ciudad de compra y de venta ---- */
+for (const selId of ['flipFrom', 'flipTo']) {
+  const sel = document.getElementById(selId);
+  for (const c of CITIES) {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('change', () => {
+    // evitar origen === destino: si coinciden, el otro vuelve a «Mejor ciudad»
+    const other = document.getElementById(selId === 'flipFrom' ? 'flipTo' : 'flipFrom');
+    if (sel.value && sel.value === other.value) other.value = '';
+    renderFlip();
+  });
+}
+
 async function loadFlipPrices(ids) {
   if (!ids.length) return;
   const btn = document.getElementById('refreshFlip');
@@ -791,13 +807,15 @@ async function loadFlipPrices(ids) {
 
 function flipCalc(id) {
   const cityData = flipData[id] || {};
+  const fixedFrom = document.getElementById('flipFrom').value;
+  const fixedTo = document.getElementById('flipTo').value;
   let bestBuy = null, bestSell = null, bestQuick = null;
   for (const city of CITIES) {
     const p = cityData[city];
     if (!p) continue;
-    if (p.sell > 0 && (!bestBuy || p.sell < bestBuy.price)) bestBuy = { city, price: p.sell, date: p.sellDate };
-    if (p.sell > 0 && (!bestSell || p.sell > bestSell.price)) bestSell = { city, price: p.sell, date: p.sellDate };
-    if (p.buy > 0 && (!bestQuick || p.buy > bestQuick.price)) bestQuick = { city, price: p.buy };
+    if ((fixedFrom ? city === fixedFrom : true) && p.sell > 0 && (!bestBuy || p.sell < bestBuy.price)) bestBuy = { city, price: p.sell, date: p.sellDate };
+    if ((fixedTo ? city === fixedTo : city !== fixedFrom) && p.sell > 0 && (!bestSell || p.sell > bestSell.price)) bestSell = { city, price: p.sell, date: p.sellDate };
+    if ((fixedTo ? city === fixedTo : true) && p.buy > 0 && (!bestQuick || p.buy > bestQuick.price)) bestQuick = { city, price: p.buy };
   }
   const premium = document.getElementById('flipPremium').checked;
   const setup = document.getElementById('flipSetup').checked;

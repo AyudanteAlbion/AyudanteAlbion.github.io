@@ -581,3 +581,7 @@ img { max-width: 100%; }
 .fav-info .m { font-size: 0.7rem; color: var(--muted, #8a93a5); }
 .fav-del { background: none; border: none; color: var(--muted, #8a93a5); cursor: pointer; font-size: 0.85rem; padding: 2px 6px; border-radius: 6px; }
 .fav-del:hover { color: #e46262; background: rgba(228,98,98,0.1); }
+
+/* ---- selectores de ruta en Flipping ---- */
+.mini-select { background: var(--panel2, #1a1f2b); color: var(--text, #dfe4ee); border: 1px solid var(--border, #2a3040); border-radius: 8px; padding: 5px 8px; font-size: 0.8rem; margin-left: 6px; }
+.mini-select:focus { outline: none; border-color: var(--accent); }

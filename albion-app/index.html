@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=54">
+<link rel="stylesheet" href="styles.css?v=55">
 <link rel="icon" href="img/logo-app.png">
 </head>
 <body>
@@ -659,6 +659,12 @@
         <div class="search-results" id="flipResults"></div>
       </div>
       <div class="toggles inline">
+        <label class="check">Comprar en
+          <select id="flipFrom" class="mini-select"><option value="">Mejor ciudad</option></select>
+        </label>
+        <label class="check">Vender en
+          <select id="flipTo" class="mini-select"><option value="">Mejor ciudad</option></select>
+        </label>
         <label class="check"><input type="checkbox" id="flipPremium" checked> Premium (4%)</label>
         <label class="check"><input type="checkbox" id="flipSetup" checked> Orden de venta (+2,5%)</label>
         <button class="btn primary" id="refreshFlip">↻ Actualizar</button>
@@ -666,7 +672,8 @@
     </div>
     <div class="micro muted">
       Flipping: comprá al precio de venta más bajo en una ciudad y vendé en otra donde el precio sea mayor.
-      La ganancia ya descuenta impuestos.
+      La ganancia ya descuenta impuestos. Con «Mejor ciudad» se elige automáticamente la ruta más rentable;
+      fijá origen y/o destino para planear tu propia ruta.
     </div>
   </div>
 
@@ -863,6 +870,6 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=54"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>
