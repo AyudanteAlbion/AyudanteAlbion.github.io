@@ -49,46 +49,10 @@ cd albion-app
 python3 server.py     # http://localhost:3000
 ```
 
-El `server.py` no es un simple servidor estático: expone `/gameinfo/*` y `/twitch/*` como proxies, porque la API de jugadores de Albion no envía CORS y DecAPI tampoco garantiza permitirlo. El `.exe` incluye los mismos dos proxies, por eso perfil y estado de Twitch funcionan igual en ambos entornos.
-
-### Pruebas
-
-Dos niveles, ambos contra la app completa cargada en un navegador simulado (jsdom):
-
-```bash
-cd albion-app
-npm install --no-save jsdom   # única dependencia, no se comitea
-node smoke-test.js            # carga todas las pestañas y el flujo del Registro
-node qa-test.js               # ejercita cada módulo con precios simulados,
-                              # expande detalles y verifica fórmulas, rutas de
-                              # flipping, alertas de precio y precios manuales
-```
-
-`qa-test` es el que hay que correr después de tocar `app.js`; el smoke alcanza para cambios de HTML o CSS.
-
-### Compilar y publicar
-
-`./build.sh` verifica sintaxis, corre el smoke test, sincroniza la app hacia `albion-exe/app/`, compila el `.exe` (Go con `GOOS=windows`) y arma el `.zip`. Necesita `node`, `python3`, `zip` y Go; si no encuentra Go en `/tmp/go/bin/go` lo descarga, o se le indica otro con `GO_BIN`.
-
-Para publicar no se compila a mano: se crea un tag y GitHub Actions hace todo.
-
-```bash
-git tag -a v1.2.3 -m "resumen" && git push origin v1.2.3
-```
-
-El workflow corre `build.sh` en un runner y publica `AyudanteAlbion.exe` y `AyudanteAlbion.zip` como assets de la release. Los binarios no van al historial de git.
-
-## Datos y límites
-
-| Dato | Fuente |
-|---|---|
-| Precios de mercado | [Albion Online Data Project](https://www.albion-online-data.com/), solo servidor Américas (West) |
-| Recetas y estadísticas del juego | [ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps) |
-| Killboard y perfil de jugador | API oficial de Albion (gameinfo), vía proxy local |
-| Estado de Twitch | [DecAPI](https://decapi.me/), sin clave ni registro, con fallback por proxy local |
+## Precios
 
 Los precios reflejan el último escaneo de la comunidad, que puede tener varios minutos de demora. El Mercado Negro solo publica órdenes de compra (te compra a vos); por eso ahí la comparación se hace contra ese bid y no contra un precio de venta. Las alertas de precio solo funcionan con la app abierta, porque no hay servidor ni service worker de por medio. Todo cálculo es orientativo: el juego cambia, y ninguna de estas APIs lo garantiza.
 
 ## Créditos
 
-Desarrollado por SheniaLiam para el gremio Spetsnaz Grail. Los íconos y datos provienen de los proyectos comunitarios de arriba; el killboard es de Sandbox Interactive.
+Desarrollado por SheniaLiam para el gremio Spetsnaz Grail. Los íconos y datos provienen de proyectos comunitarios; el killboard es de Sandbox Interactive.
