@@ -1,4 +1,4 @@
-# Sonda temporal: espera el rebuild de Cloudflare y prueba el worker desde un runner con red.
+# Sonda temporal: verifica worker (jugador real) y la app publicada en Pages.
 name: Chequeo Worker
 on:
   workflow_dispatch:
@@ -9,25 +9,15 @@ jobs:
   sonda:
     runs-on: ubuntu-latest
     steps:
-      - name: Esperar rebuild y sondear
+      - name: Probar
         run: |
           W="https://ayudantealbion.josemesina21.workers.dev"
-          for i in 1 2 3 4 5 6 7 8; do
-            code=$(curl -s -m 20 -o /tmp/gi -w '%{http_code}' "$W/gameinfo/players/Tobias" || echo 000)
-            echo "intento $i: gameinfo HTTP $code"
-            [ "$code" = "200" ] && break
-            sleep 25
-          done
-          printf '::error::gameinfo/players/Tobias => HTTP %s BODY=%s\n' "$code" "$(head -c 200 /tmp/gi 2>/dev/null | tr '\n\r' '  ' | sed 's/%/%25/g')"
-          probe() {
-            local u="$1" out hdr body
-            out=$( { curl -s -m 25 -D - -o /tmp/b -w 'HTTPCODE=%{http_code} ' "$u"; } 2>/dev/null || true )
-            hdr=$(printf '%s' "$out" | grep -iE '^(HTTP/|access-control-allow-origin|HTTPCODE)' | tr -d '\r' | paste -sd' | ' - || true)
-            body=$(head -c 200 /tmp/b 2>/dev/null | tr '\n\r' '  ' | sed 's/%/%25/g' || true)
-            printf '::error::%s => [%s] BODY=%s\n' "$u" "${hdr:-sin respuesta}" "$body"
-          }
-          rm -f /tmp/b
-          probe "$W/health"
-          probe "$W/twitch/uptime/gaules"
-          probe "$W/gameinfo/search?q=longsword"
+          code=$(curl -s -m 25 -o /tmp/p -w '%{http_code}' "$W/gameinfo/players/longsword1" || echo 000)
+          printf '::error::players/longsword1 => HTTP %s BODY=%s\n' "$code" "$(head -c 200 /tmp/p | tr '\n\r' '  ' | sed 's/%/%25/g')"
+          code=$(curl -s -m 25 -o /tmp/s -w '%{http_code}' "$W/gameinfo/seasons/current" || echo 000)
+          printf '::error::seasons/current => HTTP %s BODY=%s\n' "$code" "$(head -c 160 /tmp/s | tr '\n\r' '  ' | sed 's/%/%25/g')"
+          n=$(curl -s -m 25 "https://guallama31.github.io/AyudanteAlbion/app.js" | grep -c "AA_WORKER" || true)
+          printf '::error::pages app.js con AA_WORKER: %s\n' "$n"
+          c=$(curl -s -m 25 -o /tmp/c -w '%{http_code}' "https://guallama31.github.io/AyudanteAlbion/data/catalog.json")
+          printf '::error::pages catalog.json => HTTP %s SIZE=%s\n' "$c" "$(wc -c < /tmp/c)"
           echo listo
