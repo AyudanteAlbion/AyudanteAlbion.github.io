@@ -14,7 +14,8 @@ Herramientas de mercado y crafteo para **Albion Online** (servidor Américas / W
 | ⚗️ **Alquimia** | Pociones (Brecilien) |
 | ✨ **Encantado** | Comprar directo vs. encantar con fragmentos (cantidades oficiales del juego) |
 | 🌾 **Granja** | Cultivos, animales y productores — ganancia diaria por parcela |
-| 📈 **Flipping** | Comprar en ciudades reales → vender en Mercado Negro |
+| 📈 **Flipping** | 7 ciudades + Mercado Negro, ciudad origen/destino elegibles (o automático) |
+| 🔔 **Alertas de precio** | Te avisa (toast, sonido o notificación) mientras la app está abierta |
 | 🔄 **Transmutación** | Costo de subir tier/encantamiento vs. comprar |
 | 🧩 **Artefactos** | Fusión de fragmentos (melding) con valor esperado por estrategia |
 | 🔍 **Buscador de precios** | Cualquier ítem, 7 ciudades + Mercado Negro, todas las calidades |
@@ -73,9 +74,10 @@ Dos niveles, ambos sobre la app completa cargada en un navegador simulado (jsdom
 
 ```bash
 cd albion-app
-node smoke-test.js   # rápido: carga, 14 pestañas, flujo del Registro
+node smoke-test.js   # rápido: carga, 16 pestañas, flujo del Registro
 node qa-test.js      # profundo: ejercita cada módulo con precios simulados,
-                     # expande detalles, valida datos y fórmulas (26 checks)
+                     # expande detalles, valida datos y fórmulas, flipping con
+                     # origen/destino fijos, alertas de precio y ↺ de precio manual
 ```
 
 ## Datos

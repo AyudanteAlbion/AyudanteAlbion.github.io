@@ -175,7 +175,71 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
     check($('flipFrom').value === '', 'Flipping: colisión origen=destino resetea el otro select', 'Flipping: colisión de ruta no manejada');
     $('flipTo').value = ''; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(200);
+    // persistencia de la ruta elegida (flipPrefs)
+    $('flipTo').value = 'Brecilien'; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
+    const prefs = JSON.parse(window.localStorage.getItem('flipPrefs') || 'null');
+    check(prefs && prefs.to === 'Brecilien', 'Flipping: ruta elegida persiste en localStorage', 'Flipping: flipPrefs no guarda la ruta → ' + JSON.stringify(prefs));
+    $('flipTo').value = ''; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
   } catch (e) { errors.push('Flipping ruta: ' + e.message); }
+
+  // ── FLIPPING: destino fijo + origen auto → no puede elegir la misma ciudad (regresión) ──
+  try {
+    const saveFetch = window.fetch;
+    window.fetch = (u) => {
+      const url = String(u);
+      if (url.includes('T4_BAG') && url.includes('prices/')) {
+        // Caerleon (el destino fijado) es la MÁS BARATA para comprar: antes del fix
+        // el origen auto la tomaba, colisionaba y la fila quedaba en "—"
+        const rows = [
+          { item_id: 'T4_BAG', city: 'Caerleon', quality: 1, sell_price_min: 450, sell_price_min_date: '2026-09-07T12:00:00', buy_price_max: 400, buy_price_max_date: null },
+          { item_id: 'T4_BAG', city: 'Thetford', quality: 1, sell_price_min: 500, sell_price_min_date: null, buy_price_max: 460, buy_price_max_date: null },
+          { item_id: 'T4_BAG', city: 'Lymhurst', quality: 1, sell_price_min: 900, sell_price_min_date: null, buy_price_max: 850, buy_price_max_date: null },
+        ];
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(rows) });
+      }
+      return saveFetch(u);
+    };
+    $('flipTo').value = 'Caerleon'; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true }));
+    $('flipFrom').value = ''; $('flipFrom').dispatchEvent(new window.Event('change', { bubbles: true }));
+    window.eval(`loadFlipPrices(['T4_BAG'])`); await sleep(500);
+    const f = window.eval(`flipCalc('T4_BAG')`);
+    const expect = Math.round((450 * 0.935 - 500) * 100) / 100; // destino fijo → compra en la siguiente más barata
+    check(f.bestBuy && f.bestBuy.city === 'Thetford' && Math.abs(f.profit - expect) < 0.01,
+      'Flipping: destino fijo + origen auto descarta el destino (Thetford→Caerleon)',
+      'Flipping: colisión destino/origen sin resolver → bestBuy=' + (f.bestBuy && f.bestBuy.city) + ' profit=' + f.profit);
+    window.fetch = saveFetch;
+    $('flipTo').value = ''; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
+  } catch (e) { errors.push('Flipping destino-fijo: ' + e.message); }
+
+  // ── ALERTAS DE PRECIO: alta, disparo, re-arma ──
+  try {
+    window.eval(`gotoTab('alerts')`); await sleep(200);
+    check(!!$('waBody') && !!$('waAdd'), 'Alertas: pestaña renderizada', 'Alertas: faltan controles de la pestaña');
+    // acceso rápido desde Flipping (prefill por fila)
+    window.eval(`waPrefillFlip('T4_BAG')`); await sleep(150);
+    check($('waItemInput').value.length > 0, 'Alertas: prefill desde Flipping carga el ítem', 'Alertas: prefill no cargó el ítem');
+    $('waMetric').value = 'sell'; $('waMetric').dispatchEvent(new window.Event('change', { bubbles: true }));
+    $('waThreshold').value = '100000'; // mock: toda venta vale 1000 → la condición se cumple apenas se chequea
+    $('waAdd').click(); await sleep(200);
+    let saved = JSON.parse(window.localStorage.getItem('priceAlerts') || '[]');
+    check(saved.length === 1 && saved[0].metric === 'sell' && saved[0].threshold === 100000 && saved[0].on === true,
+      'Alertas: creación persistida en localStorage', 'Alertas: creación falla → ' + JSON.stringify(saved));
+    window.eval(`waTick()`); await sleep(700); // verificación forzada
+    saved = JSON.parse(window.localStorage.getItem('priceAlerts') || '[]');
+    check(saved[0].fired === true && saved[0].on === false && saved[0].price === 1000,
+      'Alertas: se dispara al cumplirse y se apaga (modo "una vez")', 'Alertas: estado tras check → ' + JSON.stringify(saved[0]));
+    check(!!window.document.querySelector('.wa-toast'), 'Alertas: toast visible al disparar', 'Alertas: no se mostró el toast');
+    // re-arma al reactivarla
+    const btn = window.document.querySelector('[data-wa-on]');
+    if (btn) { btn.click(); await sleep(300);
+      saved = JSON.parse(window.localStorage.getItem('priceAlerts') || '[]');
+      check(saved[0].on === true && saved[0].fired === false, 'Alertas: ▶ reactiva y re-arma', 'Alertas: reactivación no re-arma → ' + JSON.stringify(saved[0]));
+      const del = window.document.querySelector('[data-wa-del]');
+      if (del) { del.click(); await sleep(150);
+        saved = JSON.parse(window.localStorage.getItem('priceAlerts') || '[]');
+        check(saved.length === 0, 'Alertas: eliminación limpia la lista', 'Alertas: no se eliminó la alerta');
+      } }
+  } catch (e) { errors.push('Alertas: ' + e.message); }
 
   // ── TRANSMUTACIÓN ──
   window.eval(`gotoTab('transmute')`); await sleep(900);
@@ -322,6 +386,11 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   // ── PRECIO MANUAL: editar un precio en Cocina y verificar recálculo ──
   try {
     window.eval(`gotoTab('food')`); await sleep(300);
+    // el detalle debe estar expandido para ver los inputs: asegurarlo
+    if (!window.document.querySelector('#foodBody .price-edit')) {
+      const crow = window.document.querySelector('#foodBody tr.craft-row');
+      if (crow) { crow.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); await sleep(200); }
+    }
     const inp = window.document.querySelector('#foodBody .price-edit');
     if (inp) {
       inp.value = '99999';
@@ -329,6 +398,14 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       await sleep(200);
       const mp = JSON.parse(window.localStorage.getItem('manualPrices') || '{}');
       check(Object.keys(mp).length > 0, 'Precios manuales: override guardado en localStorage', 'Precios manuales: no se guardó el override');
+      // el botón ↺ debe borrar el override (regresión: estaba muerto por el guard de .price-edit-wrap)
+      const rb = window.document.querySelector('#foodBody .reset-price');
+      if (rb) {
+        rb.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); await sleep(250);
+        const mp2 = JSON.parse(window.localStorage.getItem('manualPrices') || '{}');
+        check(Object.values(mp2).every(v => v !== 99999),
+          'Precios manuales: botón ↺ restaura el precio de la API', 'Precios manuales: ↺ no borró el override → ' + JSON.stringify(mp2));
+      } else errors.push('Precios manuales: no apareció el botón ↺ tras editar');
     } else warns.push('Precios manuales: no encontré input editable en Cocina (¿detalle no expandido?)');
   } catch (e) { errors.push('Precio manual: ' + e.message); }
 

@@ -41,10 +41,20 @@ const pct = n => n == null || isNaN(n) ? '—' : (n * 100).toFixed(1).replace('.
 let CATALOG = null; // [[id, es, en, tier, maxEnch, cat], ...]
 
 /* ---------- helpers ---------- */
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
+// timeout: si la API queda colgada, el botón de actualizar no queda inutilizado para siempre
+async function fetchJSON(url, timeoutMs = 25000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('tiempo de espera agotado');
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 // Pedir precios en bloques (límite de longitud de URL + rate limit)
@@ -100,7 +110,7 @@ function mpKey(id, city, kind) { return `${id}|${city}|${kind}`; }
 // Grupos de pestañas por dropdown: su trigger se marca activo cuando la actual es una de sus herramientas
 const DD_GROUPS = [
   { dd: 'craftDd', btn: 'craftDdBtn', keys: ['gear', 'refine', 'alch', 'food', 'enchant', 'farm'] },
-  { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute'] },
+  { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute', 'meld', 'alerts'] },
 ];
 function gotoTab(key) {
   document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
@@ -697,7 +707,7 @@ function createCraftModule(cfg) {
   });
 
   $('Body').addEventListener('click', e => {
-    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
+    // el botón ↺ vive DENTRO de .price-edit-wrap: hay que chequearlo antes del guard
     const reset = e.target.closest('.reset-price');
     if (reset) {
       delete manualPrices[mpKey(reset.dataset.pid, reset.dataset.city, reset.dataset.kind)];
@@ -705,6 +715,7 @@ function createCraftModule(cfg) {
       m.render();
       return;
     }
+    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const tr = e.target.closest('tr.craft-row');
     if (!tr) return;
     m.expandedRecipe = m.expandedRecipe === tr.dataset.rid ? null : tr.dataset.rid;
@@ -766,12 +777,41 @@ flipResults.addEventListener('click', e => {
   } else {
     renderFlip();
   }
+  flipSavePrefs();
 });
 document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap')) flipResults.classList.remove('open');
 });
 document.getElementById('refreshFlip').addEventListener('click', () => loadFlipPrices(flipItems));
-['flipPremium','flipSetup'].forEach(id => document.getElementById(id).addEventListener('input', renderFlip));
+['flipPremium','flipSetup'].forEach(id => document.getElementById(id).addEventListener('input', () => { renderFlip(); flipSavePrefs(); }));
+
+/* ---- preferencias de flipping: ruta, impuestos e ítems agregados persisten ---- */
+function flipSavePrefs() {
+  try {
+    localStorage.setItem('flipPrefs', JSON.stringify({
+      from: document.getElementById('flipFrom').value,
+      to: document.getElementById('flipTo').value,
+      premium: document.getElementById('flipPremium').checked,
+      setup: document.getElementById('flipSetup').checked,
+      user: [...flipUserAdded],
+    }));
+  } catch (e) {}
+}
+// se llama al iniciar (init) una vez poblados los selects de ciudad
+function flipRestorePrefs() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem('flipPrefs') || 'null'); } catch (e) {}
+  if (!p) return;
+  if (p.premium != null) document.getElementById('flipPremium').checked = !!p.premium;
+  if (p.setup != null) document.getElementById('flipSetup').checked = !!p.setup;
+  for (const id of (p.user || [])) {
+    if (typeof id !== 'string' || !id || id.startsWith('__')) continue;
+    if (!flipItems.includes(id)) flipItems.unshift(id);
+    flipUserAdded.add(id);
+  }
+  if (CITIES.includes(p.from)) document.getElementById('flipFrom').value = p.from;
+  if (CITIES.includes(p.to) && p.to !== document.getElementById('flipFrom').value) document.getElementById('flipTo').value = p.to;
+}
 
 /* ---- ruta fija: selects de ciudad de compra y de venta ---- */
 for (const selId of ['flipFrom', 'flipTo']) {
@@ -786,6 +826,7 @@ for (const selId of ['flipFrom', 'flipTo']) {
     const other = document.getElementById(selId === 'flipFrom' ? 'flipTo' : 'flipFrom');
     if (sel.value && sel.value === other.value) other.value = '';
     renderFlip();
+    flipSavePrefs();
   });
 }
 
@@ -813,8 +854,12 @@ function flipCalc(id) {
   for (const city of CITIES) {
     const p = cityData[city];
     if (!p) continue;
-    if ((fixedFrom ? city === fixedFrom : true) && p.sell > 0 && (!bestBuy || p.sell < bestBuy.price)) bestBuy = { city, price: p.sell, date: p.sellDate };
-    if ((fixedTo ? city === fixedTo : city !== fixedFrom) && p.sell > 0 && (!bestSell || p.sell > bestSell.price)) bestSell = { city, price: p.sell, date: p.sellDate };
+    // en modo auto, el origen descarta la ciudad de destino fijada (y viceversa):
+    // sin eso, si la ciudad más barata coincide con el destino el flip quedaba inválido
+    const buyOk = fixedFrom ? city === fixedFrom : city !== fixedTo;
+    const sellOk = fixedTo ? city === fixedTo : city !== fixedFrom;
+    if (buyOk && p.sell > 0 && (!bestBuy || p.sell < bestBuy.price)) bestBuy = { city, price: p.sell, date: p.sellDate };
+    if (sellOk && p.sell > 0 && (!bestSell || p.sell > bestSell.price)) bestSell = { city, price: p.sell, date: p.sellDate };
     if ((fixedTo ? city === fixedTo : true) && p.buy > 0 && (!bestQuick || p.buy > bestQuick.price)) bestQuick = { city, price: p.buy };
   }
   const premium = document.getElementById('flipPremium').checked;
@@ -866,30 +911,43 @@ function renderFlip() {
     <div class="stat"><div class="k">Flips rentables</div><div class="v ${profitable.length ? 'pos' : ''}">${profitable.length}</div><div class="s">tras impuestos</div></div>
     <div class="stat"><div class="k">Mejor flip</div><div class="v">${best ? catalogName(best.id) : '—'}</div><div class="s">${best ? '+' + fmt(best.f.profit) + ' plata/u (' + best.f.bestBuy.city + ' → ' + best.f.bestSell.city + ')' : ''}</div></div>`;
 
+  const fixedFrom = document.getElementById('flipFrom').value;
+  const fixedTo = document.getElementById('flipTo').value;
   body.innerHTML = shown.map(({ id, f }) => {
     const ench = id.includes('@') ? '.' + id.split('@')[1] : '.0';
     const cls = f.profit > 0 ? 'pos' : (isNaN(f.profit) ? '' : 'neg');
     const qCls = f.quick > 0 ? 'pos' : (isNaN(f.quick) ? '' : 'neg');
+    // con ciudad fijada sin datos, explicar el "—" en vez de dejarlo huérfano
+    const buyCell = f.bestBuy ? fmt(f.bestBuy.price) + '<span class="price-sub">' + f.bestBuy.city + '</span>'
+      : (fixedFrom ? '<span class="badge warn" title="Sin ventas activas en la ciudad elegida: editá un precio manual o dejá «Mejor ciudad»">sin datos en ' + fixedFrom + '</span>' : '—');
+    const sellCell = f.bestSell ? fmt(f.bestSell.price) + '<span class="price-sub">' + f.bestSell.city + '</span>'
+      : (fixedTo ? '<span class="badge warn" title="Sin ventas activas en la ciudad elegida: editá un precio manual o dejá «Mejor ciudad»">sin datos en ' + fixedTo + '</span>' : '—');
     return `<tr class="clickable" data-id="${id}">
       <td><div class="item-cell">${iconImg(id, 'item-icon')}
         <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id}</div></div></div></td>
       <td><span class="badge">${ench}</span></td>
-      <td class="num">${f.bestBuy ? fmt(f.bestBuy.price) + '<span class="price-sub">' + f.bestBuy.city + '</span>' : '—'}</td>
-      <td class="num">${f.bestSell ? fmt(f.bestSell.price) + '<span class="price-sub">' + f.bestSell.city + '</span>' : '—'}</td>
+      <td class="num">${buyCell}</td>
+      <td class="num">${sellCell}</td>
       <td class="num ${cls}">${isNaN(f.profit) ? '—' : (f.profit > 0 ? '+' : '') + fmt(f.profit)}</td>
       <td class="num ${cls}">${pct(f.margin)}</td>
       <td class="num ${qCls}">${isNaN(f.quick) ? '—' : (f.quick > 0 ? '+' : '') + fmt(f.quick)}</td>
-      <td><button class="btn micro-btn" data-remove="${id}" title="Quitar">✕</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn micro-btn" data-alert="${id}" title="Crear alerta de precio para este ítem">🔔</button>
+        <button class="btn micro-btn" data-remove="${id}" title="Quitar">✕</button>
+      </td>
     </tr>`;
   }).join('');
 }
 
 document.getElementById('flipBody').addEventListener('click', e => {
+  const al = e.target.closest('[data-alert]');
+  if (al) { waPrefillFlip(al.dataset.alert); e.stopPropagation(); return; }
   const rm = e.target.closest('[data-remove]');
   if (rm) {
     flipItems = flipItems.filter(x => x !== rm.dataset.remove);
     flipUserAdded.delete(rm.dataset.remove);
     renderFlip();
+    flipSavePrefs();
     e.stopPropagation();
     return;
   }
@@ -919,11 +977,12 @@ function showFlipDetail(id) {
       <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id} · matriz de precios en las 7 ciudades</div></div>
       ${f.bestBuy ? `<button class="btn micro-btn" onclick="llPrefill('${id}','buy',${f.bestBuy.price},'${f.bestBuy.city}')" title="Anotar la compra en el Registro de operaciones">✎ Registrar compra</button>` : ''}
       ${f.bestSell ? `<button class="btn micro-btn" onclick="llPrefill('${id}','sell',${f.bestSell.price},'${f.bestSell.city}')" title="Anotar la venta en el Registro de operaciones">✎ Registrar venta</button>` : ''}
+      <button class="btn micro-btn" onclick="waPrefillFlip('${id}')" title="Crear una alerta de precio para este ítem">🔔 Alerta de precio</button>
       ${favBtnHtml('flip', id, catalogName(id))}
       <button class="btn detail-close" onclick="this.closest('#flipDetail').style.display='none'">Cerrar</button>
     </div>
     <div class="table-wrap"><table class="matrix">
-      <thead><tr><th>Ciudad</th><th>Precio de venta más bajo</th><th>(mismo, para vender)</th><th>Mejor orden de compra</th><th>Actualizado</th></tr></thead>
+      <thead><tr><th>Ciudad</th><th>Venta acá — para comprar</th><th>Venta acá — para vender</th><th>Mejor orden de compra</th><th>Actualizado</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1535,14 +1594,14 @@ function buildGearUI() {
 
   // tabla: expandir, plan, precios editables
   G('Body').addEventListener('click', e => {
-    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
-    const planBtn = e.target.closest('[data-plan]');
-    if (planBtn) { addToPlan(planBtn.dataset.plan); e.stopPropagation(); return; }
     const reset = e.target.closest('.reset-price');
     if (reset) {
       delete manualPrices[mpKey(reset.dataset.pid, reset.dataset.city, reset.dataset.kind)];
       saveManual(); renderGear(); renderPlanner(); return;
     }
+    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
+    const planBtn = e.target.closest('[data-plan]');
+    if (planBtn) { addToPlan(planBtn.dataset.plan); e.stopPropagation(); return; }
     const tr = e.target.closest('tr.craft-row');
     if (!tr) return;
     GEAR.expanded = GEAR.expanded === tr.dataset.rid ? null : tr.dataset.rid;
@@ -1659,7 +1718,9 @@ const REFINE_PLACES = [
   // Crafteo es la pestaña inicial (carga bajo demanda); Cocina/Alquimia/Refinamiento
   // cargan precios la primera vez que se abre cada pestaña
   flipItems = [...DEFAULT_FLIPS];
+  flipRestorePrefs();
   loadFlipPrices(flipItems);
+  waRestart(); // retoma las alertas activas sin necesidad de abrir la pestaña
 })();
 
 /* ====================================================================
@@ -1973,12 +2034,12 @@ function renderTransRoutes() {
   }));
 
   TR('Body').addEventListener('click', e => {
-    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const reset = e.target.closest('.reset-price');
     if (reset) {
       delete manualPrices[mpKey(reset.dataset.pid, reset.dataset.city, reset.dataset.kind)];
       saveManual(); renderTrans(); return;
     }
+    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const tr = e.target.closest('tr.craft-row'); if (!tr) return;
     TRANS.expanded = TRANS.expanded === tr.dataset.rid ? null : tr.dataset.rid;
     renderTrans();
@@ -2253,12 +2314,12 @@ function renderMeldSim() {
   }));
 
   MD('Body').addEventListener('click', e => {
-    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const reset = e.target.closest('.reset-price');
     if (reset) {
       delete manualPrices[mpKey(reset.dataset.pid, reset.dataset.city, reset.dataset.kind)];
       saveManual(); renderMeld(); return;
     }
+    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const tr = e.target.closest('tr.craft-row'); if (!tr) return;
     MELD.expanded = MELD.expanded === tr.dataset.rid ? null : tr.dataset.rid;
     renderMeld();
@@ -3003,12 +3064,12 @@ function fmRender() {
     fmRender();
   }));
   document.getElementById('fmBody').addEventListener('click', e => {
-    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const reset = e.target.closest('.reset-price');
     if (reset) {
       delete manualPrices[mpKey(reset.dataset.pid, reset.dataset.city, reset.dataset.kind)];
       saveManual(); fmRender(); return;
     }
+    if (e.target.closest('.price-edit-wrap') || e.target.classList.contains('price-edit')) return;
     const tr = e.target.closest('tr.craft-row'); if (!tr) return;
     FM.expanded = FM.expanded === tr.dataset.rid ? null : tr.dataset.rid;
     fmRender();
@@ -3101,6 +3162,15 @@ async function pfFetchRetry(path, tries = 3) {
   }
 }
 
+/* gameinfo devuelve algunos listados envueltos ({kills:[...]}, {members:[...]})
+   y otros como array directo. Normalizar evita que la tabla quede "sin datos". */
+function pfAsArray(d) {
+  if (Array.isArray(d)) return d;
+  if (d && Array.isArray(d.kills)) return d.kills;
+  if (d && Array.isArray(d.members)) return d.members;
+  return [];
+}
+
 async function pfLoadPlayer(id, name) {
   if (PF.loading) return;
   PF.loading = true;
@@ -3116,7 +3186,9 @@ async function pfLoadPlayer(id, name) {
       detail.GuildId ? pfFetchRetry(`/guilds/${detail.GuildId}`).catch(() => null) : null,
     ]);
     PF.player = { id, name: detail.Name };
-    PF.kills = kills; PF.deaths = deaths; PF.guildId = detail.GuildId || null;
+    PF.kills = kills ? pfAsArray(kills) : null;
+    PF.deaths = deaths ? pfAsArray(deaths) : null;
+    PF.guildId = detail.GuildId || null;
     PF.expandedEv = null;
     PF.killMode = 'recent'; PF.topkills = null; PF.solokills = null; PF.guildTop = null;
     localStorage.setItem('pfPlayer', JSON.stringify(PF.player));
@@ -3326,11 +3398,11 @@ function pfRender(d, kills, deaths, guild) {
       rerender();
       // carga perezosa de top/solo la primera vez
       if (PF.killMode === 'top' && PF.topkills === null) {
-        try { PF.topkills = await pfFetchRetry(`/players/${PF.player.id}/topkills`); }
+        try { PF.topkills = pfAsArray(await pfFetchRetry(`/players/${PF.player.id}/topkills`)); }
         catch (err) { PF.topkills = false; }
         rerender();
       } else if (PF.killMode === 'solo' && PF.solokills === null) {
-        try { PF.solokills = await pfFetchRetry(`/players/${PF.player.id}/solokills`); }
+        try { PF.solokills = pfAsArray(await pfFetchRetry(`/players/${PF.player.id}/solokills`)); }
         catch (err) { PF.solokills = false; }
         rerender();
       }
@@ -3341,7 +3413,7 @@ function pfRender(d, kills, deaths, guild) {
       gtop.textContent = 'Cargando…'; gtop.disabled = true;
       const box = document.getElementById('pfGuildTopBox');
       try {
-        const top = await pfFetchRetry(`/guilds/${PF.guildId}/top?range=week`);
+        const top = pfAsArray(await pfFetchRetry(`/guilds/${PF.guildId}/top?range=week`));
         box.style.display = '';
         box.innerHTML = top && top.length ? `
           <div class="table-wrap"><table class="ledger">
@@ -3368,7 +3440,7 @@ function pfRender(d, kills, deaths, guild) {
     if (mbtn && PF.guildId) {
       mbtn.textContent = 'Cargando miembros…'; mbtn.disabled = true;
       try {
-        const members = await pfFetchRetry(`/guilds/${PF.guildId}/members`);
+        const members = pfAsArray(await pfFetchRetry(`/guilds/${PF.guildId}/members`));
         const sorted = [...members].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
         document.getElementById('pfMembersBox').innerHTML = `
           <div class="table-wrap"><table class="ledger">
@@ -3432,4 +3504,354 @@ function pfRender(d, kills, deaths, guild) {
 
   /* aplicar especializaciones guardadas a las pestañas de crafteo al iniciar */
   setTimeout(pfApplySpecs, 400);
+})();
+
+/* ====================================================================
+   🔔 ALERTAS DE PRECIO — monitor mientras la app está abierta.
+   Un temporizador global verifica cada N minutos (fetch agrupado con el
+   mismo chunker de fetchPrices → una sola tanda de requests por ciclo),
+   dispara con toast + sonido + notificación del navegador (opcional) y
+   persiste en localStorage ('priceAlerts' + 'alertSettings').
+   Sin servidor ni service worker: si cerrás la pestaña, no hay alertas.
+   ==================================================================== */
+const WA = {
+  list: [], formItem: null,
+  intervalMin: 5, sound: true, browser: false,
+  timer: null, running: false, fails: 0, lastError: null, lastCheck: null, nextAt: 0,
+  prices: null,
+};
+try { WA.list = JSON.parse(localStorage.getItem('priceAlerts') || '[]'); } catch (e) {}
+try { Object.assign(WA, JSON.parse(localStorage.getItem('alertSettings') || '{}')); } catch (e) {}
+function waSave() { localStorage.setItem('priceAlerts', JSON.stringify(WA.list)); }
+function waSaveCfg() { localStorage.setItem('alertSettings', JSON.stringify({ intervalMin: WA.intervalMin, sound: WA.sound, browser: WA.browser })); }
+
+function waIntervalMin() { return Math.max(1, Math.min(60, parseInt(WA.intervalMin, 10) || 5)); }
+function waIntervalMs() { return waIntervalMin() * 60e3; }
+function waPct(v) { return v == null || isNaN(v) ? '—' : v.toFixed(1).replace('.', ',') + '%'; }
+function waCd(ms) { if (!(ms > 0)) return 'ahora'; const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+
+/* Precio/valor actual de la alerta según su métrica. `src` permite evaluar con
+   datos frescos del motor o, al pintar la tabla, con lo último que se cargó. */
+function waValue(a, src) {
+  const map = src || WA.prices || (typeof flipData !== 'undefined' ? flipData : null);
+  if (!map) return { value: null };
+  const d = map[a.id];
+  if (!d) return { value: null };
+  if (a.metric === 'flip') {
+    let lo = null, hi = null;
+    for (const city of CITIES) {
+      const p = d[city];
+      if (!p || !p.sell) continue;
+      if (!lo || p.sell < lo.v) lo = { v: p.sell, city };
+      if (!hi || p.sell > hi.v) hi = { v: p.sell, city };
+    }
+    if (!lo || !hi || lo.city === hi.city) return { value: null };
+    const tax = (document.getElementById('flipPremium').checked ? 0.04 : 0.08)
+              + (document.getElementById('flipSetup').checked ? 0.025 : 0);
+    return { value: (hi.v * (1 - tax) - lo.v) / lo.v * 100, from: lo.city, to: hi.city };
+  }
+  const p = d[a.city];
+  if (!p) return { value: null };
+  const v = a.metric === 'sell' ? p.sell : p.buy;
+  return { value: v > 0 ? v : null };
+}
+function waMet(a, v) {
+  if (v == null) return false;
+  return a.metric === 'sell' ? v <= a.threshold : v >= a.threshold;
+}
+function waDist(a, cur) {
+  if (cur.value == null) return '—';
+  if (a.metric === 'flip') {
+    const d = a.threshold - cur.value;
+    return d <= 0 ? '✓' : '+' + d.toFixed(1).replace('.', ',') + ' pp';
+  }
+  if (a.metric === 'sell') {
+    const d = (cur.value - a.threshold) / (a.threshold || 1) * 100;
+    return d <= 0 ? '✓' : '−' + d.toFixed(1).replace('.', ',') + '%';
+  }
+  const d = (a.threshold - cur.value) / (a.threshold || 1) * 100;
+  return d <= 0 ? '✓' : '−' + d.toFixed(1).replace('.', ',') + '%';
+}
+function waCondText(a) {
+  if (a.metric === 'flip') return 'Mejor flip ≥ ' + waPct(a.threshold);
+  return (a.metric === 'sell' ? 'Venta ≤ ' : 'Orden de compra ≥ ') + fmt(a.threshold) + ' en ' + a.city;
+}
+
+async function waCheck() {
+  if (WA.running) return;
+  const act = WA.list.filter(a => a.on);
+  if (!act.length) { waRender(); waStatus(); return; }
+  WA.running = true;
+  waStatus();
+  try {
+    const ids = [...new Set(act.map(a => a.id))];
+    WA.prices = await fetchPrices(ids, CITIES);
+    WA.fails = 0;
+    WA.lastError = null;
+    WA.lastCheck = Date.now();
+    let dirty = false;
+    for (const a of act) {
+      const cur = waValue(a, WA.prices);
+      const met = waMet(a, cur.value);
+      a.price = cur.value; a.from = cur.from || null; a.to = cur.to || null;
+      a.lastCheck = Date.now();
+      if (met && !a.fired) {
+        a.fired = true; a.firedAt = Date.now();
+        if (a.once) a.on = false;
+        waNotify(a, cur);
+        dirty = true;
+      } else if (!met && a.fired) { a.fired = false; dirty = true; } // re-arma al dejar de cumplirse
+    }
+    if (dirty) waSave();
+  } catch (e) {
+    WA.fails++;
+    WA.lastError = e.message;
+    if (WA.fails === 3) waToast('⚠️ Alertas sin respuesta', 'La API de precios falla hace 3 ciclos. Se reintenta sola en el próximo.', 'err');
+  }
+  WA.running = false;
+  waRender();
+  waStatus();
+}
+async function waTick() {
+  await waCheck();
+  if (WA.list.some(a => a.on)) waSchedule(waIntervalMs());
+  else { clearTimeout(WA.timer); WA.nextAt = 0; waStatus(); }
+}
+function waSchedule(ms) { clearTimeout(WA.timer); WA.timer = setTimeout(waTick, ms); WA.nextAt = Date.now() + ms; waStatus(); }
+function waRestart() {
+  clearTimeout(WA.timer);
+  if (WA.list.some(a => a.on)) waSchedule(waIntervalMs());
+  else { WA.nextAt = 0; waStatus(); }
+}
+
+/* ---- disparos: toast + beep + Notification (opcional) ---- */
+function waToast(title, msg, cls) {
+  let stack = document.getElementById('waToasts');
+  if (!stack) { stack = document.createElement('div'); stack.id = 'waToasts'; stack.className = 'wa-toasts'; document.body.appendChild(stack); }
+  const d = document.createElement('div');
+  d.className = 'wa-toast' + (cls ? ' ' + cls : '');
+  d.innerHTML = `<div style="min-width:0"><div class="t-n">${title}</div><div class="t-m">${msg}</div></div>`;
+  d.addEventListener('click', () => { gotoTab('alerts'); d.remove(); });
+  stack.appendChild(d);
+  while (stack.children.length > 4) stack.firstChild.remove();
+  setTimeout(() => d.remove(), 15000);
+}
+function waBeep() {
+  if (!WA.sound) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    WA.ac = WA.ac || new Ctx();
+    if (WA.ac.state === 'suspended') WA.ac.resume().catch(() => {});
+    const t = WA.ac.currentTime;
+    [[880, 0], [1318.5, 0.16]].forEach(([f, dt]) => {
+      const o = WA.ac.createOscillator();
+      const g = WA.ac.createGain();
+      o.type = 'sine';
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + dt);
+      g.gain.exponentialRampToValueAtTime(0.12, t + dt + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.3);
+      o.connect(g);
+      g.connect(WA.ac.destination);
+      o.start(t + dt);
+      o.stop(t + dt + 0.32);
+    });
+  } catch (e) {}
+}
+function waNotify(a, cur) {
+  const valTxt = a.metric === 'flip'
+    ? waPct(cur.value) + (cur.from ? ' (' + cur.from + ' → ' + cur.to + ')' : '')
+    : fmt(cur.value) + ' en ' + a.city;
+  const msg = (a.metric === 'sell' ? 'Venta cayó a ' : a.metric === 'buy' ? 'Orden de compra subió a ' : 'Flip rinde ') + valTxt
+    + ' · umbral ' + (a.metric === 'flip' ? waPct(a.threshold) : fmt(a.threshold));
+  waToast('🔔 ' + (a.name || a.id), msg + (a.once ? ' (alerta apagada tras disparar)' : ''));
+  waBeep();
+  if (WA.browser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      const n = new Notification('Ayudante Albion — ' + (a.name || a.id), { body: msg, tag: a.uid });
+      n.onclick = () => { window.focus(); gotoTab('alerts'); };
+    } catch (e) {}
+  }
+}
+
+/* ---- render de la lista ---- */
+function waRender() {
+  const body = document.getElementById('waBody');
+  if (!body) return;
+  if (!WA.list.length) {
+    body.innerHTML = '<tr><td colspan="8" class="loading-cell">Sin alertas todavía. Creá una arriba o tocá 🔔 en una fila de Flipping.</td></tr>';
+    return;
+  }
+  body.innerHTML = WA.list.map(a => {
+    const cur = waValue(a);
+    const met = waMet(a, cur.value);
+    const state = !a.on
+      ? (a.fired ? '<span class="badge gold">🔔 disparada</span>' : '<span class="badge">apagada</span>')
+      : met ? '<span class="badge gold">🔔 ¡se cumple!</span>'
+            : '<span class="badge" style="color:var(--green);border-color:rgba(20,185,138,.4)">vigilando</span>';
+    const valTxt = cur.value == null ? '<span class="badge warn">sin datos</span>'
+      : (a.metric === 'flip' ? waPct(cur.value) : fmt(cur.value));
+    const route = a.metric === 'flip' && a.from ? '<span class="price-sub">' + a.from + ' → ' + a.to + '</span>' : '';
+    return `<tr>
+      <td><div class="item-cell">${iconImg(a.id, 'item-icon sm')}
+        <div><div class="item-name">${a.name || catalogName(a.id)}</div><div class="item-meta">${a.id}</div></div></div></td>
+      <td>${waCondText(a)}${route}</td>
+      <td class="num ${met ? 'pos' : ''}">${valTxt}</td>
+      <td class="num">${a.metric === 'flip' ? waPct(a.threshold) : fmt(a.threshold)}</td>
+      <td class="num ${met ? 'pos' : 'muted'}">${waDist(a, cur)}</td>
+      <td>${state}</td>
+      <td class="muted micro">${a.lastCheck ? new Date(a.lastCheck).toLocaleTimeString('es-AR') : '—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn micro-btn" data-wa-on="${a.uid}" title="${a.on ? 'Pausar' : 'Activar (se re-arma)'}">${a.on ? '⏸' : '▶'}</button>
+        <button class="btn micro-btn" data-wa-del="${a.uid}" title="Eliminar">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+function waStatus() {
+  const el = document.getElementById('waStatus');
+  if (!el) return;
+  const on = WA.list.filter(a => a.on).length;
+  if (!on) { el.textContent = 'Sin alertas activas — verificación en pausa.'; return; }
+  if (WA.running) { el.textContent = 'Verificando ' + on + ' alerta(s)…'; return; }
+  let t = on + ' alerta(s) activas · cada ' + waIntervalMin() + ' min · próxima en ' + waCd(WA.nextAt - Date.now());
+  if (WA.lastCheck) t += ' · última hace ' + Math.max(0, Math.round((Date.now() - WA.lastCheck) / 6e4)) + ' min';
+  if (WA.lastError) t += ' · ⚠ ' + WA.lastError + (WA.fails > 1 ? ' (' + WA.fails + ' fallos seguidos)' : '');
+  el.textContent = t;
+}
+// countdown vivo mientras la pestaña está a la vista
+setInterval(() => {
+  const p = document.getElementById('tab-alerts');
+  if (p && p.classList.contains('active') && WA.nextAt) waStatus();
+}, 1000);
+
+/* ---- formulario ---- */
+function waUpdateForm() {
+  const m = document.getElementById('waMetric').value;
+  document.getElementById('waCityWrap').style.display = m === 'flip' ? 'none' : '';
+  document.getElementById('waThLabel').textContent = m === 'flip' ? 'Ganancia mínima (%)' : 'Precio (plata)';
+  document.getElementById('waThreshold').placeholder = m === 'flip' ? 'ej: 15' : 'ej: 1500';
+}
+function waAddAlert() {
+  if (!WA.formItem) { alert('Elegí un ítem del buscador primero.'); return; }
+  const metric = document.getElementById('waMetric').value;
+  const th = parseFloat(document.getElementById('waThreshold').value);
+  if (!(th > 0)) { alert('Cargá un umbral mayor que 0' + (metric === 'flip' ? ' (porcentaje: 15 = 15%).' : '.')); return; }
+  if (WA.list.length >= 30) { alert('Máximo 30 alertas para no saturar la API de precios.'); return; }
+  WA.list.unshift({
+    uid: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id: WA.formItem, name: catalogName(WA.formItem), metric,
+    city: metric === 'flip' ? '' : document.getElementById('waCity').value,
+    threshold: th, once: document.getElementById('waOnce').checked,
+    on: true, fired: false, price: null, from: null, to: null, lastCheck: null, createdAt: Date.now(),
+  });
+  waSave();
+  waRender();
+  waRestart();
+  document.getElementById('waThreshold').value = '';
+}
+/* acceso rápido desde Flipping: prefill con la ruta/margen actual del ítem */
+function waPrefillFlip(id) {
+  gotoTab('alerts');
+  WA.formItem = id;
+  document.getElementById('waItemInput').value = catalogName(id);
+  const f = flipCalc(id);
+  const met = document.getElementById('waMetric');
+  const th = document.getElementById('waThreshold');
+  const city = document.getElementById('waCity');
+  if (f.profit > 0) {
+    met.value = 'flip';
+    th.value = Math.max(1, Math.floor(f.margin * 100));
+  } else if (f.bestBuy) {
+    met.value = 'sell';
+    city.value = f.bestBuy.city;
+    th.value = Math.floor(f.bestBuy.price * 1.1); // avisa si la venta baja 10% más
+  }
+  waUpdateForm();
+}
+function waPermUpdate() {
+  const btn = document.getElementById('waPerm');
+  if (!btn) return;
+  if (typeof Notification === 'undefined') { btn.style.display = 'none'; document.getElementById('waBrowser').closest('label').style.display = 'none'; return; }
+  btn.textContent = Notification.permission === 'granted' ? '✓ Permiso concedido'
+    : Notification.permission === 'denied' ? 'Bloqueado por el navegador' : 'Conceder permiso';
+  btn.disabled = Notification.permission !== 'default';
+}
+
+(function initWA() {
+  document.getElementById('waCity').innerHTML = CITIES.map(c => `<option${c === 'Caerleon' ? ' selected' : ''}>${c}</option>`).join('');
+  document.getElementById('waInterval').value = waIntervalMin();
+  document.getElementById('waSound').checked = WA.sound !== false;
+  document.getElementById('waBrowser').checked = !!WA.browser;
+  document.getElementById('waMetric').addEventListener('change', waUpdateForm);
+  document.getElementById('waAdd').addEventListener('click', waAddAlert);
+  document.getElementById('waNow').addEventListener('click', waTick);
+  document.getElementById('waInterval').addEventListener('change', e => {
+    WA.intervalMin = Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 5));
+    e.target.value = waIntervalMin();
+    waSaveCfg();
+    waRestart();
+  });
+  document.getElementById('waSound').addEventListener('change', e => { WA.sound = e.target.checked; waSaveCfg(); });
+  document.getElementById('waBrowser').addEventListener('change', e => {
+    WA.browser = e.target.checked;
+    if (WA.browser && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      Notification.requestPermission().then(p => {
+        if (p !== 'granted') { WA.browser = false; e.target.checked = false; }
+        waSaveCfg(); waPermUpdate();
+      }).catch(() => {});
+    } else waSaveCfg();
+  });
+  document.getElementById('waPerm').addEventListener('click', () => {
+    if (typeof Notification === 'undefined') return;
+    Notification.requestPermission().then(() => {
+      waPermUpdate();
+      const chk = document.getElementById('waBrowser');
+      if (Notification.permission === 'granted') { chk.checked = true; WA.browser = true; waSaveCfg(); }
+    }).catch(() => {});
+  });
+
+  // buscador de ítems (mismo patrón que el resto de la app)
+  const inpt = document.getElementById('waItemInput');
+  const res = document.getElementById('waItemResults');
+  inpt.addEventListener('input', () => {
+    const q = inpt.value.trim().toLowerCase();
+    if (q.length < 2 || !CATALOG) { res.classList.remove('open'); return; }
+    const hits = [];
+    for (const [id, es, en, tier, maxEnch] of CATALOG) {
+      if (es.toLowerCase().includes(q) || en.toLowerCase().includes(q) || id.toLowerCase().includes(q)) {
+        hits.push([id, es, tier]);
+        if (hits.length >= 25) break;
+      }
+    }
+    res.innerHTML = hits.map(([id, es, tier]) =>
+      `<div class="sr-item" data-id="${id}" data-name="${es}">${iconImg(id, 'item-icon sm')}<div><div class="n">${es}</div><div class="m">T${tier} · ${id}</div></div></div>`).join('');
+    res.classList.toggle('open', hits.length > 0);
+  });
+  res.addEventListener('click', e => {
+    const it = e.target.closest('.sr-item'); if (!it) return;
+    WA.formItem = it.dataset.id;
+    inpt.value = it.dataset.name;
+    res.classList.remove('open');
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) res.classList.remove('open'); });
+
+  document.getElementById('waBody').addEventListener('click', e => {
+    const tg = e.target.closest('[data-wa-on]');
+    if (tg) {
+      const a = WA.list.find(x => x.uid === tg.dataset.waOn);
+      if (a) { a.on = !a.on; if (a.on) a.fired = false; waSave(); waRender(); waRestart(); }
+      return;
+    }
+    const dl = e.target.closest('[data-wa-del]');
+    if (dl) { WA.list = WA.list.filter(x => x.uid !== dl.dataset.waDel); waSave(); waRender(); waRestart(); }
+  });
+
+  waPermUpdate();
+  waUpdateForm();
+  waRender();
+  waRestart();
+  // primera verificación poco después de cargar (no compite con el fetch inicial de flipping)
+  setTimeout(() => { if (WA.list.some(a => a.on)) waTick(); }, 4000);
 })();

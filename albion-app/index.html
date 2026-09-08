@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=55">
+<link rel="stylesheet" href="styles.css?v=56">
 <link rel="icon" href="img/logo-app.png">
 </head>
 <body>
@@ -64,6 +64,10 @@
             <span class="chip-ico dd-chip"><svg><use href="#i-meld"/></svg></span>
             <span><span class="dd-name">Artefactos</span></span>
           </button>
+          <button class="dd-item" data-tab="alerts" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-bell"/></svg></span>
+            <span><span class="dd-name">Alertas de precio</span></span>
+          </button>
         </div>
       </div>
       <button class="tab" data-tab="profile">Perfil</button>
@@ -103,6 +107,7 @@
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h7"/><path d="M9 12h7"/><path d="M9 16h4"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
   <symbol id="i-skull" viewBox="0 0 24 24"><path d="M12 3a8 8 0 0 0-8 8c0 3 1.5 5 3.5 6.2V20h9v-2.8C18.5 16 20 14 20 11a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.4"/><circle cx="15" cy="11" r="1.4"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19.5a2.5 2.5 0 0 0 4 0"/></symbol>
 </svg>
 
 <!-- ============ TAB: INICIO ============ -->
@@ -673,7 +678,8 @@
     <div class="micro muted">
       Flipping: comprá al precio de venta más bajo en una ciudad y vendé en otra donde el precio sea mayor.
       La ganancia ya descuenta impuestos. Con «Mejor ciudad» se elige automáticamente la ruta más rentable;
-      fijá origen y/o destino para planear tu propia ruta.
+      fijá origen y/o destino para planear tu propia ruta (se recuerda entre sesiones).
+      Con 🔔 en cada fila creás una alerta de precio.
     </div>
   </div>
 
@@ -699,6 +705,85 @@
   </div>
 
   <div class="panel" id="flipDetail" style="display:none"></div>
+</section>
+
+<!-- ============ TAB: ALERTAS DE PRECIO ============ -->
+<section id="tab-alerts" class="tab-panel">
+
+  <div class="panel controls">
+    <h2 class="section-title">Nueva alerta</h2>
+    <div class="micro muted" style="margin-bottom:12px">
+      La app revisa los precios cada pocos minutos <b>mientras esté abierta</b> y te avisa cuando se cumple la condición:
+      comprá cuando la venta cae, vendé cuando la orden de compra sube, o esperá a que aparezca un flip rentable.
+    </div>
+    <div class="control-grid">
+      <div class="control search-wrap">
+        <label>Ítem</label>
+        <input type="search" id="waItemInput" placeholder="Buscar ítem… (ej: bolsa, capa, tablones)" class="search" autocomplete="off">
+        <div class="search-results" id="waItemResults"></div>
+      </div>
+      <div class="control">
+        <label>Condición</label>
+        <select id="waMetric">
+          <option value="sell">La venta más baja en… cae a ≤</option>
+          <option value="buy">La mejor orden de compra en… sube a ≥</option>
+          <option value="flip">El mejor flip entre ciudades rinde ≥</option>
+        </select>
+      </div>
+      <div class="control" id="waCityWrap">
+        <label>Ciudad</label>
+        <select id="waCity"></select>
+      </div>
+      <div class="control">
+        <label id="waThLabel">Precio (plata)</label>
+        <input type="number" id="waThreshold" min="0" step="1" placeholder="ej: 1500">
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <div class="toggles" style="gap:12px">
+          <label class="check"><input type="checkbox" id="waOnce" checked> Apagar tras disparar</label>
+          <button class="btn primary" id="waAdd">+ Crear alerta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel controls">
+    <div class="control-grid">
+      <div class="control">
+        <label>Intervalo de verificación (min)</label>
+        <input type="number" id="waInterval" min="1" max="60" step="1" value="5">
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <div class="toggles" style="gap:14px;flex-wrap:wrap">
+          <label class="check"><input type="checkbox" id="waSound" checked> Sonido</label>
+          <label class="check"><input type="checkbox" id="waBrowser"> Notificaciones del navegador</label>
+          <button class="btn" id="waPerm">Conceder permiso</button>
+          <button class="btn" id="waNow">▶ Verificar ahora</button>
+        </div>
+      </div>
+      <div class="control" style="align-self:center">
+        <div class="micro muted" id="waStatus">—</div>
+      </div>
+    </div>
+    <div class="micro muted" style="margin-top:8px">
+      Los navegadores frenan los temporizadores en pestañas de fondo: la verificación pendiente corre al volver.
+      Los precios vienen de la API comunitaria y pueden llegar con demora. Máximo 30 alertas por turno de verificación.
+    </div>
+  </div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="waTable">
+      <thead><tr>
+        <th>Ítem</th><th>Condición</th><th class="num">Actual</th><th class="num">Umbral</th>
+        <th class="num">Falta</th><th>Estado</th><th>Última verificación</th><th></th>
+      </tr></thead>
+      <tbody id="waBody"><tr><td colspan="8" class="loading-cell">Sin alertas todavía.</td></tr></tbody>
+    </table>
+    <div class="micro muted pad">«Falta»: distancia del precio actual al umbral (en % de plata, o puntos porcentuales para el flip).
+      ⏸ pausa la alerta; ▶ la reactiva y la re-arma para volver a avisar.</div>
+  </div>
 </section>
 
 <!-- ============ TAB: FORMULAS ============ -->
@@ -870,6 +955,6 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=55"></script>
+<script src="app.js?v=56"></script>
 </body>
 </html>
