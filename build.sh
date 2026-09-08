@@ -60,6 +60,7 @@ ls -lh albion-exe/AyudanteAlbion.exe | awk '{print "   " $5 "  " $9}'
 echo "── 5/5 · Generando AyudanteAlbion.zip"
 rm -f AyudanteAlbion.zip
 zip -q -r AyudanteAlbion.zip \
+  LICENSE \
   albion-exe/AyudanteAlbion.exe albion-exe/LEEME.txt \
   albion-exe/main.go albion-exe/go.mod albion-app \
   -x "albion-app/node_modules/*" -x "albion-app/img/logo-opts/*" \
