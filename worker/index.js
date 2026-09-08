@@ -16,6 +16,17 @@
 const GAMEINFO = 'https://gameinfo.albiononline.com/api/gameinfo';
 const DECAPI = 'https://decapi.me/twitch/uptime/';
 
+/* gameinfo filtra bots desde el borde de Cloudflare (502 a la salida de
+   Workers). Darle a la subrequest pinta de navegador del sitio oficial es
+   lo único que suele pasar; sin esto el killboard solo vive en el exe. */
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+  'Origin': 'https://gameinfo.albiononline.com',
+  'Referer': 'https://gameinfo.albiononline.com/game-info-players/',
+};
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET',
@@ -35,7 +46,7 @@ export default {
 
     if (path === '/gameinfo' || path.startsWith('/gameinfo/')) {
       const target = GAMEINFO + path.slice('/gameinfo'.length) + url.search;
-      return forward(target, { '200-299': 60, '500-502': 5, '503-599': 0 });
+      return forward(target, { '200-299': 60, '500-502': 0, '503-599': 0 }, BROWSER_HEADERS);
     }
 
     if (path.startsWith('/twitch/uptime/')) {
@@ -51,12 +62,12 @@ export default {
 /* Reenvía la respuesta tal cual. El navegador ve no-store para que la
    app siempre traiga lo último al actualizar; la cache de borde (cf.
    cacheTtlByStatus) es la que descarga a los upstreams. */
-async function forward(target, ttlByStatus) {
+async function forward(target, ttlByStatus, extraHeaders) {
   let res;
   try {
     res = await fetch(target, {
       cf: { cacheTtlByStatus: ttlByStatus },
-      headers: { 'User-Agent': 'ayudante-albion (proxy gremio Spetsnaz Grail)' },
+      headers: extraHeaders || { 'User-Agent': 'ayudante-albion (proxy gremio Spetsnaz Grail)' },
     });
   } catch (e) {
     return plain('arriba sin respuesta', 502);
