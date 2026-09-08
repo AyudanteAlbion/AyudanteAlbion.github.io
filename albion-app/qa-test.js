@@ -176,7 +176,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       const res = bodyOf('psResult');
       check(res.includes('Caerleon') || res.includes('Martlock'), 'Buscador: matriz de ciudades renderizada', 'Buscador: sin matriz → ' + res.slice(0,150));
       const psReg = $('psResult').querySelectorAll('[onclick^="llPrefill"]');
-      check(psReg.length === 2, 'Buscador: 2 botones «Registrar» en cabecera', `Buscador: ${psReg.length} botones Registrar (esperaba 2)`);
+      check(psReg.length === 0, 'Buscador: sin botones «Registrar» (solo consulta, por pedido del usuario)', `Buscador: ${psReg.length} botones Registrar (esperaba 0)`);
       const hist = JSON.parse(window.localStorage.getItem('psHistory') || '[]');
       check(hist.length === 1, 'Buscador: historial guardado', 'Buscador: historial no se guardó');
     }
