@@ -1,5 +1,12 @@
 /* ===== Ayudante Albion — servidor Americas (West) ===== */
 const API = 'https://west.albion-online-data.com/api/v2/stats';
+/* Proxy opcional (Cloudflare Worker) para killboard y badges cuando la app
+   corre en un hosting estático sin server.py al lado. Vacío = no se usa.
+   Para pruebas, se puede pisar en runtime con localStorage.setItem('aaProxy', url). */
+const WORKER_URL = (() => {
+  try { return (localStorage.getItem('aaProxy') || '').replace(/\/+$/, ''); }
+  catch (e) { return ''; }
+})();
 const ICON = id => `https://render.albiononline.com/v1/item/${id}.png?size=64`;
 // Íconos locales (carpeta icons/): carga instantánea, sin depender del servicio de render.
 // Solo ítems base: los encantados (@1..@4) tienen ícono propio y van al servicio remoto.
@@ -3149,9 +3156,13 @@ const PF_FMT_DATE = ts => {
 };
 
 async function pfFetch(path) {
-  const r = await fetch('/gameinfo' + path);
-  if (!r.ok) throw new Error('gameinfo HTTP ' + r.status);
-  return r.json();
+  const local = await fetch('/gameinfo' + path).catch(() => null);
+  if (local && local.ok) return local.json();
+  if (WORKER_URL) {
+    const w = await fetch(WORKER_URL + '/gameinfo' + path).catch(() => null);
+    if (w && w.ok) return w.json();
+  }
+  throw new Error('gameinfo ' + (local ? 'HTTP ' + local.status : 'sin conexión'));
 }
 
 /* reintentos: el killboard oficial es intermitente (502 frecuentes) */
@@ -3896,6 +3907,12 @@ async function twFetch(chan) {
     const r = await fetch('/twitch/uptime/' + chan, { cache: 'no-store' });
     if (r.ok) return await r.text();
   } catch (e) {}
+  if (WORKER_URL) {
+    try {
+      const r = await fetch(WORKER_URL + '/twitch/uptime/' + chan, { cache: 'no-store' });
+      if (r.ok) return await r.text();
+    } catch (e) {}
+  }
   return null;
 }
 async function twCheckAll() {
