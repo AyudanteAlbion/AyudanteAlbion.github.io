@@ -38,8 +38,6 @@ Comportamientos comunes a las herramientas de cálculo:
 
 `AyudanteAlbion.exe` para Windows 10/11 x64. Al abrirlo levanta un servidor local en el puerto 3000 (usa otro si está ocupado)
 
-## Desarrollo
-
 Para trabajar localmente:
 
 ```bash
