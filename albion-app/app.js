@@ -2500,6 +2500,40 @@ function llRender() {
       LL.rows = []; llSave(); llRender();
     }
   });
+
+  /* ---- Respaldo completo: exporta/importa TODO el localStorage de la app ---- */
+  document.getElementById('bkExport').addEventListener('click', () => {
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      data[k] = localStorage.getItem(k);
+    }
+    const payload = { app: 'AyudanteAlbion', version: 1, exported: new Date().toISOString(), data };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    a.download = `ayudante-albion-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  });
+  document.getElementById('bkImport').addEventListener('click', () => document.getElementById('bkFile').click());
+  document.getElementById('bkFile').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const payload = JSON.parse(reader.result);
+        if (payload.app !== 'AyudanteAlbion' || !payload.data) throw new Error('formato');
+        const n = Object.keys(payload.data).length;
+        if (!confirm(`Respaldo del ${(payload.exported || '').slice(0, 10)} con ${n} claves.\n¿Restaurar? Se sobreescribirán los datos actuales de la app.`)) return;
+        for (const [k, v] of Object.entries(payload.data)) localStorage.setItem(k, v);
+        alert('Respaldo restaurado. La página se recargará para aplicar los cambios.');
+        location.reload();
+      } catch (err) {
+        alert('El archivo no parece ser un respaldo válido de Ayudante Albion.');
+      }
+    };
+    reader.readAsText(f);
+    e.target.value = '';
+  });
   llRender();
 })();
 

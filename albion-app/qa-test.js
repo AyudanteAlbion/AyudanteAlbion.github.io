@@ -202,6 +202,18 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     window.URL.revokeObjectURL = () => {};
     $('llExport').click(); await sleep(100);
     check(csvOk, 'Registro: exportación CSV dispara descarga', 'Registro: CSV no generó blob');
+    // Respaldo completo
+    let bkBlob = null;
+    window.URL.createObjectURL = (b) => { bkBlob = b; return 'blob:x'; };
+    $('bkExport').click(); await sleep(150);
+    if (!bkBlob) errors.push('Registro: respaldo completo no generó archivo');
+    else {
+      const bkTxt = await bkBlob.text();
+      const bk = JSON.parse(bkTxt);
+      check(bk.app === 'AyudanteAlbion' && bk.data && bk.data.tradeLog,
+        'Registro: respaldo completo incluye tradeLog con formato válido', 'Registro: respaldo malformado');
+    }
+    check($('bkImport') && $('bkFile'), 'Registro: botón e input de importar respaldo presentes', 'Registro: falta importar respaldo');
     // Resumen por ítem: 1 grupo (T4_BAG), P&L +20.000, +2.000/unidad vendida
     window.document.querySelector('#llFilter [data-f="byitem"]').click(); await sleep(150);
     const gRows = $('llBody').querySelectorAll('tr');
