@@ -42,23 +42,6 @@ Se apaga solo cuando la pestaña se cierra de verdad: la página envía un latid
 
 ## Desarrollo
 
-La app es HTML, CSS y JavaScript puro, sin framework ni paso de build:
-
-```
-albion-app/
-  index.html          estructura y todas las vistas
-  app.js              lógica, fórmulas y render
-  styles.css
-  server.py           servidor de desarrollo con dos proxies (ver abajo)
-  data/               recetas y tablas extraídas de ao-bin-dumps
-  icons/              íconos de ítems en local
-albion-exe/
-  main.go             servidor embebido en Go para el .exe
-.github/workflows/
-  release.yml         build y publicación automáticos al crear un tag
-build.sh              verificación, .exe y .zip en un solo comando
-```
-
 Para trabajar localmente:
 
 ```bash
