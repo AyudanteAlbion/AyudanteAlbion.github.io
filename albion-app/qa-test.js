@@ -84,7 +84,23 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     if (tr) { tr.click(); await sleep(200);
       check($('foodBody').querySelector('.craft-detail') !== null, 'Cocina: detalle expandido OK', 'Cocina: no se expandió el detalle');
       const regBtns = $('foodBody').querySelectorAll('.craft-detail [onclick^="llPrefill"]');
-      check(regBtns.length >= 2, `Cocina: ${regBtns.length} botones «Registrar» en el detalle`, 'Cocina: faltan botones Registrar en el detalle'); }
+      check(regBtns.length >= 2, `Cocina: ${regBtns.length} botones «Registrar» en el detalle`, 'Cocina: faltan botones Registrar en el detalle');
+      // favoritos: marcar ★, verificar guardado con nombre en español y panel en Inicio
+      const star = $('foodBody').querySelector('.fav-btn');
+      if (!star) errors.push('Cocina: falta botón ☆ Favorito');
+      else {
+        star.click(); await sleep(150);
+        const favs = JSON.parse(window.localStorage.getItem('favorites') || '[]');
+        check(favs.length === 1 && favs[0].tab === 'food' && !/^T\d_/.test(favs[0].name),
+          `Favoritos: guardado con nombre español («${(favs[0] || {}).name}»)`, 'Favoritos: no se guardó o quedó el ID → ' + JSON.stringify(favs));
+        window.eval(`gotoTab('home')`); await sleep(150);
+        check($('homeFavs').style.display !== 'none' && $('homeFavList').querySelectorAll('.fav-row').length === 1,
+          'Favoritos: panel visible en Inicio con 1 fila', 'Favoritos: panel de Inicio no renderiza');
+        $('homeFavList').querySelector('.fav-del').click(); await sleep(150);
+        check(JSON.parse(window.localStorage.getItem('favorites') || '[]').length === 0 && $('homeFavs').style.display === 'none',
+          'Favoritos: quitar desde Inicio oculta el panel', 'Favoritos: no se quitó desde Inicio');
+        window.eval(`gotoTab('food')`); await sleep(200);
+      } }
   } catch (e) { errors.push('Cocina expandir: ' + e.message); }
 
   // ── ALQUIMIA ──
