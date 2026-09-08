@@ -1,11 +1,13 @@
 /* ===== Ayudante Albion — servidor Americas (West) ===== */
 const API = 'https://west.albion-online-data.com/api/v2/stats';
-/* Proxy opcional (Cloudflare Worker) para killboard y badges cuando la app
-   corre en un hosting estático sin server.py al lado. Vacío = no se usa.
+/* Proxy de Cloudflare para killboard y badges (no envían CORS o hay que
+   proteger la cuota). El exe y el server local lo usan solo como respaldo.
    Para pruebas, se puede pisar en runtime con localStorage.setItem('aaProxy', url). */
+const AA_WORKER = 'https://ayudantealbion.josemesina21.workers.dev';
 const WORKER_URL = (() => {
-  try { return (localStorage.getItem('aaProxy') || '').replace(/\/+$/, ''); }
-  catch (e) { return ''; }
+  let v = '';
+  try { v = localStorage.getItem('aaProxy') || ''; } catch (e) {}
+  return (v || AA_WORKER).replace(/\/+$/, '');
 })();
 const ICON = id => `https://render.albiononline.com/v1/item/${id}.png?size=64`;
 // Íconos locales (carpeta icons/): carga instantánea, sin depender del servicio de render.
