@@ -122,6 +122,7 @@ function gotoTab(key) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + key));
   const mod = craftModules[key];
   if (mod && !mod.loadedOnce) mod.loadPrices();
+  if (key === 'sg') twCheckAll(); // refresca EN VIVO/OFFLINE al entrar a la pestaña
   window.scrollTo({ top: 0 });
 }
 document.getElementById('mainTabs').addEventListener('click', e => {
@@ -3854,4 +3855,77 @@ function waPermUpdate() {
   waRestart();
   // primera verificación poco después de cargar (no compite con el fetch inicial de flipping)
   setTimeout(() => { if (WA.list.some(a => a.on)) waTick(); }, 4000);
+})();
+
+/* ====================================================================
+   🎥 ESTADO DE TWITCH — indicador EN VIVO / OFFLINE en «Creadores de SG».
+   Fuente: DecAPI (https://decapi.me/twitch/uptime/{canal}), sin clave.
+   Responde el tiempo al aire si está transmitiendo o "…is offline".
+   Se prueba fetch directo primero; si falla (CORS/red, p. ej. hosting
+   estático), se cae al proxy local /twitch/ que incluyen server.py y el
+   .exe. Nunca rompe: si nada responde, la tarjeta se queda sin badge.
+   Refresca cada 60 s solo con la pestaña SG visible y cachea en
+   sessionStorage para no parpadear al cambiar de pestaña.
+   ==================================================================== */
+const TW = { chs: [], timer: null, checking: false };
+function twParse(txt) {
+  if (!txt) return null;
+  const t = String(txt).trim();
+  if (!t || /not exist|rate limit|slow down|whoa|error|unavailable/i.test(t)) return null;
+  if (/offline/i.test(t)) return { live: false };
+  const h = t.match(/(\d+)\s*h/i), m = t.match(/(\d+)\s*m/i);
+  const up = (h || m) ? [h ? h[1] + ' h' : '', m ? m[1] + ' min' : ''].filter(Boolean).join(' ') : t;
+  return { live: true, up };
+}
+function twPaint(c, st) {
+  const on = st && st.live === true, off = st && st.live === false;
+  c.badge.className = 'sg-live' + (on ? ' live' : off ? ' off' : '');
+  c.badge.innerHTML = on
+    ? '<span class="dot"></span>EN VIVO' + (st.up ? ' · ' + st.up : '')
+    : off ? '<span class="dot"></span>OFFLINE' : '';
+  c.el.classList.toggle('sg-live-on', !!on);
+}
+async function twFetch(chan) {
+  try {
+    const r = await fetch('https://decapi.me/twitch/uptime/' + chan, { cache: 'no-store' });
+    if (r.ok) return await r.text();
+  } catch (e) {}
+  try {
+    const r = await fetch('/twitch/uptime/' + chan, { cache: 'no-store' });
+    if (r.ok) return await r.text();
+  } catch (e) {}
+  return null;
+}
+async function twCheckAll() {
+  if (TW.checking || !TW.chs.length) return;
+  TW.checking = true;
+  try {
+    for (const c of TW.chs) {
+      const st = twParse(await twFetch(c.chan));
+      if (!st) continue; // sin respuesta confiable: conservar lo último
+      c.state = st;
+      twPaint(c, st);
+      Object.assign(TW.cache, { [c.chan]: st });
+      await new Promise(r => setTimeout(r, 350)); // escalonado, no saturar DecAPI
+    }
+    try { sessionStorage.setItem('twitchLive', JSON.stringify(TW.cache)); } catch (e) {}
+  } catch (e) {
+  } finally {
+    TW.checking = false;
+  }
+}
+(function initTwitch() {
+  document.querySelectorAll('.sg-creator[data-twitch]').forEach(el => {
+    TW.chs.push({ el, chan: el.dataset.twitch, badge: el.querySelector('.sg-live'), state: null });
+  });
+  if (!TW.chs.length) return;
+  try { TW.cache = JSON.parse(sessionStorage.getItem('twitchLive') || '{}'); } catch (e) { TW.cache = {}; }
+  if (!TW.cache) TW.cache = {};
+  // pintar lo último sabido al toque, y verificar enseguida + cada 60 s
+  TW.chs.forEach(c => { if (TW.cache[c.chan]) twPaint(c, TW.cache[c.chan]); });
+  twCheckAll();
+  TW.timer = setInterval(() => {
+    const p = document.getElementById('tab-sg');
+    if (p && p.classList.contains('active')) twCheckAll();
+  }, 60e3);
 })();
