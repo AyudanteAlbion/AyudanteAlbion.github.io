@@ -34,11 +34,9 @@ Comportamientos comunes a las herramientas de cálculo:
 - Cada receta o ítem se puede marcar como favorito y aparece agrupado en la pantalla de inicio.
 - Filtros, rutas, favoritos y registros se guardan en `localStorage` del navegador; desde el Registro de operaciones se exportan o importan como un único JSON de respaldo.
 
-## Ejecutable de escritorio
+## Ejecutable
 
-`AyudanteAlbion.exe` para Windows 10/11 x64. Al abrirlo levanta un servidor local en el puerto 3000 (usa otro si está ocupado), abre el navegador y sirve la app embebida: no requiere instalación, administración ni conexión más que para consultar los precios.
-
-Se apaga solo cuando la pestaña se cierra de verdad: la página envía un latido cada pocos segundos y el servidor se retira tras 15 minutos sin latidos. Mientras la pestaña esté abierta, el modo anti-pausa (activo por defecto) evita que el navegador congele o limite la app en segundo plano, usando una Web Lock, un loop de audio inaudible y Wake Lock con la app a la vista; el botón de rayo en la barra superior lo desactiva si preferís que el navegador ahorre recursos. La preferencia queda guardada.
+`AyudanteAlbion.exe` para Windows 10/11 x64. Al abrirlo levanta un servidor local en el puerto 3000 (usa otro si está ocupado)
 
 ## Desarrollo
 
