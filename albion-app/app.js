@@ -3370,7 +3370,9 @@ function pfRender(d, kills, deaths, guild) {
     if (q.length < 3) { res.classList.remove('open'); return; }
     searchTimer = setTimeout(async () => {
       try {
-        const data = await pfFetch('/search?q=' + encodeURIComponent(q));
+        // /search es tan caprichoso como el resto del killboard (404/502
+        // intermitentes): va por pfFetchRetry en vez de un intento único.
+        const data = await pfFetchRetry('/search?q=' + encodeURIComponent(q));
         const players = (data.players || []).slice(0, 12);
         res.innerHTML = players.length
           ? players.map(p => `<div class="sr-item" data-id="${p.Id}" data-name="${p.Name}">
