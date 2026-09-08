@@ -620,3 +620,10 @@ img { max-width: 100%; }
   box-shadow: 0 0 0 1px rgba(145, 70, 255, 0.35), 0 10px 28px -14px rgba(145, 70, 255, 0.65);
 }
 @media (prefers-reduced-motion: reduce) { .sg-live.live .dot { animation: none; } }
+
+/* ---- ⚡ anti-pausa (keep-alive) ---- */
+.top-action.ka-on {
+  color: var(--green); border-color: rgba(20, 185, 138, .45); background: rgba(20, 185, 138, .09);
+}
+.top-action.ka-on:hover { color: var(--green); border-color: var(--green); }
+.top-action.ka-on svg { fill: rgba(20, 185, 138, .25); }

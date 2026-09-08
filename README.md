@@ -31,6 +31,12 @@ Herramientas de mercado y crafteo para **Albion Online** (servidor Américas / W
 
 > El `.exe` compilado no está en el código fuente del repositorio (los binarios no van al historial de git); siempre se descarga desde Releases.
 
+**⚡ Anti-pausa** (activa por defecto): mientras la pestaña esté abierta, la app no se interrumpe —
+usa Web Lock (no freezing), audio inaudible (el navegador no limita los timers en segundo plano) y
+Wake Lock (no se apaga la pantalla con la app a la vista), con «catch-up» de lo vencido al volver.
+El botón ⚡ de la barra la apaga si preferís que el navegador ahorre recursos; cerrá la pestaña nomás
+y todo se libera solo.
+
 ## Estructura del repositorio
 
 ```
