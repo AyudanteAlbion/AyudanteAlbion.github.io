@@ -545,11 +545,9 @@ function createCraftModule(cfg) {
     const priced = m.rows.filter(x => !isNaN(x.c.profit));
     const profitable = priced.filter(x => x.c.profit > 0);
     const best = profitable.slice().sort((a, b) => b.c.profit - a.c.profit)[0];
-    const bestSpf = opts.useFocus ? profitable.slice().sort((a, b) => (b.c.spf || -1) - (a.c.spf || -1))[0] : null;
     $('Stats').innerHTML = `
       <div class="stat"><div class="k">Líneas rentables</div><div class="v ${profitable.length ? 'pos' : ''}">${profitable.length}</div><div class="s">de ${priced.length} con precio (${m.rows.length} mostradas)</div></div>
       <div class="stat"><div class="k">Mejor crafteo</div><div class="v">${best ? best.name : '—'}</div><div class="s">${best ? '+' + fmt(best.c.profit) + ' plata / lote' : 'sin crafteos rentables'}</div></div>
-      <div class="stat"><div class="k">Mejor plata/Foco</div><div class="v">${bestSpf ? fmt(bestSpf.c.spf) : (opts.useFocus ? '—' : 'off')}</div><div class="s">${bestSpf ? bestSpf.name : (opts.useFocus ? '' : 'activá "Usar Foco"')}</div></div>
       <div class="stat"><div class="k">Tasa de retorno</div><div class="v">${opts.craftCity ? $('RrrValue').textContent : pct(opts.rrr)}</div><div class="s">${opts.craftCity ? 'bonificado / resto en ' + opts.craftCity : (opts.useFocus ? 'con Foco (+59%)' : 'sin Foco')}</div></div>`;
 
     const body = $('Body');
