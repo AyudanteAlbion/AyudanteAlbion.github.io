@@ -100,7 +100,7 @@ func main() {
 	}
 	url := fmt.Sprintf("http://%s", ln.Addr().String())
 
-	// Gracia inicial: 90 s para que el navegador arranque aunque sea lento.
+	// Gracia inicial: 75 s para que el navegador arranque aunque sea lento.
 	lastBeat.Store(time.Now().Add(75 * time.Second).UnixNano())
 
 	// Vigilante: sin latidos por 15 MINUTOS → apagar. El latido llega cada
