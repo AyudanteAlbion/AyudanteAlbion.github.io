@@ -47,7 +47,7 @@ python3 server.py     # http://localhost:3000
 
 ## Precios
 
-Los precios reflejan el último escaneo de la comunidad, que puede tener varios minutos de demora. El Mercado Negro solo publica órdenes de compra (te compra a vos); por eso ahí la comparación se hace contra ese bid y no contra un precio de venta. Las alertas de precio solo funcionan con la app abierta, porque no hay servidor ni service worker de por medio. Todo cálculo es orientativo: el juego cambia, y ninguna de estas APIs lo garantiza.
+Los precios reflejan el último escaneo de la comunidad, que puede tener varios minutos de demora. El Mercado Negro solo publica órdenes de compra (te compra a vos); por eso ahí la comparación se hace contra ese bid y no contra un precio de venta. Las alertas de precio solo funcionan con la app abierta. Si la cierras se detiene el seguimiento.
 
 ## Créditos
 
