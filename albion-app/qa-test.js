@@ -241,6 +241,34 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       } }
   } catch (e) { errors.push('Alertas: ' + e.message); }
 
+  // ── TWITCH: indicador EN VIVO / OFFLINE en creadores de SG ──
+  try {
+    check(window.document.querySelectorAll('.sg-creator[data-twitch]').length === 3,
+      'Twitch: 3 tarjetas de creador con canal declarado', 'Twitch: cantidad de canales ≠ 3');
+    const saveFetch = window.fetch;
+    window.fetch = (u) => {
+      const url = String(u);
+      if (url.includes('/twitch/uptime/j4acksp4rr0w')) return Promise.resolve({ ok: true, text: () => Promise.resolve('2 hours, 5 minutes') });
+      if (url.includes('/twitch/uptime/santiagosigma')) return Promise.resolve({ ok: true, text: () => Promise.resolve('santiagosigma is offline') });
+      if (url.includes('/twitch/uptime/fraxuzve')) return Promise.resolve({ ok: true, text: () => Promise.resolve('Channel is offline') });
+      return saveFetch(u);
+    };
+    window.eval(`gotoTab('sg')`); await sleep(1600); // 3 checks escalonados (350 ms c/u)
+    const badge = chan => window.document.querySelector(`.sg-creator[data-twitch="${chan}"] .sg-live`);
+    check(badge('j4acksp4rr0w').classList.contains('live') && badge('j4acksp4rr0w').textContent.includes('EN VIVO')
+        && badge('j4acksp4rr0w').textContent.includes('2 h 5 min'),
+      'Twitch: badge EN VIVO con tiempo al aire en es-AR', 'Twitch: badge live → ' + badge('j4acksp4rr0w').textContent);
+    check(badge('santiagosigma').classList.contains('off') && badge('santiagosigma').textContent.includes('OFFLINE'),
+      'Twitch: badge OFFLINE', 'Twitch: badge offline → ' + badge('santiagosigma').textContent);
+    check(window.document.querySelector('.sg-creator[data-twitch="j4acksp4rr0w"]').classList.contains('sg-live-on')
+        && !window.document.querySelector('.sg-creator[data-twitch="santiagosigma"]').classList.contains('sg-live-on'),
+      'Twitch: glow morado solo en la tarjeta en vivo', 'Twitch: glow de tarjeta mal asignado');
+    const card = JSON.parse(window.sessionStorage.getItem('twitchLive') || '{}');
+    check(card.j4acksp4rr0w && card.j4acksp4rr0w.live === true && card.santiagosigma && card.santiagosigma.live === false,
+      'Twitch: estado cacheado en sessionStorage (no parpadea al cambiar de pestaña)', 'Twitch: cache → ' + JSON.stringify(card));
+    window.fetch = saveFetch;
+  } catch (e) { errors.push('Twitch: ' + e.message); }
+
   // ── TRANSMUTACIÓN ──
   window.eval(`gotoTab('transmute')`); await sleep(900);
   const trB = window.document.querySelector('#tab-transmute tbody');

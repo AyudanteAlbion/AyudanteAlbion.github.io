@@ -6,12 +6,34 @@ import urllib.request
 import urllib.error
 
 GAMEINFO = 'https://gameinfo.albiononline.com/api/gameinfo'
+DEC = 'https://decapi.me'
 
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/gameinfo/'):
             return self.proxy_gameinfo()
+        if self.path.startswith('/twitch/'):
+            return self.proxy_twitch()
         return super().do_GET()
+
+    def proxy_twitch(self):
+        """Estado EN VIVO/OFFLINE de canales de Twitch vía DecAPI (sin clave).
+        La app intenta el fetch directo primero; esto es el respaldo para
+        entornos donde DecAPI no manda CORS (hosting estático)."""
+        url = DEC + self.path[len('/twitch'):]
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'AyudanteAlbion/1.0'})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                body = r.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        except urllib.error.HTTPError as e:
+            self.send_error(e.code)
+        except Exception:
+            self.send_error(502)
 
     def proxy_gameinfo(self):
         url = GAMEINFO + self.path[len('/gameinfo'):]

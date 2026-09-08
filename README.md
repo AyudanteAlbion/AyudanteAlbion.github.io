@@ -94,6 +94,7 @@ node qa-test.js      # profundo: ejercita cada módulo con precios simulados,
 - **Precios en tiempo real**: [Albion Online Data Project](https://www.albion-online-data.com/) — solo servidor **Américas (West)**.
 - **Recetas y datos del juego**: [ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps).
 - **Perfil de jugador**: killboard oficial de Albion Online (gameinfo API), vía proxy local `/gameinfo/*` porque esa API no envía CORS.
+- **Estado en vivo de Twitch** (creadores de SG): vía [DecAPI](https://decapi.me/), sin clave; fallback por proxy local `/twitch/*` si el servicio no manda CORS.
 
 Los precios tienen la antigüedad del último escaneo de la comunidad; todos los valores son editables manualmente en la app.
 

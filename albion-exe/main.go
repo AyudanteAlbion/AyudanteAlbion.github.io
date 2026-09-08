@@ -78,6 +78,31 @@ func main() {
 		_, _ = io.Copy(w, resp.Body)
 	})
 
+	// Proxy hacia DecAPI: estado EN VIVO/OFFLINE de los canales de Twitch de
+	// los creadores. La app prueba el fetch directo primero; esto cubre los
+	// entornos donde el servicio no manda CORS (mismo truco que /gameinfo).
+	http.HandleFunc("/twitch/", func(w http.ResponseWriter, r *http.Request) {
+		lastBeat.Store(time.Now().UnixNano())
+		url := "https://decapi.me" + strings.TrimPrefix(r.URL.Path, "/twitch")
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadGateway)
+			return
+		}
+		req.Header.Set("User-Agent", "AyudanteAlbion/1.0")
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "twitch no disponible", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	})
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Cualquier pedido cuenta como señal de vida (navegación, íconos…)
 		lastBeat.Store(time.Now().UnixNano())
