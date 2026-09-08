@@ -1,0 +1,5 @@
+# Despliegue opcional del proxy con wrangler (wrangler deploy desde esta carpeta).
+# Si preferís pegar el código en el dashboard de Cloudflare, este archivo sobra.
+name = "aa-proxy"
+main = "index.js"
+compatibility_date = "2026-09-01"
