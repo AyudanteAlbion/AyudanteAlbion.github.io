@@ -22,6 +22,9 @@ import (
 //go:embed app
 var appFS embed.FS
 
+// User-Agent de navegador: necesario para que gameinfo no responda 502.
+const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
 // Momento del último latido, en UnixNano (atómico para acceso concurrente).
 var lastBeat atomic.Int64
 
@@ -64,7 +67,14 @@ func main() {
 			http.Error(w, "bad request", http.StatusBadGateway)
 			return
 		}
-		req.Header.Set("User-Agent", "AyudanteAlbion/1.0")
+		// gameinfo bloquea los User-Agent de bot desde el borde de Cloudflare
+		// (502). Mismas cabeceras que usa el Worker de Cloudflare: sin esto el
+		// killboard no carga en el ejecutable.
+		req.Header.Set("User-Agent", browserUA)
+		req.Header.Set("Accept", "application/json, text/plain, */*")
+		req.Header.Set("Accept-Language", "es-AR,es;q=0.9,en;q=0.8")
+		req.Header.Set("Origin", "https://gameinfo.albiononline.com")
+		req.Header.Set("Referer", "https://gameinfo.albiononline.com/game-info-players/")
 		client := &http.Client{Timeout: 15 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -83,7 +93,10 @@ func main() {
 	// entornos donde el servicio no manda CORS (mismo truco que /gameinfo).
 	http.HandleFunc("/twitch/", func(w http.ResponseWriter, r *http.Request) {
 		lastBeat.Store(time.Now().UnixNano())
-		url := "https://decapi.me" + strings.TrimPrefix(r.URL.Path, "/twitch")
+		// Ojo: en DecAPI el prefijo /twitch es parte de la ruta real
+		// (https://decapi.me/twitch/uptime/<canal>); recortarlo devolvía 404
+		// y el indicador EN VIVO/OFFLINE nunca aparecía en el ejecutable.
+		url := "https://decapi.me" + r.URL.Path
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			http.Error(w, "bad request", http.StatusBadGateway)
