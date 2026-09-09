@@ -29,6 +29,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem y exportación CSV |
 | Perfil | Fama, kills y muertes del personaje real desde el killboard oficial, más el cálculo del costo de Foco según tus especializaciones |
 | Gremio | Enlaces de Spetsnaz Grail y creadores del gremio con estado EN VIVO / OFFLINE de su canal de Twitch |
+| Acceso SG | Ingreso con cuenta de Discord; los miembros verificados del servidor desbloquean la Sala: ranking completo del gremio, stats, top semanal y vínculo con tu personaje |
 | Fórmulas | Referencia de todas las cuentas que usa la app, para poder verificarlas |
 
 Comportamientos comunes a las herramientas de cálculo:
@@ -36,6 +37,34 @@ Comportamientos comunes a las herramientas de cálculo:
 - Todo precio es editable a mano por ítem, ciudad y calidad, con un botón para volver al valor de la API.
 - Cada receta o ítem se puede marcar como favorito y aparece agrupado en la pantalla de inicio.
 - Filtros, rutas, favoritos y registros se guardan en `localStorage` del navegador; desde el Registro de operaciones se exportan o importan como un único JSON de respaldo.
+
+## Acceso de miembros SG (Discord)
+
+La app es pública, pero tiene una sección exclusiva: los miembros de Spetsnaz Grail ingresan con su cuenta de Discord y desbloquean la **Sala de miembros** (ranking completo del gremio desde el killboard, estadísticas, top semanal y vínculo con su personaje de Albion).
+
+Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudflare, que hace el intercambio OAuth2 (el secreto nunca llega al navegador), verifica si el usuario pertenece al servidor de Discord de SG y devuelve una sesión firmada válida 30 días. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros.
+
+### Puesta en marcha (una sola vez)
+
+1. **Crear la app de Discord**: en el [Developer Portal](https://discord.com/developers/applications) → New Application. Copiar el **Client ID** y el **Client Secret** (pestaña OAuth2). No hace falta bot.
+2. **Registrar el redirect**: en OAuth2 → Redirects, agregar exactamente:
+   `https://ayudantealbion.josemesina21.workers.dev/discord/callback`
+3. **Obtener el ID del servidor SG**: en Discord, Ajustes → Avanzado → Modo desarrollador activado; clic derecho sobre el servidor de Spetsnaz Grail → «Copiar ID del servidor».
+4. **Configurar el Worker**: en el dashboard de Cloudflare → Workers & Pages → `ayudanteAlbion` → Settings → Variables and Secrets:
+   - `DISCORD_CLIENT_ID` (texto) — el Client ID
+   - `SG_DISCORD_GUILD_ID` (texto) — el ID del servidor
+   - `DISCORD_CLIENT_SECRET` (**secreto**) — el Client Secret
+   - `AA_SESSION_KEY` (secreto, opcional) — clave para firmar sesiones; si no se define, se usa el Client Secret
+5. **Deployar**: el Worker se construye solo desde este repo al pushear a `main`.
+
+Hasta que las variables existan, la app funciona normal y el botón de Discord permanece oculto (`GET /discord/config` responde `configured: false`).
+
+### Probar sin tocar Discord
+
+```bash
+node worker/selftest.mjs     # 32 chequeos del OAuth con Discord simulado
+cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
+```
 
 ## Ejecutable
 
@@ -47,6 +76,8 @@ Para trabajar localmente:
 cd albion-app
 python3 server.py     # http://localhost:3000
 ```
+
+El server local incluye un simulador del consentimiento de Discord (`/discord/login`): permite probar el ingreso de miembros SG, la Sala y el caso no-miembro sin necesidad de configurar Cloudflare.
 
 ## Precios
 

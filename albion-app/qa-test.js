@@ -13,7 +13,10 @@ window.fetch = (url) => {
   const u = String(url);
   let data = [];
   try {
-    if (u.includes('.json') && !u.includes('albion-online-data')) {
+    if (u.includes('/discord/config')) {
+      // worker: acceso de miembros SG configurado
+      data = { configured: true, loginUrl: 'http://worker.test/discord/login' };
+    } else if (u.includes('.json') && !u.includes('albion-online-data')) {
       const f = u.match(/data\/[a-z_]+\.json/)[0];
       data = JSON.parse(fs.readFileSync(f, 'utf8'));
     } else if (u.includes('/prices/')) {
@@ -31,7 +34,13 @@ window.fetch = (url) => {
     } else if (u.includes('/gold')) {
       data = [{ price: 4000, timestamp: new Date().toISOString() }];
     } else if (u.includes('/gameinfo/search')) {
-      data = { players: [{ Id: 'qa1', Name: 'TestPlayer', GuildName: 'QA Guild', AllianceName: '' }], guilds: [] };
+      // búsqueda dependiente de la consulta: TestPlayer (Perfil), GammaSG (vínculo SG)
+      // y el gremio Spetsnaz Grail para resolver el ID de la Sala de miembros
+      const q = decodeURIComponent(u.split('q=')[1] || '').toLowerCase();
+      const players = [];
+      if (q.includes('testplayer')) players.push({ Id: 'qa1', Name: 'TestPlayer', GuildName: 'QA Guild', AllianceName: '' });
+      if (q.includes('gamma')) players.push({ Id: 'sgm3', Name: 'GammaSG', GuildName: 'Spetsnaz Grail', AllianceName: '' });
+      data = { players, guilds: [{ Id: 'sgg9', Name: 'Spetsnaz Grail', AllianceName: '' }] };
     } else if (u.includes('/gameinfo/players/qa1/topkills')) {
       data = [{ EventId: 71, TimeStamp: '2026-09-01T10:00:00Z', TotalVictimKillFame: 999999, numberOfParticipants: 5,
         Killer: { Name: 'TestPlayer', GuildName: 'QA Guild', AverageItemPower: 1500 },
@@ -48,6 +57,18 @@ window.fetch = (url) => {
       data = { Name: 'TestPlayer', Id: 'qa1', GuildName: 'QA Guild', GuildId: 'g9', AllianceName: '', AllianceTag: '',
         KillFame: 1000000, DeathFame: 500000, FameRatio: 2,
         LifetimeStatistics: { PvE: { Total: 99999 }, Gathering: { All: { Total: 5555 } }, Crafting: { Total: 7777 }, FishingFame: 1, FarmingFame: 2 } };
+    } else if (u.includes('/gameinfo/guilds/sgg9/members')) {
+      data = [
+        { Id: 'sgm1', Name: 'AlphaSG', GuildId: 'sgg9', GuildName: 'Spetsnaz Grail', KillFame: 900000, DeathFame: 100000 },
+        { Id: 'sgm2', Name: 'BetaSG', GuildId: 'sgg9', GuildName: 'Spetsnaz Grail', KillFame: 500000, DeathFame: 500000 },
+        { Id: 'sgm3', Name: 'GammaSG', GuildId: 'sgg9', GuildName: 'Spetsnaz Grail', KillFame: 200000, DeathFame: 400000 },
+      ];
+    } else if (u.includes('/gameinfo/guilds/sgg9/top')) {
+      data = [{ EventId: 91, TimeStamp: '2026-09-06T10:00:00Z', TotalVictimKillFame: 888888,
+        Killer: { Name: 'AlphaSG', GuildName: 'Spetsnaz Grail' },
+        Victim: { Name: 'EnemigoZvZ', GuildName: 'Otros' } }];
+    } else if (u.includes('/gameinfo/guilds/sgg9')) {
+      data = { Name: 'Spetsnaz Grail', MemberCount: 60, killFame: 9999999, DeathFame: 5555555, FounderName: 'J4ackSp4rr0w', Founded: '2020-05-01T00:00:00Z', AllianceName: '' };
     } else if (u.includes('/gameinfo/guilds/g9/top')) {
       data = [{ EventId: 81, TimeStamp: '2026-09-05T10:00:00Z', TotalVictimKillFame: 777777,
         Killer: { Name: 'GuildStar', GuildName: 'QA Guild' },
@@ -497,6 +518,94 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     for (const f of farm) kinds[f.kind] = (kinds[f.kind] || 0) + 1;
     check(farm.length === 109, `Datos granja: 109 farmables (${JSON.stringify(kinds)})`, `Datos granja: ${farm.length} (esperaba 109)`);
   } catch (e) { errors.push('Datos: ' + e.message); }
+
+  // ── ACCESO DE MIEMBROS SG (Discord) ──
+  try {
+    await sleep(400); // sgInit: dar tiempo a que /discord/config se resuelva
+    check($('sgLoginBtn') && !$('sgLoginBtn').hidden, 'SG: botón «Ingresar con Discord» visible', 'SG: botón de Discord no apareció (¿config sin resolver?)');
+    check($('sgRoomBody') !== null, 'SG: Sala de miembros presente en la pestaña SG', 'SG: falta #sgRoomBody');
+
+    // sin sesión → candado en la Sala + gateo del ranking en Perfil
+    window.eval(`gotoTab('sg')`); await sleep(200);
+    let room = bodyOf('sgRoomBody');
+    check(room.includes('Sala exclusiva') && room.includes('Ingresar con Discord'),
+      'SG: sin sesión muestra el candado con CTA de Discord', 'SG: candado ausente → ' + room.slice(0, 100));
+    try {
+      window.eval(`gotoTab('profile')`);
+      const mb = $('pfMembersBtn');
+      if (mb) { mb.click(); await sleep(150);
+        check(bodyOf('pfMembersBox').includes('Exclusivo para miembros SG'),
+          'SG: ranking de Perfil gateado sin sesión', 'SG: Perfil no gatea el ranking de miembros');
+      } else warns.push('SG: no encontré el botón de miembros en Perfil (¿perfil sin gremio cargado?)');
+    } catch (e) { errors.push('SG gate Perfil: ' + e.message); }
+
+    // sesión de NO miembro → tarjeta para unirse
+    const tokNo = btoa(JSON.stringify({ u: { i: '7', n: 'NoSocio', a: '' }, m: false, t: Date.now(), e: Date.now() + 86400000 })) + '.sig';
+    window.eval(`sgSaveSession('${tokNo}')`); await sleep(200);
+    room = bodyOf('sgRoomBody');
+    check(room.includes('NoSocio') && room.includes('No encontramos'),
+      'SG: no-miembro → tarjeta para unirse al Discord', 'SG: tarjeta de no-miembro mal → ' + room.slice(0, 100));
+    check($('sgAccount') && !$('sgAccount').hidden, 'SG: chip de cuenta visible con sesión activa', 'SG: chip de cuenta no apareció');
+
+    // sesión de miembro → Sala completa
+    const tokSi = btoa(JSON.stringify({ u: { i: '42', n: 'QAMiembro', a: '' }, m: true, t: Date.now(), e: Date.now() + 86400000 })) + '.sig';
+    window.eval(`sgSaveSession('${tokSi}')`); await sleep(1600);
+    room = bodyOf('sgRoomBody');
+    check(room.includes('QAMiembro') && room.includes('Ranking de miembros'),
+      'SG: miembro verificado entra a la Sala', 'SG: Sala no cargó → ' + room.slice(0, 120));
+    check(room.includes('AlphaSG') && room.includes('GammaSG'),
+      'SG: ranking con los miembros del gremio', 'SG: ranking sin miembros → ' + room.slice(0, 150));
+    check(room.includes('9999999') || room.includes('9.999.999') || room.includes('9,999,999'),
+      'SG: stats del gremio (fama)', 'SG: stats del gremio ausentes');
+    check(room.includes('EnemigoZvZ'), 'SG: mejores asesinatos de la semana', 'SG: top semanal ausente');
+    check(rowsIn('sgRankTable') >= 4, `SG: ${rowsIn('sgRankTable')} filas en el ranking (3 miembros + encabezado)`, 'SG: tabla del ranking sin filas');
+
+    // filtro por nombre
+    const rs = $('sgRankSearch');
+    if (rs) {
+      rs.value = 'alpha'; rs.dispatchEvent(new window.Event('input', { bubbles: true })); await sleep(150);
+      const flt = bodyOf('sgRankTable');
+      check(flt.includes('AlphaSG') && !flt.includes('BetaSG'), 'SG: filtro del ranking funciona', 'SG: filtro no filtró');
+      rs.value = ''; rs.dispatchEvent(new window.Event('input', { bubbles: true })); await sleep(150);
+    } else errors.push('SG: falta el buscador del ranking');
+
+    // orden por columna
+    const thName = window.document.querySelector('[data-sg-sort="name"]');
+    if (thName) { thName.click(); await sleep(150);
+      const first = window.document.querySelector('#sgRankTable tbody tr td:nth-child(2)');
+      check(first && first.textContent.includes('AlphaSG'), 'SG: orden alfabético al tocar la columna', 'SG: sort por nombre no ordena');
+    } else errors.push('SG: falta columna ordenable «Jugador»');
+
+    // vínculo de personaje: rechaza a un jugador de otro gremio y acepta a uno de SG
+    const ci = $('sgCharInput');
+    if (ci) {
+      ci.value = 'TestPlayer';
+      window.eval(`document.getElementById('sgCharBtn').click()`); await sleep(800);
+      check(bodyOf('sgCharBox').includes('no en Spetsnaz Grail'),
+        'SG: vínculo rechaza personajes de otro gremio', 'SG: vínculo aceptó a un jugador ajeno → ' + bodyOf('sgCharBox').slice(0, 90));
+      const ci2 = $('sgCharInput');
+      if (ci2) {
+        ci2.value = 'Gamma';
+        window.eval(`document.getElementById('sgCharBtn').click()`); await sleep(800);
+        const linked = bodyOf('sgRoomBody');
+        check(linked.includes('GammaSG') && linked.includes('(vos)'),
+          'SG: personaje vinculado queda marcado «(vos)»', 'SG: vínculo no marcó la fila → ' + linked.slice(0, 100));
+        check(window.document.querySelector('#sgRankTable tr.sg-me') !== null, 'SG: fila del personaje vinculado destacada', 'SG: fila sg-me ausente');
+      }
+    } else errors.push('SG: falta el formulario de vínculo de personaje');
+
+    // CSV del ranking
+    const csv = String(window.eval('sgMembersCSV()'));
+    check(csv.startsWith('puesto,jugador') && csv.includes('AlphaSG'), 'SG: CSV del ranking bien formado', 'SG: CSV mal → ' + csv.slice(0, 60));
+
+    // menú de cuenta + cierre de sesión
+    window.eval(`document.getElementById('sgAccountBtn').click()`); await sleep(150);
+    check(!$('sgAccountMenu').hidden && bodyOf('sgAccountMenu').includes('Cerrar sesión'),
+      'SG: menú de cuenta con cierre de sesión', 'SG: menú de cuenta no abre');
+    window.eval(`sgLogout()`); await sleep(200);
+    check(!$('sgLoginBtn').hidden && bodyOf('sgRoomBody').includes('Sala exclusiva'),
+      'SG: al cerrar sesión vuelve el candado', 'SG: logout no restauró el candado');
+  } catch (e) { errors.push('Acceso SG: ' + e.message); }
 
   finish();
 

@@ -96,6 +96,17 @@
       <button class="top-action" data-tab="ledgerlog" title="Registro de operaciones">
         <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h7"/><path d="M9 12h7"/><path d="M9 16h4"/></svg>
       </button>
+      <button class="top-action" id="sgLoginBtn" hidden title="Ingresar con Discord — acceso de miembros SG">
+        <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+      </button>
+      <div class="sg-account" id="sgAccount" hidden>
+        <button class="sg-account-btn" id="sgAccountBtn" title="Tu cuenta de Discord">
+          <img id="sgAccountImg" alt="" hidden>
+          <span class="sg-account-initial" id="sgAccountInitial"></span>
+          <span class="sg-account-dot" id="sgAccountDot"></span>
+        </button>
+        <div class="sg-account-menu" id="sgAccountMenu" hidden></div>
+      </div>
       <button class="top-action" id="kaBtn" aria-pressed="true" title="⚡ Anti-pausa: evita que el navegador congele la app en segundo plano">
         <svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
       </button>
@@ -907,6 +918,7 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
       <li>Recetas, Foco y valores de ítems: volcado oficial de datos del juego (ao-data / ao-bin-dumps).</li>
       <li>Perfil de jugador, asesinatos y gremios: killboard oficial de Albion Online (gameinfo, servidor Américas).</li>
       <li>Íconos de ítems: servicio oficial de renderizado de Albion Online.</li>
+      <li>Acceso de miembros SG: OAuth2 de Discord (identidad + servidores) resuelto por el proxy de Cloudflare; la app nunca ve el secreto.</li>
     </ul>
   </div>
 </section>
@@ -950,6 +962,15 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
     </div>
   </div>
 
+  <!-- Sala exclusiva: el contenido lo arma app.js según la sesión de Discord -->
+  <div class="panel sg-room" id="sgRoom">
+    <div class="sg-room-head">
+      <h2><span class="chip-ico sg-room-ico"><svg><use href="#i-lock"/></svg></span> Sala de miembros</h2>
+      <span class="micro muted">Exclusivo para miembros verificados del Discord de SG</span>
+    </div>
+    <div id="sgRoomBody"><div class="loading-cell">Cargando…</div></div>
+  </div>
+
   <div class="panel sg-creators">
     <div class="sg-creators-head">
       <h2><span class="chip-ico twitch-chip"><svg><use href="#i-twitch"/></svg></span> Creadores de Contenido Spetsnaz Grail</h2>
@@ -991,6 +1012,6 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=64"></script>
+<script src="app.js?v=65"></script>
 </body>
 </html>
