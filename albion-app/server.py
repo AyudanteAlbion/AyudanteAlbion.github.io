@@ -38,6 +38,8 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             return self.discord_login()
         if self.path.startswith('/discord/callback'):
             return self.discord_callback()
+        if self.path.startswith('/discord/verify'):
+            return self.discord_verify()
         return super().do_GET()
 
     # ---------- acceso SG: simulador de Discord (solo desarrollo) ----------
@@ -131,6 +133,28 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Location', back)
         self.send_header('Content-Length', '0')
         self.end_headers()
+
+    def discord_verify(self):
+        """Simula la verificación del Worker: solo acepta los tokens que emite
+        este mismo simulador (sufijo '.dev-sin-firma') y que no estén vencidos."""
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        raw = (q.get('s') or [''])[0]
+        out = {'valid': False}
+        try:
+            pl, sig = raw.split('.', 1)
+            if sig == 'dev-sin-firma':
+                pad = '=' * (-len(pl) % 4)
+                p = json.loads(base64.urlsafe_b64decode(pl + pad))
+                if p.get('e', 0) > int(time.time() * 1000) and p.get('u', {}).get('i'):
+                    out = {'valid': True, 'member': p.get('m') is True, 'user': p['u'], 'e': p['e']}
+        except Exception:
+            pass
+        body = json.dumps(out).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def proxy_twitch(self):
         """Estado EN VIVO/OFFLINE de canales de Twitch vía DecAPI (sin clave).

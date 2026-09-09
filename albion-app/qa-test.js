@@ -16,6 +16,18 @@ window.fetch = (url) => {
     if (u.includes('/discord/config')) {
       // worker: acceso de miembros SG configurado
       data = { configured: true, loginUrl: 'http://worker.test/discord/login' };
+    } else if (u.includes('/discord/verify')) {
+      // worker: solo confirma los tokens firmados con '.sig' (los de esta QA);
+      // cualquier otro (p. ej. forjado) se rechaza como haría el HMAC real
+      const raw = decodeURIComponent(u.split('s=')[1] || '');
+      const [pl, sig] = raw.split('.');
+      data = { valid: false };
+      if (sig === 'sig') {
+        try {
+          const p = JSON.parse(Buffer.from(pl.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+          if (p.e > Date.now()) data = { valid: true, member: p.m === true, user: p.u, e: p.e };
+        } catch (e) {}
+      }
     } else if (u.includes('.json') && !u.includes('albion-online-data')) {
       const f = u.match(/data\/[a-z_]+\.json/)[0];
       data = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -575,7 +587,24 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
 
     // sesión de NO miembro → tarjeta para unirse
     const tokNo = btoa(JSON.stringify({ u: { i: '7', n: 'NoSocio', a: '' }, m: false, t: Date.now(), e: Date.now() + 86400000 })) + '.sig';
-    window.eval(`sgSaveSession('${tokNo}')`); await sleep(200);
+    // sesión FORJADA (firma inválida) → el Worker la rechaza y no se activa nada
+    const tokFake = btoa(JSON.stringify({ u: { i: '666', n: 'Impostor', a: '' }, m: true, t: Date.now(), e: Date.now() + 86400000 })) + '.firma-falsa';
+    const fakeRes = await window.eval(`sgSaveSession('${tokFake}')`);
+    check(fakeRes === 'invalid' && !window.eval('sgIsMember()') && $('sgAccount').hidden
+      && !window.localStorage.getItem('aaDiscordSession'),
+      'SG: sesión forjada sin firma válida es rechazada', 'SG: sesión forjada aceptada → ' + fakeRes);
+    // sesión con nombre malicioso: el toast no debe interpretar HTML
+    window.eval(`waToast('t', '<img src=x onerror="window.__PWNED=1">')`);
+    const toast = window.document.querySelector('.wa-toast:last-child');
+    check(toast && !toast.querySelector('img') && toast.textContent.includes('<img'),
+      'SG: los toasts muestran el texto tal cual (sin HTML)', 'SG: toast interpreta HTML (XSS)');
+    // token en el hash con firma falsa: se limpia la URL y no entra
+    window.history.replaceState(null, '', '/#aa_session=' + encodeURIComponent(tokFake));
+    window.eval(`sgInit()`); await sleep(150);
+    check(!window.location.hash && !window.eval('sgIsMember()'),
+      'SG: retorno con token forjado limpia el hash y no abre la Sala', 'SG: token forjado en el hash aceptado');
+
+    await window.eval(`sgSaveSession('${tokNo}')`); await sleep(200);
     room = bodyOf('sgRoomBody');
     check(room.includes('NoSocio') && room.includes('No encontramos'),
       'SG: no-miembro → tarjeta para unirse al Discord', 'SG: tarjeta de no-miembro mal → ' + room.slice(0, 100));
@@ -584,13 +613,13 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     // El retorno de Discord debe abrir el Salón, incluso para no-miembros.
     window.eval(`gotoTab('sg', 'guild')`);
     window.history.replaceState(null, '', '/#aa_session=' + encodeURIComponent(tokNo));
-    window.eval(`sgInit()`); await sleep(100);
+    window.eval(`sgInit()`); await sleep(200);
     check(!$('sgPanelMembers').hidden && $('tab-sg').classList.contains('active') && !window.location.hash,
       'SG: retorno OAuth de no-miembro abre el Salón y limpia el hash', 'SG: retorno OAuth no abre el Salón');
 
     // sesión de miembro → Sala completa
     const tokSi = btoa(JSON.stringify({ u: { i: '42', n: 'QAMiembro', a: '' }, m: true, t: Date.now(), e: Date.now() + 86400000 })) + '.sig';
-    window.eval(`sgSaveSession('${tokSi}')`); await sleep(1600);
+    await window.eval(`sgSaveSession('${tokSi}')`); await sleep(1600);
     room = bodyOf('sgRoomBody');
     check(room.includes('QAMiembro') && room.includes('Ranking de miembros'),
       'SG: miembro verificado entra a la Sala', 'SG: Sala no cargó → ' + room.slice(0, 120));
@@ -628,7 +657,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     check(!$('sgPanelGuild').hidden && $('sgPanelMembers').hidden,
       'SG: enlace del inicio abre la información del gremio', 'SG: enlace del inicio no abre Spetsnaz Grail');
     window.history.replaceState(null, '', '/#aa_session=' + encodeURIComponent(tokSi));
-    window.eval(`sgInit()`); await sleep(100);
+    window.eval(`sgInit()`); await sleep(200);
     check(!$('sgPanelMembers').hidden && bodyOf('sgRoomBody').includes('Ranking de miembros'),
       'SG: retorno OAuth de miembro abre sus herramientas', 'SG: retorno de miembro incorrecto');
 

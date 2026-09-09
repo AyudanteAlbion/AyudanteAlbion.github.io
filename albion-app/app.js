@@ -3314,8 +3314,8 @@ function pfKillRow(ev, mode) {
   let html = `<tr class="clickable ${open ? 'expanded' : ''}" data-ev="${evKey}">
     <td class="muted micro">${PF_FMT_DATE(ev.TimeStamp)}</td>
     <td><div class="item-cell">${mh ? iconImg(mh, 'item-icon sm') : ''}<div>
-      <div class="item-name">${other.Name}</div>
-      <div class="item-meta">${other.GuildName || 'sin gremio'}${other.AllianceName ? ' · ' + other.AllianceName : ''}</div>
+      <div class="item-name">${sgEsc(other.Name)}</div>
+      <div class="item-meta">${sgEsc(other.GuildName || 'sin gremio')}${other.AllianceName ? ' · ' + sgEsc(other.AllianceName) : ''}</div>
     </div></div></td>
     <td class="num">${other.AverageItemPower ? fmt(other.AverageItemPower) : '—'}</td>
     <td class="num">${me.AverageItemPower ? fmt(me.AverageItemPower) : '—'}</td>
@@ -3344,11 +3344,11 @@ function pfEvDetail(ev) {
   return `<tr class="craft-detail"><td colspan="6">
     <div class="cd-grid">
       <div class="cd-section">
-        <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> ${ev.Killer.Name} (asesino) · IP ${fmt(ev.Killer.AverageItemPower) || '—'}</div>
+        <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> ${sgEsc(ev.Killer.Name)} (asesino) · IP ${fmt(ev.Killer.AverageItemPower) || '—'}</div>
         ${gearCol(ev.Killer)}
       </div>
       <div class="cd-section">
-        <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> ${ev.Victim.Name} (víctima) · IP ${fmt(ev.Victim.AverageItemPower) || '—'}</div>
+        <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> ${sgEsc(ev.Victim.Name)} (víctima) · IP ${fmt(ev.Victim.AverageItemPower) || '—'}</div>
         ${gearCol(ev.Victim)}
         ${inv.length ? `<div class="cd-line muted" style="margin-top:6px"><span>Inventario perdido</span><span>${inv.length} ítems</span></div>` : ''}
       </div>
@@ -3375,8 +3375,8 @@ function pfRender(d, kills, deaths, guild) {
       <div class="item-cell">
         <span class="chip-ico" style="width:44px;height:44px"><svg><use href="#i-user"/></svg></span>
         <div>
-          <div class="item-name" style="font-size:1.2rem">${d.Name}</div>
-          <div class="item-meta">${d.GuildName ? `Gremio: <b>${d.GuildName}</b>` : 'Sin gremio'}${d.AllianceName ? ` · Alianza: ${d.AllianceName}${d.AllianceTag ? ' [' + d.AllianceTag + ']' : ''}` : ''}</div>
+          <div class="item-name" style="font-size:1.2rem">${sgEsc(d.Name)}</div>
+          <div class="item-meta">${d.GuildName ? `Gremio: <b>${sgEsc(d.GuildName)}</b>` : 'Sin gremio'}${d.AllianceName ? ` · Alianza: ${sgEsc(d.AllianceName)}${d.AllianceTag ? ' [' + sgEsc(d.AllianceTag) + ']' : ''}` : ''}</div>
         </div>
       </div>
     </div>
@@ -3390,12 +3390,12 @@ function pfRender(d, kills, deaths, guild) {
 
   ${guild ? `
   <div class="panel">
-    <div class="cd-title" style="padding:14px 14px 4px">Gremio: ${guild.Name}</div>
+    <div class="cd-title" style="padding:14px 14px 4px">Gremio: ${sgEsc(guild.Name)}</div>
     <div class="stats" style="padding:0 14px 14px">
-      <div class="stat"><div class="k">Miembros</div><div class="v">${fmt(guild.MemberCount)}</div><div class="s">${guild.AllianceName ? 'alianza ' + guild.AllianceName : 'sin alianza'}</div></div>
+      <div class="stat"><div class="k">Miembros</div><div class="v">${fmt(guild.MemberCount)}</div><div class="s">${guild.AllianceName ? 'alianza ' + sgEsc(guild.AllianceName) : 'sin alianza'}</div></div>
       <div class="stat"><div class="k">Fama de asesinatos</div><div class="v">${fmt(guild.killFame)}</div><div class="s">todo el gremio</div></div>
       <div class="stat"><div class="k">Fama de muertes</div><div class="v">${fmt(guild.DeathFame)}</div><div class="s">todo el gremio</div></div>
-      <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${guild.Founded ? new Date(guild.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">por ${guild.FounderName || '—'}</div></div>
+      <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${guild.Founded ? new Date(guild.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">por ${sgEsc(guild.FounderName || '—')}</div></div>
     </div>
     <div id="pfMembersBox" style="padding:0 14px 14px; display:flex; gap:8px; flex-wrap:wrap">
       <button class="btn" id="pfMembersBtn">Ver miembros del gremio (ranking de fama)</button>
@@ -3466,9 +3466,9 @@ function pfRender(d, kills, deaths, guild) {
         const data = await pfFetchRetry('/search?q=' + encodeURIComponent(q));
         const players = (data.players || []).slice(0, 12);
         res.innerHTML = players.length
-          ? players.map(p => `<div class="sr-item" data-id="${p.Id}" data-name="${p.Name}">
+          ? players.map(p => `<div class="sr-item" data-id="${sgEsc(p.Id)}" data-name="${sgEsc(p.Name)}">
               <span class="chip-ico" style="flex:none"><svg><use href="#i-user"/></svg></span>
-              <div><div class="n">${p.Name}</div><div class="m">${p.GuildName || 'sin gremio'}${p.AllianceName ? ' · ' + p.AllianceName : ''}</div></div>
+              <div><div class="n">${sgEsc(p.Name)}</div><div class="m">${sgEsc(p.GuildName || 'sin gremio')}${p.AllianceName ? ' · ' + sgEsc(p.AllianceName) : ''}</div></div>
             </div>`).join('')
           : '<div class="sr-item"><div><div class="n muted">Sin resultados</div><div class="m">Verificá el nombre exacto del personaje</div></div></div>';
         res.classList.add('open');
@@ -3526,10 +3526,10 @@ function pfRender(d, kills, deaths, guild) {
             <thead><tr><th>Fecha</th><th>Asesino</th><th>Víctima</th><th class="num">IP víctima</th><th class="num">Fama</th></tr></thead>
             <tbody>${top.slice(0, 10).map(ev => `<tr>
               <td class="muted micro">${PF_FMT_DATE(ev.TimeStamp)}</td>
-              <td><b>${ev.Killer.Name}</b></td>
+              <td><b>${sgEsc(ev.Killer.Name)}</b></td>
               <td><div class="item-cell">${ev.Victim.Equipment?.MainHand ? iconImg(ev.Victim.Equipment.MainHand.Type, 'item-icon sm') : ''}<div>
-                <div class="item-name">${ev.Victim.Name}</div>
-                <div class="item-meta">${ev.Victim.GuildName || 'sin gremio'}</div></div></div></td>
+                <div class="item-name">${sgEsc(ev.Victim.Name)}</div>
+                <div class="item-meta">${sgEsc(ev.Victim.GuildName || 'sin gremio')}</div></div></div></td>
               <td class="num">${ev.Victim.AverageItemPower ? fmt(ev.Victim.AverageItemPower) : '—'}</td>
               <td class="num pos">${fmt(ev.TotalVictimKillFame)}</td>
             </tr>`).join('')}</tbody>
@@ -3557,9 +3557,9 @@ function pfRender(d, kills, deaths, guild) {
           <div class="table-wrap"><table class="ledger">
             <thead><tr><th>#</th><th>Jugador</th><th class="num">Fama de asesinatos</th><th class="num">Fama de muertes</th><th class="num">Ratio</th></tr></thead>
             <tbody>${sorted.map((m, i) => `
-              <tr class="clickable" data-member-id="${m.Id}" data-member-name="${m.Name}" title="Ver el perfil de ${m.Name}">
+              <tr class="clickable" data-member-id="${sgEsc(m.Id)}" data-member-name="${sgEsc(m.Name)}" title="Ver el perfil de ${sgEsc(m.Name)}">
                 <td class="muted">${i + 1}</td>
-                <td><b>${m.Name}</b></td>
+                <td><b>${sgEsc(m.Name)}</b></td>
                 <td class="num">${fmt(m.KillFame)}</td>
                 <td class="num">${fmt(m.DeathFame)}</td>
                 <td class="num ${(m.KillFame || 0) >= (m.DeathFame || 0) ? 'pos' : 'neg'}">${m.DeathFame > 0 ? ((m.KillFame || 0) / m.DeathFame).toFixed(2) : '—'}</td>
@@ -3735,7 +3735,14 @@ function waToast(title, msg, cls) {
   if (!stack) { stack = document.createElement('div'); stack.id = 'waToasts'; stack.className = 'wa-toasts'; document.body.appendChild(stack); }
   const d = document.createElement('div');
   d.className = 'wa-toast' + (cls ? ' ' + cls : '');
-  d.innerHTML = `<div style="min-width:0"><div class="t-n">${title}</div><div class="t-m">${msg}</div></div>`;
+  /* título y mensaje como texto plano: acá pueden llegar datos que no
+     controlamos (nombre de Discord, nombre de personaje), nunca HTML */
+  const wrap = document.createElement('div');
+  wrap.style.minWidth = '0';
+  const tn = document.createElement('div'); tn.className = 't-n'; tn.textContent = String(title == null ? '' : title);
+  const tm = document.createElement('div'); tm.className = 't-m'; tm.textContent = String(msg == null ? '' : msg);
+  wrap.append(tn, tm);
+  d.appendChild(wrap);
   d.addEventListener('click', () => { gotoTab('alerts'); d.remove(); });
   stack.appendChild(d);
   while (stack.children.length > 4) stack.firstChild.remove();
@@ -4204,29 +4211,68 @@ function sgFromB64url(s) {
   try { return JSON.parse(decodeURIComponent(escape(bin))); } catch (e) { return JSON.parse(bin); }
 }
 
-/* decodifica y valida una sesión; ignora la firma (la valida el Worker
-   al emitirla: en un sitio estático el candado de la Sala es de UX) */
+/* chequeo estructural previo (formato y vencimiento). NO alcanza para
+   confiar: la firma HMAC solo la puede comprobar el Worker, que tiene la
+   clave. Toda sesión pasa por sgVerifySession antes de usarse. */
 function sgDecodeSession(raw) {
   try {
-    const pl = String(raw).split('.')[0];
-    const s = sgFromB64url(pl);
-    if (!s || !s.u || !s.u.i) return null;
-    if (!s.e || s.e < Date.now()) return null; // vencida
+    const str = String(raw);
+    if (str.length > 4096 || !str.includes('.')) return null;
+    const s = sgFromB64url(str.split('.')[0]);
+    if (!s || typeof s !== 'object' || !s.u || !s.u.i) return null;
+    if (typeof s.e !== 'number' || s.e < Date.now()) return null; // vencida
     return s;
   } catch (e) { return null; }
+}
+
+/* Pregunta al servidor si la sesión es auténtica (firma + vigencia).
+   Primero el proxy local (server.py / exe), después el Worker.
+   Devuelve {valid, member, user, e} o null si nadie pudo responder. */
+async function sgVerifySession(raw) {
+  const q = '/discord/verify?s=' + encodeURIComponent(String(raw));
+  const ask = async u => {
+    const r = await fetch(u, { cache: 'no-store' });
+    if (!r || !r.ok) return null;
+    const j = await r.json();
+    return (j && typeof j === 'object' && typeof j.valid === 'boolean') ? j : null;
+  };
+  try { const j = await ask(q); if (j) return j; } catch (e) {}
+  if (WORKER_URL) { try { const j = await ask(WORKER_URL + q); if (j) return j; } catch (e) {} }
+  return null;
 }
 
 function sgIsMember() { return !!(SG.session && SG.session.m === true); }
 function sgChar() { try { return JSON.parse(localStorage.getItem(SG_KEYS.char) || 'null'); } catch (e) { return null; } }
 
-function sgSaveSession(raw) {
-  const s = sgDecodeSession(raw);
-  if (!s) return false;
-  SG.session = s;
-  try { localStorage.setItem(SG_KEYS.sess, raw); } catch (e) {}
+/* Guarda y activa una sesión SOLO si el servidor la confirma.
+   Resultado: 'ok' · 'invalid' (falsa o vencida) · 'unverified' (sin respuesta). */
+let sgVerifySeq = 0;
+async function sgSaveSession(raw) {
+  const seq = ++sgVerifySeq;
+  if (!sgDecodeSession(raw)) return 'invalid';
+  const v = await sgVerifySession(raw);
+  if (seq !== sgVerifySeq) return 'stale'; // llegó otra sesión mientras tanto
+  if (!v) {
+    SG.session = null;
+    sgPaintAccount(); sgRoomRender();
+    return 'unverified';
+  }
+  if (!v.valid || !v.user || !v.user.i) {
+    SG.session = null;
+    try { localStorage.removeItem(SG_KEYS.sess); } catch (e) {}
+    sgPaintAccount(); sgRoomRender();
+    return 'invalid';
+  }
+  /* se usa lo que dijo el servidor, no lo que venía en el token */
+  SG.session = {
+    u: { i: String(v.user.i), n: String(v.user.n || 'miembro'), a: String(v.user.a || '') },
+    m: v.member === true,
+    e: typeof v.e === 'number' ? v.e : Date.now(),
+  };
+  try { localStorage.setItem(SG_KEYS.sess, String(raw)); } catch (e) {}
   sgPaintAccount();
   sgRoomRender();
-  return true;
+  return 'ok';
 }
 
 function sgLogout() {
@@ -4678,17 +4724,25 @@ document.addEventListener('input', e => {
 function sgInit() {
   /* ¿volvimos del OAuth con una sesión o un error? (fragmento: no viaja al servidor) */
   const h = location.hash || '';
+  let hashSession = null;
   if (h.includes('#aa_session=')) {
-    const raw = decodeURIComponent(h.split('#aa_session=')[1] || '');
-    if (sgSaveSession(raw)) {
-      const s = SG.session;
-      waToast(s.m ? '🔐 ¡Ingreso correcto!' : '🔐 Ingresaste con Discord',
-        s.m ? `Hola ${s.u.n}: Salón de miembros desbloqueado.` : `Hola ${s.u.n}: no vimos Spetsnaz Grail entre tus servidores.`, s.m ? '' : 'err');
-    } else {
-      waToast('🔐 Ingreso con Discord', 'La sesión que llegó está vencida o es inválida. Probá de nuevo.', 'err');
-    }
-    gotoTab('sg', 'members');
+    let raw = '';
+    try { raw = decodeURIComponent(h.split('#aa_session=')[1] || ''); } catch (e) { raw = ''; }
+    hashSession = raw;
+    /* el token sale de la URL antes de cualquier otra cosa */
     history.replaceState(null, '', location.pathname + location.search);
+    gotoTab('sg', 'members');
+    sgSaveSession(raw).then(res => {
+      if (res === 'ok') {
+        const s = SG.session;
+        waToast(s.m ? '🔐 ¡Ingreso correcto!' : '🔐 Ingresaste con Discord',
+          s.m ? `Hola ${s.u.n}: Salón de miembros desbloqueado.` : `Hola ${s.u.n}: no vimos Spetsnaz Grail entre tus servidores.`, s.m ? '' : 'err');
+      } else if (res === 'unverified') {
+        waToast('🔐 Ingreso con Discord', 'No pudimos confirmar la sesión con el servidor. Revisá la conexión y probá de nuevo.', 'err');
+      } else if (res === 'invalid') {
+        waToast('🔐 Ingreso con Discord', 'La sesión que llegó está vencida o es inválida. Probá de nuevo.', 'err');
+      }
+    });
   } else if (h.includes('#aa_error=')) {
     const code = (h.split('#aa_error=')[1] || '').trim();
     const msgs = {
@@ -4701,14 +4755,17 @@ function sgInit() {
     history.replaceState(null, '', location.pathname + location.search);
   }
 
-  /* sesión guardada */
-  try {
-    const raw = localStorage.getItem(SG_KEYS.sess);
-    if (raw) {
-      const s = sgDecodeSession(raw);
-      if (s) SG.session = s; else localStorage.removeItem(SG_KEYS.sess);
-    }
-  } catch (e) {}
+  /* sesión guardada: se vuelve a confirmar con el servidor en cada carga.
+     Si el token no pasa el chequeo local se descarta directo. */
+  if (hashSession === null) {
+    try {
+      const raw = localStorage.getItem(SG_KEYS.sess);
+      if (raw) {
+        if (sgDecodeSession(raw)) sgSaveSession(raw);
+        else localStorage.removeItem(SG_KEYS.sess);
+      }
+    } catch (e) {}
+  }
 
   /* ¿el acceso está activo? Primero el proxy local (server.py de desarrollo
      trae un simulador de Discord); si no, el Worker de producción */
