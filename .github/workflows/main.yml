@@ -1,0 +1,29 @@
+name: Notificar Actualizaciones a Discord
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Enviar notificación a Discord
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            MESSAGE="🚀 **¡Nueva Versión: ${{ github.event.release.tag_name }}!**\n\n${{ github.event.release.body }}\n\n🔗 Link: ${{ github.event.release.html_url }}"
+          else
+            MESSAGE=" **El README de Ayudante Albion ha sido actualizado.**\n\n🔗 Ver cambios: ${{ github.event.head_commit.url }}"
+          fi
+          
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\": \"$MESSAGE\"}" \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
