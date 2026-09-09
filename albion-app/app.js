@@ -4209,6 +4209,7 @@ const SG = {
   tab: 'guild',      // la información pública se muestra primero
   session: null,      // {u:{i,n,a}, m, t, e} decodificado del token
   configured: false,  // ¿el Worker tiene las variables de Discord?
+  configMissing: [],  // nombres de las variables que faltan (diagnóstico)
   loginUrl: '',
   room: { guildId: null, guildData: null, members: null, top: [], loadedOnce: false, loading: false, sort: 'kf', dir: -1, filter: '' },
 };
@@ -4333,13 +4334,37 @@ function sgLogout() {
   waToast('🔐 Sesión cerrada', 'Seguís pudiendo usar toda la app pública.');
 }
 
-function sgLogin() {
+async function sgLogin() {
   if (!SG.configured) {
-    waToast('🔐 Acceso SG', 'El ingreso con Discord todavía no está activo en esta versión.', 'err');
-    return;
+    /* puede que el Worker se haya configurado después de cargar la página:
+       se vuelve a preguntar antes de dar el ingreso por inactivo */
+    await sgRefreshConfig();
+    if (!SG.configured) {
+      waToast('🔐 Acceso SG', 'El ingreso con Discord todavía no está activo en el servidor de la app. Probá más tarde.', 'err');
+      return;
+    }
   }
   const base = SG.loginUrl || (WORKER_URL + '/discord/login');
   location.href = base + '?redirect=' + encodeURIComponent(location.origin + location.pathname);
+}
+
+/* vuelve a consultar /discord/config y repinta lo que depende de ella */
+let sgCfgBusy = false;
+async function sgRefreshConfig() {
+  if (sgCfgBusy) return;
+  sgCfgBusy = true;
+  try {
+    const cfg = await sgFetchConfig();
+    const changed = cfg.configured !== SG.configured || cfg.loginUrl !== SG.loginUrl;
+    SG.configured = cfg.configured;
+    SG.loginUrl = cfg.loginUrl;
+    SG.configMissing = cfg.missing || [];
+    if (changed) {
+      sgPaintAccount();
+      const p = document.getElementById('tab-sg');
+      if (p && p.classList.contains('active')) sgRoomRender();
+    }
+  } finally { sgCfgBusy = false; }
 }
 
 /* avatar: imagen de Discord con inicial de respaldo */
@@ -4420,7 +4445,8 @@ function sgLockCard(msg) {
     <button class="btn btn-discord" data-sg-login>
       ${SG_DC_LOGO} Ingresar con Discord
     </button>`
-    : `<div class="micro muted"><svg class="title-ico"><use href="#i-tools"/></svg> El ingreso con Discord se está configurando — disponible en breve.</div>`}
+    : `<div class="micro muted"><svg class="title-ico"><use href="#i-tools"/></svg> El ingreso con Discord se está configurando — disponible en breve.</div>
+    <button class="btn" data-sg-recheck><svg class="btn-ico"><use href="#i-refresh"/></svg> Comprobar de nuevo</button>`}
   </div>`;
 }
 
@@ -4769,6 +4795,15 @@ document.addEventListener('click', e => {
   if (t.closest('#sgAccountBtn')) { sgToggleMenu(); return; }
   if (t.closest('[data-sg-login]')) { sgToggleMenu(false); sgLogin(); return; }
   if (t.closest('[data-sg-verify]')) { sgToggleMenu(false); sgLogin(); return; }
+  if (t.closest('[data-sg-recheck]')) {
+    const b = t.closest('[data-sg-recheck]'); b.disabled = true;
+    sgRefreshConfig().then(() => {
+      b.disabled = false;
+      if (SG.configured) waToast('🔐 Acceso SG', 'El ingreso con Discord ya está activo.');
+      else waToast('🔐 Acceso SG', 'Todavía no está activo en el servidor de la app.', 'err');
+    });
+    return;
+  }
   if (t.closest('[data-sg-logout]')) { sgLogout(); return; }
   if (t.closest('[data-sg-goto-room]')) { sgToggleMenu(false); gotoTab('sg', 'members'); return; }
   if (t.closest('[data-sg-refresh]')) { SG.room.loadedOnce = false; sgRoomRender(); return; }
@@ -5347,6 +5382,7 @@ function sgInit() {
       config: 'El acceso con Discord todavía no está activo en el servidor de la app.',
       discord: 'Discord rechazó el código de ingreso. Probá de nuevo.',
       gremio: 'No pudimos consultar tu membresía en el servidor SG. Probá en un rato.',
+      cancelado: 'Cancelaste la autorización en Discord. Cuando quieras, volvé a tocar «Ingresar con Discord».',
     };
     waToast('🔐 Ingreso con Discord', msgs[code] || 'No se pudo completar el ingreso.', 'err');
     gotoTab('sg', 'members');
@@ -5371,10 +5407,19 @@ function sgInit() {
     const cfg = await sgFetchConfig();
     SG.configured = cfg.configured;
     SG.loginUrl = cfg.loginUrl;
+    SG.configMissing = cfg.missing || [];
     sgPaintAccount();
     const p = document.getElementById('tab-sg');
     if (p && p.classList.contains('active')) sgRoomRender();
+    if (!cfg.configured && cfg.missing && cfg.missing.length) {
+      console.info('[Ayudante Albion] Acceso SG inactivo: al Worker le falta ' + cfg.missing.join(', '));
+    }
   })();
+  /* si el acceso no estaba activo, se vuelve a consultar al volver a la
+     pestaña (típico: se cargan las variables en Cloudflare y se vuelve acá) */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !SG.configured) sgRefreshConfig();
+  });
 }
 
 async function sgFetchConfig() {
@@ -5382,7 +5427,7 @@ async function sgFetchConfig() {
     const r = await fetch('/discord/config', { cache: 'no-store' });
     if (r && r.ok) {
       const c = await r.json();
-      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login' };
+      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login', missing: [] };
     }
   } catch (e) {}
   if (WORKER_URL) {
@@ -5391,11 +5436,12 @@ async function sgFetchConfig() {
       if (r && r.ok) {
         const c = await r.json();
         if (c && typeof c === 'object' && !Array.isArray(c)) {
-          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login') };
+          const missing = Array.isArray(c.missing) ? c.missing.map(String).slice(0, 8) : [];
+          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login'), missing };
         }
       }
     } catch (e) {}
   }
-  return { configured: false, loginUrl: '' };
+  return { configured: false, loginUrl: '', missing: [] };
 }
 sgInit();

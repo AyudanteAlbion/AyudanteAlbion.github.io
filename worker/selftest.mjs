@@ -74,6 +74,10 @@ const w0 = createWorker({});
 check((await (await w0.fetch(new Request('http://w.test/health'))).text()) === 'ok', 'health responde ok', 'health no responde');
 const cfg0 = await (await w0.fetch(new Request('http://w.test/discord/config'))).json();
 check(cfg0.configured === false, 'discord/config: configured=false', 'discord/config mal sin configurar → ' + JSON.stringify(cfg0));
+check(Array.isArray(cfg0.missing) && cfg0.missing.length === 4 && cfg0.missing.includes('AA_SESSION_KEY'),
+  'discord/config: lista las 4 variables faltantes (sin valores)', 'discord/config: missing → ' + JSON.stringify(cfg0.missing));
+const cb0 = await w0.fetch(new Request('http://w.test/discord/callback?code=x&state=abc.def'));
+check(cb0.status === 200 && (await cb0.text()).includes('venció'), 'callback sin configurar → página amable (sin 500)', 'callback sin configurar → ' + cb0.status);
 const login0 = await w0.fetch(new Request('http://w.test/discord/login?redirect=http%3A%2F%2Flocalhost%3A3000%2F'));
 check(login0.status === 503, 'discord/login sin configurar → 503 con guía', 'discord/login sin configurar → status ' + login0.status);
 
@@ -179,6 +183,10 @@ console.log('\n— Config y rutas previas —');
 const w6 = createWorker(ENV);
 const cfg1 = await (await w6.fetch(new Request('http://w.test/discord/config'))).json();
 check(cfg1.configured === true && /\/discord\/login$/.test(cfg1.loginUrl || ''), 'discord/config: configured=true + loginUrl', 'discord/config → ' + JSON.stringify(cfg1));
+check(Array.isArray(cfg1.missing) && cfg1.missing.length === 0, 'discord/config configurado: missing vacío', 'discord/config configurado: missing → ' + JSON.stringify(cfg1.missing));
+const cbDeny = await w6.fetch(new Request('http://w.test/discord/callback?error=access_denied&state=' + encodeURIComponent(state)));
+check(cbDeny.status === 302 && (cbDeny.headers.get('location') || '').includes('#aa_error=cancelado'),
+  'callback: usuario canceló en Discord → #aa_error=cancelado', 'callback cancelado → ' + cbDeny.headers.get('location'));
 const cfgNoSecret = await (await createWorker({ DISCORD_CLIENT_ID: 'x', SG_DISCORD_GUILD_ID: 'y' }).fetch(new Request('http://w.test/discord/config'))).json();
 check(cfgNoSecret.configured === false, 'config: falta el secret → configured=false', 'config sin secret → ' + JSON.stringify(cfgNoSecret));
 const r404 = await w6.fetch(new Request('http://w.test/no-existe'));

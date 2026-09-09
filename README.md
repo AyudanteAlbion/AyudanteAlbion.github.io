@@ -99,14 +99,16 @@ Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudfl
 2. **Registrar el redirect**: en OAuth2 → Redirects, agregar exactamente:
    `https://ayudantealbion.josemesina21.workers.dev/discord/callback`
 3. **Obtener el ID del servidor SG**: en Discord, Ajustes → Avanzado → Modo desarrollador activado; clic derecho sobre el servidor de Spetsnaz Grail → «Copiar ID del servidor».
-4. **Configurar el Worker**: en el dashboard de Cloudflare → Workers & Pages → `ayudanteAlbion` → Settings → Variables and Secrets:
-   - `DISCORD_CLIENT_ID` (texto) — el Client ID
-   - `SG_DISCORD_GUILD_ID` (texto) — el ID del servidor
-   - `DISCORD_CLIENT_SECRET` (**secreto**) — el Client Secret
+4. **Configurar el Worker**: en el dashboard de Cloudflare → Workers & Pages → `ayudantealbion` → Settings → Variables and Secrets. Cargar las tres como **Secret** (los secretos sobreviven a los redeploys; las de tipo Text se borran si el `wrangler.toml` no las declara):
+   - `DISCORD_CLIENT_ID` (secret) — el Client ID
+   - `DISCORD_CLIENT_SECRET` (secret) — el Client Secret
+   - `AA_SESSION_KEY` (secret) — clave HMAC de sesiones: `openssl rand -hex 32` (≥32 caracteres, distinta del Client Secret)
+
+   `SG_DISCORD_GUILD_ID` ya viene en `wrangler.toml` (`998772435048472628`, el ID del servidor de Spetsnaz Grail; es público) y `keep_vars = true` evita que los deploys pisen lo cargado en el dashboard.
    - `AA_SESSION_KEY` (**secreto, obligatorio**) — clave para firmar sesiones: al menos 32 caracteres aleatorios y distinta del Client Secret (por ejemplo `openssl rand -hex 32`). Sin ella el acceso SG queda desactivado.
 5. **Deployar**: el Worker se construye solo desde este repo al pushear a `main`.
 
-Hasta que las variables existan, la app funciona normal: el Salón muestra las herramientas disponibles y un aviso de configuración pendiente, sin ofrecer un botón de ingreso que no funciona. El botón de Discord de la barra permanece oculto (`GET /discord/config` responde `configured: false`).
+Hasta que las variables existan, la app funciona normal: el Salón muestra las herramientas disponibles, un aviso de configuración pendiente y un botón «Comprobar de nuevo», sin ofrecer un ingreso que no funciona. El botón de Discord de la barra permanece oculto. Para saber qué falta: `GET /discord/config` responde `{"configured":false,"missing":["AA_SESSION_KEY", …]}` (solo nombres, nunca valores) y la app lo deja en la consola del navegador. Apenas el Worker queda configurado, la app lo detecta sola al volver a la pestaña o al tocar «Comprobar de nuevo», sin recargar.
 
 ### Probar sin tocar Discord
 

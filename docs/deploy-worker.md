@@ -5,6 +5,21 @@ El Worker `ayudantealbion` está conectado al repo (Workers Builds): cada push a
 **no** viaja con el código son las variables/secretos; esas se cargan una vez en el
 dashboard.
 
+## Diagnóstico (2026-09-09)
+
+`GET /discord/config` en producción respondía `{"configured":false}` y `/discord/login`
+decía que faltaban `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` o `SG_DISCORD_GUILD_ID`.
+El código del Worker y de la app estaban completos: el problema era de configuración.
+
+Causa probable: Workers Builds despliega con `npx wrangler deploy`, y **sin `keep_vars`
+en `wrangler.toml` cada deploy borra las variables de tipo Text del dashboard** (los
+Secrets no se tocan). Si las variables se cargaron como Text, desaparecían con el
+siguiente merge a `main`. Ahora `wrangler.toml` lleva `keep_vars = true` y declara
+`SG_DISCORD_GUILD_ID` (es público). El resto se carga como **Secret**, una sola vez.
+
+Desde ahora `/discord/config` devuelve además `missing: [...]` con los nombres de lo
+que falta, para no tener que adivinar.
+
 ## Orden correcto (importante)
 
 1. Configurar `AA_SESSION_KEY` en el Worker **antes** de mergear.
@@ -44,14 +59,18 @@ Requisitos que el Worker comprueba: al menos 32 caracteres y **distinta** del
 `DISCORD_CLIENT_SECRET`. Si no se cumplen, `/discord/login` responde 503 con un
 mensaje que lo explica.
 
-Mientras estás ahí, confirmar que existen las otras tres:
+Mientras estás ahí, confirmar que existen las demás. Cargarlas todas como **Secret**
+(así ningún deploy las borra):
 
-| Variable | Tipo |
-|---|---|
-| `DISCORD_CLIENT_ID` | Text |
-| `DISCORD_CLIENT_SECRET` | Secret |
-| `SG_DISCORD_GUILD_ID` | Text |
-| `AA_SESSION_KEY` | Secret (nueva) |
+| Variable | Tipo | De dónde sale |
+|---|---|---|
+| `DISCORD_CLIENT_ID` | Secret | Developer Portal → app → OAuth2 → Client ID |
+| `DISCORD_CLIENT_SECRET` | Secret | Developer Portal → app → OAuth2 → Client Secret (Reset si no lo tenés) |
+| `AA_SESSION_KEY` | Secret | `openssl rand -hex 32` |
+| `SG_DISCORD_GUILD_ID` | (ya está en `wrangler.toml`) | `998772435048472628` |
+
+Y en el Developer Portal de Discord, OAuth2 → Redirects debe tener exactamente:
+`https://ayudantealbion.josemesina21.workers.dev/discord/callback`
 
 > Efecto colateral esperado: al cambiar la clave de firma, las sesiones que la gente
 > tenía guardadas dejan de validar. La app las descarta sola y muestra el botón de
@@ -82,7 +101,8 @@ W=https://ayudantealbion.josemesina21.workers.dev
 
 # a) el worker nuevo está arriba y configurado
 curl -s $W/health                    # → ok
-curl -s $W/discord/config            # → {"configured":true,"loginUrl":"..."}
+curl -s $W/discord/config            # → {"configured":true,"loginUrl":"...","missing":[]}
+                                     #   si dice configured:false, `missing` nombra lo que falta
 
 # b) la ruta nueva existe y rechaza basura
 curl -s "$W/discord/verify?s=abc.def"    # → {"valid":false}
@@ -107,8 +127,13 @@ En el navegador, en https://ayudantealbion.github.io (Ctrl+F5 para saltar caché
 
 ## Si algo sale mal
 
-- **`configured:false` después del deploy** → falta `AA_SESSION_KEY`, es más corta que
-  32 o es igual al Client Secret. Revisar Variables and Secrets.
+- **`configured:false` después del deploy** → mirar `missing` en `/discord/config`.
+  Si nombra `AA_SESSION_KEY` con aclaración, es más corta que 32 o igual al Client Secret.
+  Si las variables «desaparecen» tras un merge: estaban como Text y el deploy las borró;
+  recargarlas como Secret (con `keep_vars = true` ya no debería pasar).
+- **Vuelve con `#aa_error=discord`** → el Redirect URI no coincide exactamente con el
+  registrado en el Developer Portal, o el Client Secret está vencido/reseteado.
+- **Vuelve con `#aa_error=cancelado`** → el usuario tocó «Cancelar» en Discord; no es error.
 - **Botón de Discord no aparece** → mismo caso, o la web vieja está cacheada (Ctrl+F5).
 - **«No pudimos confirmar la sesión»** → el Worker todavía no tiene `/discord/verify`
   (deploy en curso o fallido). Mirar Deployments en Cloudflare.
