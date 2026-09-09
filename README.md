@@ -85,33 +85,51 @@ node smoke-test.js
 
 ## Acceso de miembros SG (Discord)
 
+> **Estado: activo.** El ingreso con Discord funciona en producción (web y ejecutable) desde el 9 de septiembre de 2026. `GET https://ayudantealbion.josemesina21.workers.dev/discord/config` responde `{"configured":true, …, "missing":[]}`.
+
 La app es pública, pero tiene una sección exclusiva: los miembros de Spetsnaz Grail ingresan con su cuenta de Discord y desbloquean el **Salón de miembros** (ranking completo del gremio desde el killboard, estadísticas, top semanal y vínculo con su personaje de Albion).
 
 La pestaña **SG** tiene dos subpestañas: **Spetsnaz Grail**, pública y seleccionada por defecto, y **Salón de miembros**, con el acceso y las herramientas. El retorno desde Discord y el acceso desde el menú de cuenta abren directamente el Salón. Las subpestañas también se recorren con las flechas del teclado, Inicio y Fin.
 
-Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudflare, que hace el intercambio OAuth2 (el secreto nunca llega al navegador), verifica si el usuario pertenece al servidor de Discord de SG y devuelve una sesión firmada válida 30 días. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros.
+### Cómo ingresar (usuarios)
 
-**Alcance del acceso actual:** el Worker verifica la membresía al ingresar y firma la sesión con HMAC. La app **no confía en ninguna sesión** (ni la que vuelve de Discord ni la guardada en el navegador) hasta que `GET /discord/verify` del Worker confirma firma y vigencia; una sesión forjada o alterada se descarta. Los datos que hoy muestra el Salón siguen siendo públicos (killboard); cualquier futura herramienta con datos privados debe servirlos desde el Worker validando la sesión, nunca desde el sitio estático.
+1. Pestaña **SG → Salón de miembros** (o el botón de Discord de la barra superior) → **«Ingresar con Discord»**.
+2. Discord pide autorizar a *Ayudante Albion* para ver tu identidad y la lista de tus servidores. Solo eso: no se piden mensajes, ni amigos, ni permisos de bot.
+3. Volvés a la app con la sesión activa. Si estás en el servidor de Discord de SG, el Salón se desbloquea; si no, aparece la invitación al servidor y el botón «Volver a verificar» para reintentar después de unirte.
+4. La sesión dura 30 días y se revalida con el servidor en cada carga. «Cerrar sesión» está en el menú del avatar.
 
-### Puesta en marcha (una sola vez)
+Si tocás «Cancelar» en Discord, la app simplemente avisa y no pasa nada más.
 
-1. **Crear la app de Discord**: en el [Developer Portal](https://discord.com/developers/applications) → New Application. Copiar el **Client ID** y el **Client Secret** (pestaña OAuth2). No hace falta bot.
-2. **Registrar el redirect**: en OAuth2 → Redirects, agregar exactamente:
-   `https://ayudantealbion.josemesina21.workers.dev/discord/callback`
-3. **Obtener el ID del servidor SG**: en Discord, Ajustes → Avanzado → Modo desarrollador activado; clic derecho sobre el servidor de Spetsnaz Grail → «Copiar ID del servidor».
-4. **Configurar el Worker**: en el dashboard de Cloudflare → Workers & Pages → `ayudanteAlbion` → Settings → Variables and Secrets:
-   - `DISCORD_CLIENT_ID` (texto) — el Client ID
-   - `SG_DISCORD_GUILD_ID` (texto) — el ID del servidor
-   - `DISCORD_CLIENT_SECRET` (**secreto**) — el Client Secret
-   - `AA_SESSION_KEY` (**secreto, obligatorio**) — clave para firmar sesiones: al menos 32 caracteres aleatorios y distinta del Client Secret (por ejemplo `openssl rand -hex 32`). Sin ella el acceso SG queda desactivado.
-5. **Deployar**: el Worker se construye solo desde este repo al pushear a `main`.
+### Cómo funciona (técnico)
 
-Hasta que las variables existan, la app funciona normal: el Salón muestra las herramientas disponibles y un aviso de configuración pendiente, sin ofrecer un botón de ingreso que no funciona. El botón de Discord de la barra permanece oculto (`GET /discord/config` responde `configured: false`).
+El botón «Ingresar con Discord» lleva a `/discord/login` del Worker de Cloudflare, que redirige a la pantalla de autorización de Discord con `scope=identify guilds` y un `state` firmado (HMAC, 10 minutos). Discord vuelve a `/discord/callback`, donde el Worker canjea el código con el Client Secret (que nunca llega al navegador), consulta `GET /users/@me` y `GET /users/@me/guilds`, y comprueba si entre los servidores figura el de Spetsnaz Grail. Devuelve a la app una sesión firmada válida 30 días por el fragmento de la URL (`#aa_session=…`, que no viaja a ningún servidor).
+
+**La app no confía en ninguna sesión** (ni la que vuelve de Discord ni la guardada en el navegador) hasta que `GET /discord/verify` del Worker confirma firma y vigencia; una sesión forjada o alterada se descarta. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros. Los datos que hoy muestra el Salón siguen siendo públicos (killboard); cualquier futura herramienta con datos privados debe servirlos desde el Worker validando la sesión, nunca desde el sitio estático.
+
+Rutas del Worker: `GET /discord/config` (`{configured, loginUrl, missing[]}`), `GET /discord/login?redirect=`, `GET /discord/callback`, `GET /discord/verify?s=`. Códigos de vuelta a la app: `#aa_error=config` (Worker sin variables), `discord` (código rechazado o redirect URI mal registrado), `gremio` (Discord no respondió la lista de servidores) y `cancelado` (el usuario canceló).
+
+### Configuración del Worker (mantenimiento)
+
+Todo vive en Cloudflare → Workers & Pages → `ayudantealbion` → Settings → **Variables and Secrets**. Ya está cargado; esto es la referencia para reponerlo si hace falta:
+
+| Variable | Tipo | Valor |
+|---|---|---|
+| `DISCORD_CLIENT_ID` | Secret | Client ID de la app en el [Developer Portal](https://discord.com/developers/applications) (OAuth2 → Client information) |
+| `DISCORD_CLIENT_SECRET` | Secret | Client Secret de la misma pantalla (si se perdió: *Reset Secret*) |
+| `AA_SESSION_KEY` | Secret | Clave HMAC de sesiones: `openssl rand -hex 32` (≥32 caracteres, distinta del Client Secret) |
+| `SG_DISCORD_GUILD_ID` | `[vars]` en `wrangler.toml` | `998772435048472628` (ID del servidor de Spetsnaz Grail; es público) |
+
+En el Developer Portal, OAuth2 → Redirects debe tener exactamente `https://ayudantealbion.josemesina21.workers.dev/discord/callback`. No hace falta bot.
+
+**Por qué todo va como Secret:** Workers Builds despliega con `wrangler deploy` en cada push a `main`, y ese comando borra las variables de tipo *Text* del dashboard que no estén declaradas en `wrangler.toml`. Así fue como el acceso quedó inactivo un tiempo: `DISCORD_CLIENT_ID` estaba como Text y desapareció con un merge. Los Secrets nunca se borran, y además `wrangler.toml` lleva `keep_vars = true` como segunda red. Al cambiar `AA_SESSION_KEY`, las sesiones vigentes dejan de validar y la gente vuelve a ingresar con un clic; no hay nada más que avisar.
+
+Si alguna variable falta, la app no se rompe: el Salón muestra las herramientas, un aviso de configuración pendiente y el botón «Comprobar de nuevo»; el botón de Discord de la barra se oculta. `GET /discord/config` nombra lo que falta en `missing` (nunca valores) y la app lo deja en la consola del navegador. Apenas el Worker vuelve a estar configurado, la app lo detecta sola al volver a la pestaña, sin recargar. La guía paso a paso y el checklist de verificación están en [`docs/deploy-worker.md`](docs/deploy-worker.md).
 
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs     # 52 chequeos del OAuth y la verificación de sesión con Discord simulado
+node worker/selftest.mjs           # 59 chequeos del OAuth, la verificación de sesión y el proxy, con Discord simulado
+cd albion-app && python3 server.py # server local con simulador de consentimiento de Discord (miembro / no miembro)
 cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
 ```
 
