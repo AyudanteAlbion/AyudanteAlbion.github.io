@@ -1,6 +1,6 @@
 name: 🏗️ Build y publicar release
 
-# Con un tag v* o una ejecución manual: verifica sintaxis y las regresiones,
+# Con un tag v*, un release publicado o una ejecución manual: verifica las regresiones,
 # compila el .exe de Windows y genera el .zip, y publica todo como Release.
 # Corre en GitHub Actions porque necesita red libre para bajar Go y Node deps.
 
@@ -8,6 +8,8 @@ name: 🏗️ Build y publicar release
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
