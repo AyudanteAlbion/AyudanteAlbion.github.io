@@ -3,7 +3,7 @@
 # Build de distribución de Ayudante Albion
 #   1. Verifica sintaxis de app.js
 #   2. Corre la prueba de humo (jsdom)
-#   3. Sincroniza la app dentro de albion-exe/app/ (+ heartbeat)
+#   3. Sincroniza la app dentro de albion-exe/app/ (el heartbeat vive en app.js)
 #   4. Compila AyudanteAlbion.exe (Windows, sin consola)
 #   5. Genera AyudanteAlbion.zip
 # Uso: ./build.sh [--skip-tests]
@@ -26,21 +26,7 @@ fi
 
 echo "── 3/5 · Sincronizando albion-exe/app/"
 mkdir -p albion-exe/app
-python3 - << 'EOF'
-h = open('albion-app/index.html').read()
-hb = '''<script>
-/* Latido para el ejecutable de escritorio: avisa al servidor que la app
-   sigue abierta. El servidor tolera hasta 15 minutos sin latidos (los
-   navegadores frenan los timers de pestañas en segundo plano), así que
-   la app aguanta inactividad; solo se apaga al cerrar la pestaña de
-   verdad. En el server.py normal, /alive devuelve 404 y esto no hace nada. */
-setInterval(() => { fetch('/alive').catch(() => {}); }, 3000);
-</script>
-</body>'''
-h2 = h.replace('</body>', hb)
-assert '/alive' in h2, 'no se pudo insertar el heartbeat'
-open('albion-exe/app/index.html', 'w').write(h2)
-EOF
+cp albion-app/index.html albion-exe/app/index.html
 cp albion-app/app.js albion-app/styles.css albion-exe/app/
 rm -rf albion-exe/app/data && cp -r albion-app/data albion-exe/app/
 rm -rf albion-exe/app/icons && cp -r albion-app/icons albion-exe/app/

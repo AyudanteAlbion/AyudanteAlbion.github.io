@@ -3,8 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Política de seguridad de contenido: solo se ejecuta app.js (sin scripts inline ni
+     de terceros); la red queda acotada a las APIs que la app usa de verdad.
+     Si se agrega un servicio nuevo, hay que sumarlo acá o el navegador lo bloquea. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob: https://render.albiononline.com https://cdn.discordapp.com;
+  connect-src 'self' https://west.albion-online-data.com https://ayudantealbion.josemesina21.workers.dev https://decapi.me https://gameinfo.albiononline.com;
+  font-src 'self';
+  media-src 'self';
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self'">
+<meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=72">
+<link rel="stylesheet" href="styles.css?v=74">
 <link rel="icon" href="img/logo-app.png">
 <link rel="apple-touch-icon" href="img/logo-app.png">
 <!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
@@ -995,7 +1010,7 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
           <span class="sg-creator-title">Creador Oficial de SG</span>
           <span class="sg-creator-handle">twitch.tv/fraxuzve</span>
         </a>
-        <a class="sg-creator sg-creator-soon" href="#" onclick="return false">
+        <a class="sg-creator sg-creator-soon" href="#">
           <span class="chip-ico sg-soon-ico"><svg><use href="#i-tv"/></svg></span>
           <span class="sg-creator-name">Próximamente</span>
           <span class="sg-creator-title">Creador Oficial de SG</span>
@@ -1019,6 +1034,6 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=72"></script>
+<script src="app.js?v=74"></script>
 </body>
 </html>
