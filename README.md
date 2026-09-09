@@ -148,5 +148,3 @@ El código de este repositorio está bajo licencia MIT (ver `LICENSE`). La licen
 ## Créditos
 
 Desarrollado por SheniaLiam para el gremio Spetsnaz Grail. Los íconos y datos provienen de proyectos comunitarios; el killboard es de Sandbox Interactive.
-
-**Assets de marca**: el arte de alta resolución está en `docs/branding/` (`portada_AA.png`, `logo_AA.png`, `sg_logo.png`) y no forma parte de la app ni del `.zip` de la release. Lo que usa este README son versiones optimizadas en `docs/`: la portada con esquinas redondeadas, el escudo de SG recortado con fondo transparente (para que funcione igual en tema claro y oscuro) y el botón de Discord, compuesto con el logo de Ayudante Albion.
