@@ -4068,7 +4068,7 @@ const SG = {
 const SG_KEYS = { sess: 'aaDiscordSession', char: 'aaSGChar', guild: 'aaSGGuild' };
 const SG_GUILD_NAME = 'Spetsnaz Grail';
 const SG_SESS_DAYS = 30;
-const SG_DC_INVITE = 'https://discord.gg/cqG7rDmUSJ';
+const SG_DC_INVITE = 'https://discord.gg/TCNWUUA7UY';
 
 function sgEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

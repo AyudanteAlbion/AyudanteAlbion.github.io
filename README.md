@@ -9,7 +9,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 - Accede a la App: https://ayudantealbion.github.io
 - Descarga y notas de versión: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io
 - Web del gremio: https://spetsnazgrail.com
-- Discord: https://discord.gg/cqG7rDmUSJ
+- Discord: https://discord.gg/TCNWUUA7UY
 
 ## Módulos
 
