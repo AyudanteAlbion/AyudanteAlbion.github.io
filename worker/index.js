@@ -16,6 +16,9 @@
      GET /discord/callback        -> intercambia el código, verifica la membresía
                                      en el servidor SG y vuelve a la app con
                                      #aa_session=<payload firmado con HMAC>
+     GET /discord/verify?s=       -> {valid, member, user} — comprueba la firma
+                                     y la vigencia de una sesión (la app no
+                                     confía en ninguna sesión sin este visto bueno)
    Configuración (Dashboard de Cloudflare → Workers → ajustes →
    Variables y secretos del worker «ayudantealbion»):
      DISCORD_CLIENT_ID     (texto)   — Client ID de la app de Discord
@@ -101,6 +104,7 @@ async function handle(request, env, net) {
   }
 
   if (path === '/discord/login') return discordLogin(request, url, env);
+  if (path === '/discord/verify') return discordVerify(url, env);
   if (path === '/discord/callback') return discordCallback(request, url, env, net);
 
   return plain('no existe', 404);
@@ -236,6 +240,41 @@ async function discordCallback(request, url, env, net) {
   });
   const sess = payload + '.' + (await hmac(dc.sessionKey, payload));
   return Response.redirect(redirect + '#aa_session=' + encodeURIComponent(sess), 302);
+}
+
+/* Verifica una sesión emitida por el callback: firma HMAC con comparación
+   en tiempo constante, estructura y vencimiento. Devuelve solo lo que la
+   app necesita pintar; nunca un motivo detallado del rechazo. */
+async function discordVerify(url, env) {
+  const dc = discordConfig(env);
+  const invalid = () => json({ valid: false }, 200);
+  if (!dc.ok) return invalid();
+  const raw = url.searchParams.get('s') || '';
+  if (raw.length > 4096) return invalid();
+  const dot = raw.indexOf('.');
+  if (dot <= 0) return invalid();
+  const payload = raw.slice(0, dot);
+  const sig = raw.slice(dot + 1);
+  if (!/^[A-Za-z0-9_-]+$/.test(payload) || !/^[0-9a-f]{64}$/.test(sig)) return invalid();
+  const expect = await hmac(dc.sessionKey, payload);
+  if (!timingSafeEqual(sig, expect)) return invalid();
+  let s;
+  try { s = fromB64url(payload); } catch (e) { return invalid(); }
+  if (!s || typeof s !== 'object' || !s.u || typeof s.u.i !== 'string') return invalid();
+  if (typeof s.e !== 'number' || s.e < Date.now()) return invalid();
+  return json({
+    valid: true,
+    member: s.m === true,
+    user: { i: String(s.u.i), n: String(s.u.n || 'miembro').slice(0, 80), a: /^[a-z0-9_]{0,64}$/i.test(String(s.u.a || '')) ? String(s.u.a || '') : '' },
+    e: s.e,
+  });
+}
+
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 function backWith(redirect, errCode) {

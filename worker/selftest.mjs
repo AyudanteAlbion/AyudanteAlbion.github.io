@@ -105,6 +105,28 @@ check(sess1.u && sess1.u.i === '42' && sess1.u.n === 'Tester Global' && sess1.u.
 check(typeof sess1.e === 'number' && sess1.e > Date.now() && sess1.e - Date.now() <= 31 * 24 * 3600e3,
   'sesión: vence en ~30 días', 'sesión: expiración rara → ' + sess1.e);
 
+/* ============ 3b · /discord/verify ============ */
+console.log('\n— /discord/verify: la app no confía en sesiones sin firma —');
+const verify = async (w, tok) => (await w.fetch(new Request('http://w.test/discord/verify?s=' + encodeURIComponent(tok)))).json();
+const v1 = await verify(w2, token1);
+check(v1.valid === true && v1.member === true && v1.user && v1.user.i === '42' && v1.user.n === 'Tester Global',
+  'verify: sesión legítima → valid + member + usuario', 'verify: sesión legítima rechazada → ' + JSON.stringify(v1));
+const forged = b64url({ u: { i: '666', n: 'Impostor', a: '' }, m: true, t: Date.now(), e: Date.now() + 86400e3 });
+const v2 = await verify(w2, forged + '.' + 'a'.repeat(64));
+check(v2.valid === false && v2.member === undefined, 'verify: sesión forjada (firma falsa) → valid=false', 'verify: aceptó una sesión forjada → ' + JSON.stringify(v2));
+const v3 = await verify(w2, forged);
+check(v3.valid === false, 'verify: token sin firma → valid=false', 'verify: aceptó token sin firma');
+const tamperedSess = b64url({ ...sess1, m: true, u: { ...sess1.u, i: '1' } });
+const v4 = await verify(w2, tamperedSess + '.' + sig1);
+check(v4.valid === false, 'verify: payload alterado con firma ajena → valid=false', 'verify: aceptó payload alterado');
+const oldPl = b64url({ u: { i: '42', n: 'Viejo', a: '' }, m: true, t: 0, e: Date.now() - 1000 });
+const v5 = await verify(w2, oldPl + '.' + (await hmac('clave-hmac-test', oldPl)));
+check(v5.valid === false, 'verify: sesión vencida bien firmada → valid=false', 'verify: aceptó sesión vencida');
+const v6 = await verify(w2, '');
+check(v6.valid === false, 'verify: sin parámetro → valid=false (sin 500)', 'verify: sin parámetro rompe');
+const v7 = await (await w0.fetch(new Request('http://w.test/discord/verify?s=' + encodeURIComponent(token1)))).json();
+check(v7.valid === false, 'verify: worker sin configurar → nunca valida', 'verify: worker sin clave valida sesiones');
+
 /* ============ 4 · callback: NO miembro ============ */
 console.log('\n— /discord/callback: usuario NO miembro —');
 const w3 = createWorker(ENV, discordMock({ member: false }));

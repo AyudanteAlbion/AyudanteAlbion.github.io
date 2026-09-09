@@ -78,7 +78,7 @@ La pestaña **SG** tiene dos subpestañas: **Spetsnaz Grail**, pública y selecc
 
 Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudflare, que hace el intercambio OAuth2 (el secreto nunca llega al navegador), verifica si el usuario pertenece al servidor de Discord de SG y devuelve una sesión firmada válida 30 días. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros.
 
-**Alcance del acceso actual:** el Worker verifica la membresía al ingresar, pero el sitio estático utiliza la sesión como control de interfaz y los datos del killboard son públicos. No es una barrera de seguridad para información privada; cualquier futura herramienta con datos sensibles necesitará validar la sesión y los permisos en el servidor.
+**Alcance del acceso actual:** el Worker verifica la membresía al ingresar y firma la sesión con HMAC. La app **no confía en ninguna sesión** (ni la que vuelve de Discord ni la guardada en el navegador) hasta que `GET /discord/verify` del Worker confirma firma y vigencia; una sesión forjada o alterada se descarta. Los datos que hoy muestra el Salón siguen siendo públicos (killboard); cualquier futura herramienta con datos privados debe servirlos desde el Worker validando la sesión, nunca desde el sitio estático.
 
 ### Puesta en marcha (una sola vez)
 
@@ -98,7 +98,7 @@ Hasta que las variables existan, la app funciona normal: el Salón muestra las h
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs     # 33 chequeos del OAuth con Discord simulado
+node worker/selftest.mjs     # 40 chequeos del OAuth y la verificación de sesión con Discord simulado
 cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
 ```
 
