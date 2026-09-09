@@ -429,16 +429,92 @@ a:hover { text-decoration: underline; }
   margin: 0 0 14px; font-weight: 600; position: relative;
 }
 .home-lead { max-width: 720px; margin: 0 auto 10px; color: var(--text); line-height: 1.55; }
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 14px; }
-.home-card { padding: 18px 18px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 8px;
-  transition: border-color .15s, transform .15s, background .15s; }
-.home-card:hover { border-color: var(--accent); transform: translateY(-2px); background: linear-gradient(180deg, rgba(228,175,83,0.05), transparent 60%), var(--panel); }
-.home-card-head { display: flex; align-items: center; gap: 10px; }
-.home-card-head h2 { margin: 0; font-size: 1.1rem; }
-.home-ico { font-size: 1.4rem; }
-.home-card p { margin: 0; color: var(--muted); font-size: .92rem; line-height: 1.5; }
-.home-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .86rem; line-height: 1.55; }
-.home-card .btn { margin-top: auto; align-self: flex-start; }
+/* Dos slides manuales: no cambian mientras el usuario está leyendo. */
+.home-carousel { overflow: hidden; }
+.home-carousel-head {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 16px 22px; border-bottom: 1px solid var(--border);
+}
+.home-carousel-head h2 { font-size: .82rem; color: var(--muted); font-weight: 600; }
+.home-slide-tabs { display: flex; gap: 4px; padding: 4px; background: var(--bg); border-radius: 8px; }
+.home-slide-tab {
+  border: 1px solid transparent; border-radius: 6px; padding: 8px 18px;
+  color: var(--muted); background: transparent; font: inherit; font-weight: 600; cursor: pointer;
+}
+.home-slide-tab:hover { color: var(--text); }
+.home-slide-tab.active { color: var(--gold); border-color: var(--border-strong); background: var(--accent-soft); }
+.home-slide-controls { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.home-slide-count { color: var(--muted); font-size: .78rem; min-width: 38px; text-align: center; }
+.home-slide-arrow {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: transparent; color: var(--text);
+  font: inherit; font-size: 1.1rem; cursor: pointer;
+}
+.home-slide-arrow:hover { color: var(--gold); border-color: var(--accent); background: var(--accent-soft); }
+.home-slide { padding: 24px 22px; animation: homeSlideIn .22s ease-out; }
+.home-slide[hidden] { display: none; }
+.home-slide-intro { margin-bottom: 20px; }
+.home-slide-kicker { color: var(--gold); font-size: .68rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+.home-slide-intro h3 { margin: 6px 0; font-size: 1.65rem; }
+.home-slide-intro p { color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.home-tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.home-tool-grid-market { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.home-tool {
+  display: flex; align-items: flex-start; gap: 12px; min-height: 115px; padding: 18px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.home-tool:hover { border-color: var(--accent); background: var(--accent-soft); }
+.home-tool .chip-ico { width: 36px; height: 36px; border-radius: 8px; }
+.home-tool .chip-ico svg { width: 18px; height: 18px; }
+.home-tool-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.home-tool-name { font-weight: 600; font-size: .95rem; }
+.home-tool-desc { color: var(--muted); font-size: .8rem; line-height: 1.5; }
+.home-tool-go { margin-left: auto; color: var(--accent); }
+.home-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.home-shortcut {
+  display: inline-flex; align-items: center; gap: 9px; flex: 1; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
+  color: var(--muted); font: inherit; font-size: .82rem; white-space: nowrap; cursor: pointer;
+}
+.home-shortcut span { margin-left: auto; }
+.home-shortcut:hover { color: var(--text); border-color: var(--accent); }
+.home-slide-tab:focus-visible, .home-slide-arrow:focus-visible, .home-tool:focus-visible, .home-shortcut:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+@keyframes homeSlideIn { from { opacity: .5; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 980px) {
+  .home-tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .home-carousel-head { padding: 12px; gap: 10px; }
+  .home-carousel-head h2 { flex-basis: 100%; }
+  .home-slide-tab { padding: 8px 12px; font-size: .85rem; }
+  .home-slide-controls { gap: 6px; }
+  .home-slide { padding: 20px 12px; }
+  .home-tool-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .home-tool { min-height: 0; padding: 13px; }
+  .home-shortcut { flex-basis: calc(50% - 8px); white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) { .home-slide { animation: none; } }
+/* Contacto al pie de Inicio, sin enviar datos automáticamente. */
+.home-report {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 20px; margin-bottom: 0;
+}
+.home-report-copy { max-width: 660px; }
+.home-report h2 { font-size: 1.05rem; margin: 0 0 5px; }
+.home-report p { color: var(--muted); font-size: .85rem; line-height: 1.5; }
+.home-report-btn { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; text-align: left; }
+.home-report-destination { display: block; font-size: .7rem; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.home-report-go { margin-left: auto; color: var(--accent); }
+.home-report-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 640px) {
+  .home-report { flex-direction: column; align-items: stretch; gap: 14px; padding: 16px; }
+  .home-report-btn { justify-content: center; }
+}
+
 .home-tips { margin-top: 14px; padding: 18px 20px; }
 .home-tips h2 { margin: 0 0 8px; font-size: 1.05rem; }
 .home-tips ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .9rem; line-height: 1.7; }
@@ -446,8 +522,8 @@ a:hover { text-decoration: underline; }
   .home-hero { padding: 26px 14px 20px; }
   .home-hero h1 { font-size: 1.4rem; }
   /* en pantallas chicas el crédito pasa a ser una pastilla centrada bajo la bajada */
-  .sg-credit { position: static; margin: 10px auto 0; }
-  .sg-credit .sg-credit-go { opacity: 1; transform: none; }
+  .home-hero .sg-credit { position: static; margin: 10px auto 0; }
+  .home-hero .sg-credit .sg-credit-go { opacity: 1; transform: none; }
 }
 
 /* ---- íconos SVG (ficha con contorno — opción 5) ---- */
@@ -489,6 +565,26 @@ a:hover { text-decoration: underline; }
 .sg-credit .sg-credit-go { display: inline-block; opacity: 0; transform: translateX(-3px); transition: opacity .14s, transform .14s; }
 .sg-credit:hover { color: var(--text); border-color: var(--accent); background: rgba(229, 180, 91, .09); }
 .sg-credit:hover .sg-credit-go { opacity: 1; transform: none; }
+/* Subpestañas SG: navegación separada del contenido, también en móvil. */
+.sg-subtabs {
+  display: flex; gap: 6px; padding: 6px; margin-bottom: 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.sg-subtab {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 18px; border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted); font: inherit; font-weight: 600;
+  cursor: pointer;
+}
+.sg-subtab:hover { color: var(--text); background: var(--panel-2); }
+.sg-subtab.active { color: var(--gold); background: var(--accent-soft); border-color: var(--border-strong); }
+.sg-subtab:focus-visible, .sg-subpanel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sg-subpanel[hidden] { display: none; }
+@media (max-width: 540px) {
+  .sg-subtab { flex: 1; padding: 10px 8px; font-size: .8rem; }
+  .sg-subtab .tab-ico { flex: none; }
+}
+
 .sg-links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; position: relative; }
 .btn-shimmer {
   position: relative; overflow: hidden;
@@ -883,3 +979,6 @@ img { max-width: 100%; }
   .sg-welcome-actions { width: 100%; }
   .sg-welcome-actions .btn { flex: 1; }
 }
+
+/* Bono de la isla, separado del mercado usado para cotizar. */
+.fm-bonus-info { padding: 0 2px 14px; line-height: 1.6; }

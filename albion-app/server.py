@@ -50,7 +50,8 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         if not redirect:
             return False
         host = self.headers.get('Host', '')
-        if host and redirect.startswith('http://' + host + '/'):
+        if host and any(redirect.startswith(scheme + '://' + host + '/')
+                        for scheme in ('http', 'https')):
             return True
         return bool(re.match(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?/', redirect))
 

@@ -1,6 +1,6 @@
 name: 🏗️ Build y publicar release
 
-# Al pushear un tag v* (ej. v1.2.0): verifica sintaxis, corre la prueba de humo,
+# Con un tag v* o una ejecución manual: verifica sintaxis y las regresiones,
 # compila el .exe de Windows y genera el .zip, y publica todo como Release.
 # Corre en GitHub Actions porque necesita red libre para bajar Go y Node deps.
 
@@ -8,6 +8,16 @@ name: 🏗️ Build y publicar release
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Versión a publicar (ej. v1.2.8)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -15,22 +25,38 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validar versión y commit
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Versión inválida'; exit 1; }
+          if [[ "$EVENT" == 'workflow_dispatch' && "$REF" != 'refs/heads/main' ]]; then
+            echo 'Los releases manuales deben ejecutarse desde main'; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            [[ "$(git rev-parse "$TAG^{commit}")" == "$GITHUB_SHA" ]] || { echo 'El tag ya apunta a otro commit'; exit 1; }
+          fi
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
 
-      - name: Instalar jsdom (para la prueba de humo)
-        run: npm install --no-save jsdom
+      - name: Instalar jsdom (versión probada para QA)
+        run: npm install --no-save --package-lock=false jsdom@30.0.1
         working-directory: albion-app
 
       - name: Selftest del worker (acceso SG + proxies)
@@ -38,6 +64,12 @@ jobs:
 
       - name: QA completa (todos los módulos + acceso SG)
         run: node qa-test.js
+        working-directory: albion-app
+
+      - name: Regresiones de Black Market e Islas
+        run: |
+          node black-market-test.js
+          node farm-test.js
         working-directory: albion-app
 
       - name: Build (sintaxis + smoke + exe + zip)
@@ -48,7 +80,6 @@ jobs:
       - name: Publicar release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           {
             echo '### ⬇️ Instalación'
@@ -56,13 +87,19 @@ jobs:
             echo 'y se apaga al cerrar la pestaña. **`AyudanteAlbion.zip`** trae el ejecutable + código fuente completo.'
             echo 'Requisito: Windows 10/11 x64. No necesita instalación ni permisos de admin.'
           } > RELEASE_NOTES.md
+          if [[ -f "docs/releases/$TAG.md" ]]; then
+            printf '\n' >> RELEASE_NOTES.md
+            cat "docs/releases/$TAG.md" >> RELEASE_NOTES.md
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG ya existe; reemplazando assets…"
             gh release upload "$TAG" albion-exe/AyudanteAlbion.exe AyudanteAlbion.zip --clobber
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           else
             gh release create "$TAG" \
               albion-exe/AyudanteAlbion.exe#AyudanteAlbion.exe \
               AyudanteAlbion.zip#AyudanteAlbion.zip \
+              --target "$GITHUB_SHA" \
               --title "Ayudante Albion $TAG" \
               --notes-file RELEASE_NOTES.md \
               --generate-notes \
