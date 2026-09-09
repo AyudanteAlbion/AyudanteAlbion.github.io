@@ -35,11 +35,19 @@ function discordMock({ member = true, tokenOk = true, meOk = true, guildStatus =
       return new Response(JSON.stringify({ access_token: 'MOCK_TOKEN', token_type: 'Bearer' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.includes('/users/@me/guilds/')) {
+      check(false, '', 'gremio: intentó consultar /users/@me/guilds/{id} (endpoint inexistente en Discord OAuth2)');
+      return new Response('{"message":"Unknown Guild"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/users/@me/guilds')) {
       const auth = init?.headers?.Authorization || '';
       check(auth === 'Bearer MOCK_TOKEN', 'gremio: consulta con el token del usuario', 'gremio: Authorization incorrecta → ' + auth);
-      const status = guildStatus != null ? guildStatus : (member ? 200 : 404);
-      return new Response(status === 200 ? JSON.stringify({ id: '999', name: 'Spetsnaz Grail' }) : '{"message":"Unknown Guild"}',
-        { status, headers: { 'Content-Type': 'application/json' } });
+      check(url.includes('limit=200'), 'gremio: usa consulta paginada ?limit=200', 'gremio: falta ?limit=200 → ' + url);
+      if (guildStatus != null) {
+        return new Response(guildStatus === 500 ? '{"message":"Internal Server Error"}' : '{}',
+          { status: guildStatus, headers: { 'Content-Type': 'application/json' } });
+      }
+      const list = member ? [{ id: '999', name: 'Spetsnaz Grail' }] : [{ id: '111', name: 'Otro Servidor' }];
+      return new Response(JSON.stringify(list), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.includes('/users/@me')) {
       if (!meOk) return new Response('{}', { status: 401 });
