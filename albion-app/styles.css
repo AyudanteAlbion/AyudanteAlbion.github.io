@@ -521,8 +521,8 @@ a:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .home-hero { padding: 26px 14px 20px; }
   .home-hero h1 { font-size: 1.4rem; }
-  /* en pantallas chicas el crédito pasa a ser una pastilla centrada bajo la bajada */
-  .home-hero .sg-credit { position: static; margin: 10px auto 0; }
+  /* en pantallas chicas las pastillas dejan de flotar: quedan centradas bajo la bajada */
+  .home-hero-links { position: static; align-items: center; margin: 12px auto 0; }
   .home-hero .sg-credit .sg-credit-go { opacity: 1; transform: none; }
 }
 
@@ -551,13 +551,19 @@ a:hover { text-decoration: underline; }
 .sg-soon-ico { margin-bottom: 4px; }
 
 /* ---- Spetsnaz Grail ---- */
-/* crédito sutil en el hero (reemplaza al botón dorado grande): pastillita arriba a la derecha */
-.sg-credit {
+/* crédito sutil en el hero (reemplaza al botón dorado grande): pastillitas arriba a la
+   derecha, una bajo otra. El contenedor es el que se posiciona, así cualquier pastilla
+   nueva que se agregue en Inicio se apila sola y sigue el mismo comportamiento en móvil. */
+.home-hero-links {
   position: absolute; top: 12px; right: 14px; z-index: 1;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+}
+.sg-credit {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 4px 10px 4px 5px; border-radius: 999px; cursor: pointer;
   font: inherit; font-size: .72rem; color: var(--muted); line-height: 1;
   background: rgba(229, 180, 91, .04); border: 1px solid var(--border);
+  text-decoration: none !important;
   transition: color .14s, border-color .14s, background .14s;
 }
 .sg-credit img { width: 18px; height: 18px; border-radius: 50%; }
@@ -565,6 +571,12 @@ a:hover { text-decoration: underline; }
 .sg-credit .sg-credit-go { display: inline-block; opacity: 0; transform: translateX(-3px); transition: opacity .14s, transform .14s; }
 .sg-credit:hover { color: var(--text); border-color: var(--accent); background: rgba(229, 180, 91, .09); }
 .sg-credit:hover .sg-credit-go { opacity: 1; transform: none; }
+/* La pastilla de la comunidad usa el blurple de Discord para no confundirse con la del gremio. */
+.home-community { background: rgba(88, 101, 242, .07); border-color: rgba(88, 101, 242, .32); }
+.home-community b { color: #aab4ff; }
+.home-community .discord-logo { width: 18px; height: 13px; color: #7986f9; }
+.home-community:hover { color: var(--text); border-color: #5865f2; background: rgba(88, 101, 242, .14); }
+.home-community:hover .discord-logo { color: #98a3ff; }
 /* Subpestañas SG: navegación separada del contenido, también en móvil. */
 .sg-subtabs {
   display: flex; gap: 6px; padding: 6px; margin-bottom: 16px;
