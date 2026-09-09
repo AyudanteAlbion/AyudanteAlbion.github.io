@@ -287,7 +287,11 @@ async function forward(target, ttlByStatus, extraHeaders, net) {
     ? 'application/json; charset=utf-8'
     : 'text/plain; charset=utf-8';
   headers.set('Content-Type', type);
-  return new Response(res.body, { status: res.status, headers });
+  /* 204/205/304 no admiten cuerpo: pasar res.body tal cual lanza un RangeError
+     dentro del runtime y el navegador veía un 500 del Worker en lugar de la
+     respuesta vacía del servicio (DecAPI lo devuelve cuando no hay canal). */
+  const noBody = res.status === 204 || res.status === 205 || res.status === 304;
+  return new Response(noBody ? null : res.body, { status: res.status, headers });
 }
 
 function json(obj, status = 200) {

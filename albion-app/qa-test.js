@@ -605,7 +605,50 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     window.eval(`sgLogout()`); await sleep(200);
     check(!$('sgLoginBtn').hidden && bodyOf('sgRoomBody').includes('Sala exclusiva'),
       'SG: al cerrar sesión vuelve el candado', 'SG: logout no restauró el candado');
+
+    // el botón de la barra tiene que dispara el ingreso (antes no tenía handler)
+    try {
+      window.eval(`window.__dcHits = 0; sgLogin = function () { window.__dcHits++; }`);
+      $('sgLoginBtn').click(); await sleep(60);
+      check(window.__dcHits === 1, 'SG: el botón «Ingresar con Discord» de la barra dispara el ingreso',
+        'SG: el botón de la barra no hizo nada (falta data-sg-login en #sgLoginBtn)');
+      const cta = window.document.querySelector('.sg-lock-card [data-sg-login]');
+      check(!!cta, 'SG: la tarjeta de candado mantiene su CTA de Discord', 'SG: sin CTA en sgLockCard');
+    } catch (e) { errors.push('SG botón de barra: ' + e.message); }
   } catch (e) { errors.push('Acceso SG: ' + e.message); }
+
+  /* ——— íconos: que ningún <use> quede colgado y que los SVG tengan estilo ——— */
+  try {
+    const broken = window.eval(`(() => {
+      const miss = [...document.querySelectorAll('use')]
+        .map(u => u.getAttribute('href') || '')
+        .filter(h => h.startsWith('#') && !document.getElementById(h.slice(1)));
+      return [...new Set(miss)].join(' ');
+    })()`);
+    check(!broken, 'Íconos: cada <use href="#…"> tiene su <symbol> definido', 'Íconos colgados → ' + broken);
+
+    const tabIcons = window.eval(`document.querySelectorAll('.tab .tab-ico').length`);
+    check(tabIcons >= 6, `Íconos: ${tabIcons} pestañas de la barra con ícono`, 'Íconos: las pestañas de la barra van sin ícono');
+
+    const chips = window.eval(`document.querySelectorAll('.chip-ico svg, .sg-lock-ico svg').length`);
+    check(chips >= 12, `Íconos: ${chips} fichas de ícono SVG pintadas`, 'Íconos: hay menos fichas de las esperadas');
+
+    // un <svg> de línea sin class pierde el stroke y sale negro sobre fondo oscuro
+    const sueltos = window.eval(`[...document.querySelectorAll('svg')].filter(s =>
+      s.querySelector('use') && !s.getAttribute('class') && !s.closest('.chip-ico')
+      && !s.closest('.sg-lock-ico') && !s.closest('.top-action') && !s.closest('.sg-dc-svg')).length`);
+    check(sueltos === 0, 'Íconos: ningún svg de línea sin clase de estilo', 'Íconos invisibles: ' + sueltos + ' svg sin class');
+  } catch (e) { errors.push('Íconos: ' + e.message); }
+
+  /* ——— creadores de SG: el indicador va debajo de la foto ——— */
+  try {
+    // .sg-live cambia a «sg-live live|off» cuando el badge se pinta: se compara la clase base
+    const orden = window.eval(`[...document.querySelector('.sg-creator[data-twitch]').children].map(e => e.className.split(' ')[0]).join('>')`);
+    check(orden === 'sg-creator-pic>sg-live>sg-creator-name>sg-creator-title>sg-creator-handle',
+      'Creadores: indicador EN VIVO/OFFLINE debajo de la foto', 'Creadores: orden de la tarjeta → ' + orden);
+    const sinBadge = window.eval(`[...document.querySelectorAll('.sg-creator:not([data-twitch]) .sg-live')].length`);
+    check(sinBadge === 0, 'Creadores: «Próximamente» no lleva indicador de directo', 'Creadores: badge sobrante en la tarjeta bloqueada');
+  } catch (e) { errors.push('Creadores: ' + e.message); }
 
   finish();
 
