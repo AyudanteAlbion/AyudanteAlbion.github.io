@@ -19,6 +19,36 @@ const ICON_LOCAL = id => id.includes('@') ? null : `icons/${id}.png`;
 const IMG_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="10" fill="%231d2129"/><text x="32" y="40" font-size="26" text-anchor="middle" fill="%238b93a3">?</text></svg>'
 ).replace(/%25/g, '%');
+/* Delegación de eventos para los botones que antes usaban onclick inline.
+   Necesario para servir la app con una CSP sin 'unsafe-inline' en scripts. */
+document.addEventListener('click', e => {
+  const t = e.target instanceof Element ? e.target : null;
+  if (!t) return;
+  const ll = t.closest('[data-ll-id]');
+  if (ll) { llPrefill(ll.dataset.llId, ll.dataset.llType, +ll.dataset.llPrice, ll.dataset.llCity || ''); return; }
+  const wa = t.closest('[data-wa-flip]');
+  if (wa) { waPrefillFlip(wa.dataset.waFlip); return; }
+  const cd = t.closest('[data-close-detail]');
+  if (cd) { const box = cd.closest(cd.dataset.closeDetail); if (box) box.style.display = 'none'; return; }
+  const soon = t.closest('a.sg-creator-soon');
+  if (soon) e.preventDefault();
+});
+/* 'error' no burbujea: se captura en fase de captura para <img data-img-retry> */
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  if (img.hasAttribute('data-img-retry')) imgRetry(img);
+  else if (img.hasAttribute('data-sg-avatar')) sgAvatarFail(img);
+}, true);
+
+/* Latido para el ejecutable de escritorio: avisa al servidor local que la
+   pestaña sigue abierta (tolera 15 min sin latidos). En GitHub Pages y en
+   server.py /alive responde 404 y no hace nada. Vive acá y no como <script>
+   inline para cumplir la CSP (script-src 'self'). */
+if (location.hostname === '127.0.0.1' || location.hostname === 'localhost') {
+  setInterval(() => { fetch('/alive').catch(() => {}); }, 3000);
+}
+
 window.imgRetry = function (img) {
   if (img.dataset.local === '1') {
     // No existe el ícono local: pasar al servicio de render remoto
@@ -41,7 +71,7 @@ window.imgRetry = function (img) {
 function iconImg(id, cls, title) {
   const local = ICON_LOCAL(id);
   const src = local || ICON(id);
-  return `<img class="${cls}" loading="lazy" src="${src}" data-local="${local ? 1 : 0}" data-base="${ICON(id)}" onerror="imgRetry(this)" alt=""${title ? ` title="${title}"` : ''}>`;
+  return `<img class="${cls}" loading="lazy" src="${src}" data-local="${local ? 1 : 0}" data-base="${ICON(id)}" data-img-retry alt=""${title ? ` title="${title}"` : ''}>`;
 }
 const CITIES = ['Bridgewatch','Caerleon','Fort Sterling','Lymhurst','Martlock','Thetford','Brecilien'];
 // El Black Market compra equipo al jugador; nunca es origen de compra.
@@ -685,8 +715,8 @@ function createCraftModule(cfg) {
           <div class="cd-line muted"><span>Ingreso neto (lote de ${r.amount}, tras impuestos)</span><span>${fmt(c.revenue)}</span></div>
           <div class="cd-line total ${c.profit > 0 ? 'pos' : 'neg'}"><span>Ganancia por lote</span><span>${isNaN(c.profit) ? '—' : (c.profit > 0 ? '+' : '') + fmt(c.profit)}</span></div>
           <div class="cd-actions">
-            <button class="btn micro-btn" onclick="llPrefill('${r.id}','craft',${((c.matCost || 0) + (c.stationFee || 0)) / (r.amount || 1)},'')" title="Anotar el crafteo (materiales + estación, por unidad) en el Registro">✎ Registrar crafteo</button>
-            ${sellEp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.id}','sell',${sellEp.value},'${opts.sellCity}')" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
+            <button class="btn micro-btn" data-ll-id="${r.id}" data-ll-type="craft" data-ll-price="${((c.matCost || 0) + (c.stationFee || 0)) / (r.amount || 1)}" data-ll-city=""" title="Anotar el crafteo (materiales + estación, por unidad) en el Registro">✎ Registrar crafteo</button>
+            ${sellEp.value ? `<button class="btn micro-btn" data-ll-id="${r.id}" data-ll-type="sell" data-ll-price="${sellEp.value}" data-ll-city="${opts.sellCity}" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
             ${favBtnHtml(P, r.id, name)}
           </div>
         </div>
@@ -1032,11 +1062,11 @@ function showFlipDetail(id) {
     <div class="detail-head">
       ${iconImg(id, 'item-icon')}
       <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id} · calidad Normal · 7 ciudades + Black Market</div></div>
-      ${f.bestBuy ? `<button class="btn micro-btn" onclick="llPrefill('${id}','buy',${f.bestBuy.price},'${f.bestBuy.city}')" title="Anotar la compra en el Registro de operaciones">✎ Registrar compra</button>` : ''}
-      ${f.bestSell ? `<button class="btn micro-btn" onclick="llPrefill('${id}','sell',${f.bestSell.price},'${f.bestSell.city}')" title="Anotar la venta en el Registro de operaciones">✎ Registrar venta</button>` : ''}
-      <button class="btn micro-btn" onclick="waPrefillFlip('${id}')" title="Crear una alerta de precio para este ítem">🔔 Alerta de precio</button>
+      ${f.bestBuy ? `<button class="btn micro-btn" data-ll-id="${id}" data-ll-type="buy" data-ll-price="${f.bestBuy.price}" data-ll-city="${f.bestBuy.city}" title="Anotar la compra en el Registro de operaciones">✎ Registrar compra</button>` : ''}
+      ${f.bestSell ? `<button class="btn micro-btn" data-ll-id="${id}" data-ll-type="sell" data-ll-price="${f.bestSell.price}" data-ll-city="${f.bestSell.city}" title="Anotar la venta en el Registro de operaciones">✎ Registrar venta</button>` : ''}
+      <button class="btn micro-btn" data-wa-flip="${id}" title="Crear una alerta de precio para este ítem">🔔 Alerta de precio</button>
       ${favBtnHtml('flip', id, catalogName(id))}
-      <button class="btn detail-close" onclick="this.closest('#flipDetail').style.display='none'">Cerrar</button>
+      <button class="btn detail-close" data-close-detail="#flipDetail">Cerrar</button>
     </div>
     <div class="table-wrap"><table class="matrix">
       <thead><tr><th>Ciudad</th><th>Venta acá — para comprar</th><th>Precio para vender</th><th>Mejor orden de compra</th><th>Actualizado</th></tr></thead>
@@ -1368,8 +1398,8 @@ function gearDetailRow(r, c, o) {
         <div class="cd-line muted"><span>Ingreso por el ítem (tras impuestos${o.sellBM ? ', sin tasa de publicación' : ''})</span><span>${fmt(c.revenue)}</span></div>
         <div class="cd-line total ${c.profit > 0 ? 'pos' : 'neg'}"><span>Ganancia por unidad</span><span>${isNaN(c.profit) ? '—' : (c.profit > 0 ? '+' : '') + fmt(c.profit)}</span></div>
         <div class="cd-actions">
-          <button class="btn micro-btn" onclick="llPrefill('${r.id}','craft',${(c.matCost || 0) + (c.stationFee || 0)},'')" title="Anotar el crafteo (costo de materiales + estación) en el Registro">✎ Registrar crafteo</button>
-          ${c.sellPrice ? `<button class="btn micro-btn" onclick="llPrefill('${r.id}','sell',${c.sellPrice},'${o.sellBM ? 'Black Market' : sellKey[1]}')" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
+          <button class="btn micro-btn" data-ll-id="${r.id}" data-ll-type="craft" data-ll-price="${(c.matCost || 0) + (c.stationFee || 0)}" data-ll-city=""" title="Anotar el crafteo (costo de materiales + estación) en el Registro">✎ Registrar crafteo</button>
+          ${c.sellPrice ? `<button class="btn micro-btn" data-ll-id="${r.id}" data-ll-type="sell" data-ll-price="${c.sellPrice}" data-ll-city="${o.sellBM ? 'Black Market' : sellKey[1]}" title="Anotar la venta en el Registro">✎ Registrar venta</button>` : ''}
           ${favBtnHtml('gear', r.id, name)}
         </div>
       </div>
@@ -1944,8 +1974,8 @@ function renderTrans() {
         <div class="cd-line"><span>Venta neta (impuestos descontados)</span><span>${fmt(x.sellNet)}</span></div>
         <div class="cd-line total"><span>Ganancia por unidad</span><span class="${x.profit == null ? '' : x.profit > 0 ? 'pos' : 'neg'}">${x.profit == null ? '—' : fmt(x.profit)}</span></div>
         <div class="cd-actions">
-          ${x.buy.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.in}','buy',${x.buy.value},'${buyCity}')" title="Anotar la compra del recurso de origen en el Registro">✎ Registrar compra</button>` : ''}
-          ${x.sell.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.out}','sell',${x.sell.value},'${sellCity}')" title="Anotar la venta del recurso transmutado en el Registro">✎ Registrar venta</button>` : ''}
+          ${x.buy.value ? `<button class="btn micro-btn" data-ll-id="${r.in}" data-ll-type="buy" data-ll-price="${x.buy.value}" data-ll-city="${buyCity}" title="Anotar la compra del recurso de origen en el Registro">✎ Registrar compra</button>` : ''}
+          ${x.sell.value ? `<button class="btn micro-btn" data-ll-id="${r.out}" data-ll-type="sell" data-ll-price="${x.sell.value}" data-ll-city="${sellCity}" title="Anotar la venta del recurso transmutado en el Registro">✎ Registrar venta</button>` : ''}
           ${favBtnHtml('transmute', r.out, transName(r.type, r.tt, r.te))}
         </div>
       </div>
@@ -2545,6 +2575,13 @@ function llPrefill(id, type, price, city) {
   document.getElementById('llQty').focus();
 }
 const LL_TYPE_ES = { buy: 'Compra', sell: 'Venta', craft: 'Crafteo' };
+/* Celda CSV segura: comillas dobladas y, si el texto empieza como fórmula
+   (= + - @ o tab/CR), se antepone un apóstrofo para que Excel/Sheets no la ejecuten. */
+function csvCell(v) {
+  let t = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+  return '"' + t.replace(/"/g, '""') + '"';
+}
 
 function llRender() {
   const rows = LL.rows.filter(r => LL.filter === 'all' || r.type === LL.filter);
@@ -2687,7 +2724,7 @@ function llUpdateCities() {
   document.getElementById('llExport').addEventListener('click', () => {
     const head = 'fecha,item,id,tipo,cantidad,precio_unitario,total,ciudad,nota\n';
     const csv = head + LL.rows.map(r =>
-      [new Date(r.ts).toISOString(), `"${(r.name || r.id).replace(/"/g, '""')}"`, r.id, LL_TYPE_ES[r.type], r.qty, r.price, r.qty * r.price, r.city, `"${(r.note || '').replace(/"/g, '""')}"`].join(',')
+      [new Date(r.ts).toISOString(), csvCell(r.name || r.id), csvCell(r.id), LL_TYPE_ES[r.type], r.qty, r.price, r.qty * r.price, csvCell(r.city), csvCell(r.note || '')].join(',')
     ).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
@@ -2705,7 +2742,7 @@ function llUpdateCities() {
     const data = {};
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      data[k] = localStorage.getItem(k);
+      if (bkKeyOk(k)) data[k] = localStorage.getItem(k);
     }
     const payload = { app: 'AyudanteAlbion', version: 1, exported: new Date().toISOString(), data };
     const a = document.createElement('a');
@@ -2713,17 +2750,29 @@ function llUpdateCities() {
     a.download = `ayudante-albion-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   });
+  /* claves que viajan en el respaldo: datos del usuario, nunca la sesión de
+     Discord (se obtiene ingresando) ni la URL del proxy (config de desarrollo) */
+  const BK_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'kaOn', 'manualPrices',
+    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild'];
+  const BK_MAX_BYTES = 5 * 1024 * 1024;
+  const bkKeyOk = k => typeof k === 'string' && (BK_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
   document.getElementById('bkImport').addEventListener('click', () => document.getElementById('bkFile').click());
   document.getElementById('bkFile').addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
+        if (String(reader.result).length > BK_MAX_BYTES) throw new Error('tamaño');
         const payload = JSON.parse(reader.result);
-        if (payload.app !== 'AyudanteAlbion' || !payload.data) throw new Error('formato');
-        const n = Object.keys(payload.data).length;
-        if (!confirm(`Respaldo del ${(payload.exported || '').slice(0, 10)} con ${n} claves.\n¿Restaurar? Se sobreescribirán los datos actuales de la app.`)) return;
-        for (const [k, v] of Object.entries(payload.data)) localStorage.setItem(k, v);
+        if (!payload || payload.app !== 'AyudanteAlbion' || !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) throw new Error('formato');
+        /* solo claves de datos de la app, con valores de texto: un respaldo
+           ajeno no puede plantar sesiones, redirigir el proxy ni pisar otras claves */
+        const entries = Object.entries(payload.data).filter(([k, v]) => bkKeyOk(k) && typeof v === 'string');
+        for (const [k, v] of entries) JSON.parse(v); // cada valor debe ser JSON válido
+        const n = entries.length;
+        if (!n) throw new Error('vacío');
+        if (!confirm(`Respaldo del ${String(payload.exported || '').slice(0, 10)} con ${n} claves.\n¿Restaurar? Se sobreescribirán los datos actuales de la app.`)) return;
+        for (const [k, v] of entries) localStorage.setItem(k, v);
         alert('Respaldo restaurado. La página se recargará para aplicar los cambios.');
         location.reload();
       } catch (err) {
@@ -2903,8 +2952,8 @@ function enRender() {
         <div class="cd-line total ${planProfit == null ? '' : planProfit > 0 ? 'pos' : 'neg'}"><span>Ganancia si lo vendés</span>
           <span>${planProfit == null ? '—' : (planProfit > 0 ? '+' : '') + fmt(planProfit)}</span></div>
         <div class="cd-actions">
-          ${fromP.value ? `<button class="btn micro-btn" onclick="llPrefill('${from === 0 ? EN.item : EN.item + '@' + from}','buy',${fromP.value},'${city}')" title="Anotar la compra del ítem ${lvlName(from)} en el Registro">✎ Registrar compra ${lvlName(from)}</button>` : ''}
-          ${sellP.value ? `<button class="btn micro-btn" onclick="llPrefill('${sellId}','sell',${sellP.value},'${sellCity}')" title="Anotar la venta del ítem ${lvlName(to)} en el Registro">✎ Registrar venta ${lvlName(to)}</button>` : ''}
+          ${fromP.value ? `<button class="btn micro-btn" data-ll-id="${from === 0 ? EN.item : EN.item + '@' + from}" data-ll-type="buy" data-ll-price="${fromP.value}" data-ll-city="${city}" title="Anotar la compra del ítem ${lvlName(from)} en el Registro">✎ Registrar compra ${lvlName(from)}</button>` : ''}
+          ${sellP.value ? `<button class="btn micro-btn" data-ll-id="${sellId}" data-ll-type="sell" data-ll-price="${sellP.value}" data-ll-city="${sellCity}" title="Anotar la venta del ítem ${lvlName(to)} en el Registro">✎ Registrar venta ${lvlName(to)}</button>` : ''}
           ${favBtnHtml('enchant', EN.item, name)}
         </div>
       </div>
@@ -3137,8 +3186,8 @@ function fmRender() {
         <div class="cd-line"><span>Ciclo</span><span>${r.cycleDays < 1.05 ? Math.round(r.cycleDays * 24) + ' h' : r.cycleDays.toFixed(1) + ' días'}</span></div>
         <div class="cd-line total"><span>${r.f.kind === 'animal' ? 'Margen antes de alimento' : 'Ganancia por unidad'}</span><span class="${r.unit > 0 ? 'pos' : 'neg'}">${fmt(r.unit)}</span></div>
         <div class="cd-actions">
-          ${bp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.inId}','buy',${bp.value},'${city}')" title="Anotar la compra de ${r.keeper ? 'animales' : (r.f.kind === 'plant' ? 'semillas' : 'crías')} en el Registro">✎ Registrar compra</button>` : ''}
-          ${sp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.outId}','sell',${sp.value},'${city}')" title="Anotar la venta del producto en el Registro">✎ Registrar venta</button>` : ''}
+          ${bp.value ? `<button class="btn micro-btn" data-ll-id="${r.inId}" data-ll-type="buy" data-ll-price="${bp.value}" data-ll-city="${city}" title="Anotar la compra de ${r.keeper ? 'animales' : (r.f.kind === 'plant' ? 'semillas' : 'crías')} en el Registro">✎ Registrar compra</button>` : ''}
+          ${sp.value ? `<button class="btn micro-btn" data-ll-id="${r.outId}" data-ll-type="sell" data-ll-price="${sp.value}" data-ll-city="${city}" title="Anotar la venta del producto en el Registro">✎ Registrar venta</button>` : ''}
           ${favBtnHtml('farm', r.outId, FM_NAME(r.outId))}
         </div>
       </div>
@@ -4299,7 +4348,7 @@ function sgAvatarHTML(u, cls) {
   const ini = sgEsc((u.n || '?').trim().charAt(0).toUpperCase() || '?');
   const url = u.a ? `https://cdn.discordapp.com/avatars/${sgEsc(u.i)}/${sgEsc(u.a)}.png?size=64` : '';
   return `<span class="sg-av ${cls || ''}">${url
-    ? `<img src="${url}" alt="" onerror="sgAvatarFail(this)">` : ''}<span class="sg-av-ini">${ini}</span></span>`;
+    ? `<img src="${url}" alt="" data-sg-avatar>` : ''}<span class="sg-av-ini">${ini}</span></span>`;
 }
 
 /* ---- chip de cuenta + menú en la barra superior ---- */
@@ -4664,7 +4713,7 @@ function sgMembersCSV() {
   const head = 'puesto,jugador,fama_kills,fama_muertes,ratio_kd\n';
   return head + rows.map(m => [
     pos[m.Id] || '',
-    `"${String(m.Name || '').replace(/"/g, '""')}"`,
+    csvCell(m.Name || ''),
     m.KillFame || 0,
     m.DeathFame || 0,
     m.DeathFame > 0 ? ((m.KillFame || 0) / m.DeathFame).toFixed(2) : '',

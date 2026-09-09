@@ -116,7 +116,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     const tr = $('foodBody').querySelector('tr.clickable');
     if (tr) { tr.click(); await sleep(200);
       check($('foodBody').querySelector('.craft-detail') !== null, 'Cocina: detalle expandido OK', 'Cocina: no se expandió el detalle');
-      const regBtns = $('foodBody').querySelectorAll('.craft-detail [onclick^="llPrefill"]');
+      const regBtns = $('foodBody').querySelectorAll('.craft-detail [data-ll-id]');
       check(regBtns.length >= 2, `Cocina: ${regBtns.length} botones «Registrar» en el detalle`, 'Cocina: faltan botones Registrar en el detalle');
       // favoritos: marcar ★, verificar guardado con nombre en español y panel en Inicio
       const star = $('foodBody').querySelector('.fav-btn');
@@ -167,7 +167,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       check(res.includes('nivel') || res.includes('Nivel') || res.length > 300,
         'Encantado: comparación renderizada tras elegir ítem',
         'Encantado: resultado vacío → ' + res.slice(0,150));
-      const enReg = $('enResult').querySelectorAll('[onclick^="llPrefill"]');
+      const enReg = $('enResult').querySelectorAll('[data-ll-id]');
       check(enReg.length >= 2, `Encantado: ${enReg.length} botones «Registrar» en el planificador`, 'Encantado: faltan botones Registrar');
     }
   } catch (e) { errors.push('Encantado: ' + e.message); }
@@ -179,7 +179,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   try {
     const ftr = $('fmBody').querySelector('tr.clickable');
     if (ftr) { ftr.click(); await sleep(250);
-      const fReg = $('fmBody').querySelectorAll('[onclick^="llPrefill"]');
+      const fReg = $('fmBody').querySelectorAll('[data-ll-id]');
       check(fReg.length === 2, 'Granja: detalle con 2 botones «Registrar»', `Granja: ${fReg.length} botones Registrar (esperaba 2)`); }
   } catch (e) { errors.push('Granja expandir: ' + e.message); }
 
@@ -341,7 +341,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   try {
     const ttr = trB && trB.querySelector('tr.clickable');
     if (ttr) { ttr.click(); await sleep(250);
-      const tReg = trB.querySelectorAll('[onclick^="llPrefill"]');
+      const tReg = trB.querySelectorAll('[data-ll-id]');
       check(tReg.length === 2, 'Transmutación: detalle con 2 botones «Registrar»', `Transmutación: ${tReg.length} botones Registrar (esperaba 2)`); }
   } catch (e) { errors.push('Transmutación expandir: ' + e.message); }
 
@@ -362,7 +362,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       hit.click(); await sleep(700);
       const res = bodyOf('psResult');
       check(res.includes('Caerleon') || res.includes('Martlock'), 'Buscador: matriz de ciudades renderizada', 'Buscador: sin matriz → ' + res.slice(0,150));
-      const psReg = $('psResult').querySelectorAll('[onclick^="llPrefill"]');
+      const psReg = $('psResult').querySelectorAll('[data-ll-id]');
       check(psReg.length === 0, 'Buscador: sin botones «Registrar» (solo consulta, por pedido del usuario)', `Buscador: ${psReg.length} botones Registrar (esperaba 0)`);
       const hist = JSON.parse(window.localStorage.getItem('psHistory') || '[]');
       check(hist.length === 1, 'Buscador: historial guardado', 'Buscador: historial no se guardó');
@@ -383,12 +383,23 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     const stats = $('llStats').textContent;
     check(stats.includes('20.000') || stats.includes('20,000') || stats.includes('20 000'),
       'Registro: P&L = +20.000 correcto (70.000−50.000)', 'Registro: P&L no muestra 20.000 → ' + stats.slice(0,200));
-    // CSV
-    let csvOk = false;
-    window.URL.createObjectURL = () => { csvOk = true; return 'blob:x'; };
+    // CSV (con una nota que parece fórmula: no debe salir ejecutable)
+    $('llNoteTxt').value = '=HYPERLINK("http://evil","x")';
+    $('llQty').value = 1; $('llPrice').value = 1; $('llAdd').click(); await sleep(100);
+    let csvBlob = null;
+    window.URL.createObjectURL = (b) => { csvBlob = b; return 'blob:x'; };
     window.URL.revokeObjectURL = () => {};
     $('llExport').click(); await sleep(100);
-    check(csvOk, 'Registro: exportación CSV dispara descarga', 'Registro: CSV no generó blob');
+    check(!!csvBlob, 'Registro: exportación CSV dispara descarga', 'Registro: CSV no generó blob');
+    if (csvBlob) {
+      const csvTxt = await csvBlob.text();
+      check(csvTxt.includes(`"'=HYPERLINK(""http://evil"",""x"")"`) && !csvTxt.includes(',"=HYPERLINK'),
+        'Registro: CSV neutraliza celdas que empiezan con fórmula', 'Registro: CSV exporta fórmula ejecutable');
+    }
+    // quitar la fila de prueba para no alterar los totales de abajo
+    const hostileRow = [...$('llBody').querySelectorAll('tr')].find(tr => tr.textContent.includes('HYPERLINK'));
+    if (hostileRow) { window.confirm = () => true; hostileRow.querySelector('[data-del]').click(); await sleep(100); }
+    check(JSON.parse(window.localStorage.getItem('tradeLog') || '[]').length === 2, 'Registro: fila de prueba CSV eliminada', 'Registro: no pude eliminar la fila de prueba');
     // Respaldo completo
     let bkBlob = null;
     window.URL.createObjectURL = (b) => { bkBlob = b; return 'blob:x'; };
@@ -401,6 +412,27 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
         'Registro: respaldo completo incluye tradeLog con formato válido', 'Registro: respaldo malformado');
     }
     check($('bkImport') && $('bkFile'), 'Registro: botón e input de importar respaldo presentes', 'Registro: falta importar respaldo');
+    if (bkBlob) {
+      const bk = JSON.parse(await bkBlob.text());
+      check(!('aaDiscordSession' in bk.data) && !('aaProxy' in bk.data),
+        'Registro: el respaldo no incluye sesión de Discord ni URL del proxy', 'Registro: respaldo filtra sesión/proxy');
+    }
+    // Importar un respaldo hostil: solo entran claves conocidas con JSON válido
+    window.confirm = () => true;
+    const hostile = { app: 'AyudanteAlbion', version: 1, data: {
+      aaDiscordSession: 'eyJ9.falsa', aaProxy: 'https://evil.example', claveAjena: '1',
+      favorites: 'no es json', pfSpecs: JSON.stringify({ qaMarca: 1 }),
+    } };
+    const origReload = window.location.reload;
+    let reloaded = false;
+    try { Object.defineProperty(window.location, 'reload', { value: () => { reloaded = true; }, configurable: true }); } catch (e) {}
+    const evt = new window.Event('change');
+    Object.defineProperty(evt, 'target', { value: { files: [new window.File([JSON.stringify(hostile)], 'r.json', { type: 'application/json' })], value: '' } });
+    $('bkFile').dispatchEvent(evt); await sleep(300);
+    check(!window.localStorage.getItem('aaDiscordSession') && !window.localStorage.getItem('aaProxy') && !window.localStorage.getItem('claveAjena'),
+      'Registro: importar respaldo ignora sesión, proxy y claves ajenas', 'Registro: respaldo hostil plantó claves');
+    check(window.localStorage.getItem('favorites') !== 'no es json' && !(window.localStorage.getItem('pfSpecs') || '').includes('qaMarca'),
+      'Registro: respaldo con un valor que no es JSON se rechaza entero', 'Registro: aplicó un respaldo con valores inválidos');
     // Resumen por ítem: 1 grupo (T4_BAG), P&L +20.000, +2.000/unidad vendida
     window.document.querySelector('#llFilter [data-f="byitem"]').click(); await sleep(150);
     const gRows = $('llBody').querySelectorAll('tr');

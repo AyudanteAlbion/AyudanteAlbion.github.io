@@ -90,7 +90,7 @@ Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudfl
    - `DISCORD_CLIENT_ID` (texto) — el Client ID
    - `SG_DISCORD_GUILD_ID` (texto) — el ID del servidor
    - `DISCORD_CLIENT_SECRET` (**secreto**) — el Client Secret
-   - `AA_SESSION_KEY` (secreto, opcional) — clave para firmar sesiones; si no se define, se usa el Client Secret
+   - `AA_SESSION_KEY` (**secreto, obligatorio**) — clave para firmar sesiones: al menos 32 caracteres aleatorios y distinta del Client Secret (por ejemplo `openssl rand -hex 32`). Sin ella el acceso SG queda desactivado.
 5. **Deployar**: el Worker se construye solo desde este repo al pushear a `main`.
 
 Hasta que las variables existan, la app funciona normal: el Salón muestra las herramientas disponibles y un aviso de configuración pendiente, sin ofrecer un botón de ingreso que no funciona. El botón de Discord de la barra permanece oculto (`GET /discord/config` responde `configured: false`).
@@ -98,7 +98,7 @@ Hasta que las variables existan, la app funciona normal: el Salón muestra las h
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs     # 40 chequeos del OAuth y la verificación de sesión con Discord simulado
+node worker/selftest.mjs     # 52 chequeos del OAuth y la verificación de sesión con Discord simulado
 cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
 ```
 
@@ -114,6 +114,15 @@ python3 server.py     # http://localhost:3000
 ```
 
 El server local incluye un simulador del consentimiento de Discord (`/discord/login`): permite probar el ingreso de miembros SG, la Sala y el caso no-miembro sin necesidad de configurar Cloudflare.
+
+## Seguridad
+
+- **CSP** en `index.html`: solo se ejecuta `app.js` (sin scripts inline ni de terceros) y la red queda acotada a las APIs que usa la app. Si se agrega un servicio nuevo hay que sumarlo a la política o el navegador lo bloquea. Por eso los botones se enganchan con `data-*` y delegación de eventos, nunca con `onclick` inline.
+- Todo dato que llega de fuera (Discord, killboard) se escapa antes de pintarse; los toasts usan texto plano.
+- La sesión de Discord solo se acepta después de que el Worker confirme su firma (`/discord/verify`).
+- El proxy del Worker reenvía únicamente las rutas del killboard que usa la app y solo a los orígenes de la app (GitHub Pages y localhost).
+- Los CSV neutralizan celdas que empiezan como fórmula; el respaldo solo exporta/importa claves de datos conocidas (nunca la sesión ni la configuración del proxy).
+- `server.py` escucha solo en `127.0.0.1`.
 
 ## Precios
 
