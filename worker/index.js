@@ -255,15 +255,29 @@ async function discordCallback(request, url, env, net) {
     return backWith(redirect, 'discord');
   }
 
-  /* 3 · ¿está en el servidor de Discord de SG? /users/@me/guilds/{id}
-     responde 200 solo si el usuario es miembro del servidor. */
+  /* 3 · ¿está en el servidor de Discord de SG?
+     OAuth2 scope `guilds` permite listar los servidores con GET /users/@me/guilds?limit=200.
+     Pagina con `after` si el usuario está en más de 200 servidores (hasta 2000). */
   let member = false;
   try {
-    const res = await net(DISCORD_API + '/users/@me/guilds/' + encodeURIComponent(dc.guildId), {
-      headers: { Authorization: 'Bearer ' + token },
-    });
-    if (res.status === 200) member = true;
-    else if (res.status !== 403 && res.status !== 404) return backWith(redirect, 'gremio');
+    let after = '';
+    let page = 0;
+    while (page < 10) {
+      page++;
+      const query = '?limit=200' + (after ? '&after=' + encodeURIComponent(after) : '');
+      const res = await net(DISCORD_API + '/users/@me/guilds' + query, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      if (!res.ok) return backWith(redirect, 'gremio');
+      const list = await res.json().catch(() => null);
+      if (!Array.isArray(list)) return backWith(redirect, 'gremio');
+      if (list.some(g => g && g.id === dc.guildId)) {
+        member = true;
+        break;
+      }
+      if (list.length < 200) break;
+      after = list[list.length - 1].id;
+    }
   } catch (e) {
     return backWith(redirect, 'gremio');
   }
