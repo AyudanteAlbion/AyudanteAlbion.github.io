@@ -4531,6 +4531,8 @@ async function sgResolveGuild(force) {
   return g.Id;
 }
 
+/* Sub-tabs internas del salón: resumen, builds, mapa de guerra */
+let sgRoomTab = 'summary';
 function sgRoomContent() {
   const body = document.getElementById('sgRoomBody');
   if (!body) return;
@@ -4551,34 +4553,60 @@ function sgRoomContent() {
     </div>
   </div>
 
-  <div class="stats sg-room-stats">
-    <div class="stat"><div class="k">Miembros</div><div class="v">${fmt(g ? g.MemberCount : mem.length)}</div><div class="s">Spetsnaz Grail</div></div>
-    <div class="stat"><div class="k">Fama de asesinatos</div><div class="v pos">${fmt(g ? g.killFame : byKf.reduce((s, m) => s + (m.KillFame || 0), 0))}</div><div class="s">todo el gremio</div></div>
-    <div class="stat"><div class="k">Fama de muertes</div><div class="v neg">${fmt(g ? g.DeathFame : mem.reduce((s, m) => s + (m.DeathFame || 0), 0))}</div><div class="s">todo el gremio</div></div>
-    <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${g && g.Founded ? new Date(g.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">${g && g.FounderName ? 'por ' + sgEsc(g.FounderName) : ''}</div></div>
+  <div class="sg-room-tabs" role="tablist" aria-label="Herramientas del Salón">
+    <button class="sg-room-tab${sgRoomTab === 'summary' ? ' active' : ''}" data-room-tab="summary" role="tab" aria-selected="${sgRoomTab === 'summary'}">
+      <svg class="tab-ico"><use href="#i-trophy"/></svg> Resumen
+    </button>
+    <button class="sg-room-tab${sgRoomTab === 'builds' ? ' active' : ''}" data-room-tab="builds" role="tab" aria-selected="${sgRoomTab === 'builds'}">
+      <svg class="tab-ico"><use href="#i-sword"/></svg> Builds
+    </button>
+    <button class="sg-room-tab${sgRoomTab === 'war' ? ' active' : ''}" data-room-tab="war" role="tab" aria-selected="${sgRoomTab === 'war'}">
+      <svg class="tab-ico"><use href="#i-shield"/></svg> Mapa de Guerra
+    </button>
   </div>
 
-  <div class="sg-char">
-    <span class="chip-ico"><svg><use href="#i-link"/></svg></span>
-    <div class="sg-char-main">
-      <div class="cd-title">Tu personaje de Albion</div>
-      <div id="sgCharBox">${sgCharBoxHTML()}</div>
+  <div class="sg-room-panel" id="sgRoomSummary"${sgRoomTab !== 'summary' ? ' hidden' : ''}>
+    <div class="stats sg-room-stats">
+      <div class="stat"><div class="k">Miembros</div><div class="v">${fmt(g ? g.MemberCount : mem.length)}</div><div class="s">Spetsnaz Grail</div></div>
+      <div class="stat"><div class="k">Fama de asesinatos</div><div class="v pos">${fmt(g ? g.killFame : byKf.reduce((s, m) => s + (m.KillFame || 0), 0))}</div><div class="s">todo el gremio</div></div>
+      <div class="stat"><div class="k">Fama de muertes</div><div class="v neg">${fmt(g ? g.DeathFame : mem.reduce((s, m) => s + (m.DeathFame || 0), 0))}</div><div class="s">todo el gremio</div></div>
+      <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${g && g.Founded ? new Date(g.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">${g && g.FounderName ? 'por ' + sgEsc(g.FounderName) : ''}</div></div>
+    </div>
+
+    <div class="sg-char">
+      <span class="chip-ico"><svg><use href="#i-link"/></svg></span>
+      <div class="sg-char-main">
+        <div class="cd-title">Tu personaje de Albion</div>
+        <div id="sgCharBox">${sgCharBoxHTML()}</div>
+      </div>
+    </div>
+
+    <div class="sg-rank-bar">
+      <div class="cd-title"><span class="chip-ico"><svg><use href="#i-trophy"/></svg></span> Ranking de miembros</div>
+      <div class="sg-rank-tools">
+        <input type="search" id="sgRankSearch" class="search" placeholder="Buscar miembro por nombre…" value="${sgEsc(SG.room.filter)}">
+        <button class="btn" data-sg-csv title="Descargar el ranking visible en CSV"><svg class="btn-ico"><use href="#i-download"/></svg> CSV</button>
+      </div>
+    </div>
+    <div id="sgRankTable">${sgRankTableHTML()}</div>
+
+    <div class="sg-week">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Mejores asesinatos de la semana</div>
+      ${sgWeekHTML()}
     </div>
   </div>
 
-  <div class="sg-rank-bar">
-    <div class="cd-title"><span class="chip-ico"><svg><use href="#i-trophy"/></svg></span> Ranking de miembros</div>
-    <div class="sg-rank-tools">
-      <input type="search" id="sgRankSearch" class="search" placeholder="Buscar miembro por nombre…" value="${sgEsc(SG.room.filter)}">
-      <button class="btn" data-sg-csv title="Descargar el ranking visible en CSV"><svg class="btn-ico"><use href="#i-download"/></svg> CSV</button>
-    </div>
+  <div class="sg-room-panel" id="sgRoomBuilds"${sgRoomTab !== 'builds' ? ' hidden' : ''}>
+    <div id="bdMount"></div>
   </div>
-  <div id="sgRankTable">${sgRankTableHTML()}</div>
 
-  <div class="sg-week">
-    <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Mejores asesinatos de la semana</div>
-    ${sgWeekHTML()}
+  <div class="sg-room-panel" id="sgRoomWar"${sgRoomTab !== 'war' ? ' hidden' : ''}>
+    <div id="wmMount"></div>
   </div>`;
+
+  /* renderizar el panel activo */
+  if (sgRoomTab === 'builds') bdRender();
+  if (sgRoomTab === 'war') wmRender();
 }
 
 function sgCharBoxHTML() {
@@ -4759,6 +4787,22 @@ document.addEventListener('click', e => {
   }
   const mem = t.closest('[data-sg-member]');
   if (mem) { sgOpenMember(mem.dataset.sgMember, mem.dataset.sgName); return; }
+  /* sub-tabs del salón (Resumen / Builds / Mapa de Guerra) */
+  const roomTab = t.closest('[data-room-tab]');
+  if (roomTab) {
+    sgRoomTab = roomTab.dataset.roomTab;
+    document.querySelectorAll('.sg-room-tab').forEach(b => {
+      const on = b.dataset.roomTab === sgRoomTab;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.sg-room-panel').forEach(p => p.hidden = true);
+    const target = document.getElementById(sgRoomTab === 'summary' ? 'sgRoomSummary' : sgRoomTab === 'builds' ? 'sgRoomBuilds' : 'sgRoomWar');
+    if (target) target.hidden = false;
+    if (sgRoomTab === 'builds') bdRender();
+    if (sgRoomTab === 'war') wmRender();
+    return;
+  }
   if (!t.closest('#sgAccountMenu') && !t.closest('#sgAccountBtn')) sgToggleMenu(false);
 });
 document.addEventListener('input', e => {
@@ -4768,6 +4812,511 @@ document.addEventListener('input', e => {
     if (box) box.innerHTML = sgRankTableHTML();
   }
 });
+
+/* ====================================================================
+   🛡️ COMPOSITOR DE BUILDS PERSONAL + SCOUT DE MERCADO
+   Herramienta exclusiva para miembros de Spetsnaz Grail.
+   Permite armar builds personales, ver costos en tiempo real,
+   guardarlas y recibir alertas cuando bajan de precio.
+   ==================================================================== */
+const BD = {
+  list: [], // builds guardadas
+  current: null, // build en edición
+  prices: {}, // precios cacheados
+  loading: false,
+};
+try { BD.list = JSON.parse(localStorage.getItem('sgBuilds') || '[]'); } catch (e) {}
+function bdSave() { localStorage.setItem('sgBuilds', JSON.stringify(BD.list)); }
+
+const BD_SLOTS = [
+  { key: 'mainHand', label: 'Mano Principal', icon: 'i-sword' },
+  { key: 'offHand', label: 'Mano Secundaria', icon: 'i-shield' },
+  { key: 'head', label: 'Cabeza', icon: 'i-user' },
+  { key: 'chest', label: 'Pecho', icon: 'i-shield' },
+  { key: 'shoes', label: 'Pies', icon: 'i-user' },
+  { key: 'cape', label: 'Capa', icon: 'i-shield' },
+  { key: 'food', label: 'Comida', icon: 'i-pot' },
+  { key: 'potion', label: 'Poción', icon: 'i-flask' },
+];
+
+function bdNewItem() {
+  return BD_SLOTS.reduce((acc, s) => { acc[s.key] = null; return acc; }, {});
+}
+
+function bdRender() {
+  const mount = document.getElementById('bdMount');
+  if (!mount) return;
+  
+  if (!BD.current) {
+    // Lista de builds guardadas
+    mount.innerHTML = `
+      <div class="panel">
+        <div class="cd-title">
+          <svg class="title-ico"><use href="#i-sword"/></svg> Mis Builds
+          <button class="btn primary" id="bdNewBtn" style="margin-left:auto">+ Nueva Build</button>
+        </div>
+        <div class="micro muted" style="padding:8px 14px">Armá tus builds personales, calculá el costo en tiempo real y recibí alertas cuando bajen de precio.</div>
+        <div id="bdList">${bdListHTML()}</div>
+      </div>`;
+    document.getElementById('bdNewBtn').onclick = () => {
+      BD.current = { id: Date.now(), name: 'Nueva Build', items: bdNewItem(), createdAt: Date.now() };
+      bdRender();
+    };
+  } else {
+    // Editor de build
+    bdRenderEditor();
+  }
+}
+
+function bdListHTML() {
+  if (!BD.list.length) return '<div class="loading-cell">No tenés builds guardadas. Creá una para empezar.</div>';
+  return BD.list.map(b => `
+    <div class="bd-card" data-bd-id="${b.id}">
+      <div class="bd-card-head">
+        <div class="bd-card-name">${sgEsc(b.name)}</div>
+        <div class="bd-card-meta">${new Date(b.createdAt).toLocaleDateString('es-AR')}</div>
+      </div>
+      <div class="bd-card-actions">
+        <button class="btn micro-btn" data-bd-edit="${b.id}">Editar</button>
+        <button class="btn micro-btn" data-bd-dup="${b.id}">Duplicar</button>
+        <button class="btn micro-btn" data-bd-del="${b.id}">Eliminar</button>
+      </div>
+    </div>`).join('');
+}
+
+function bdRenderEditor() {
+  const mount = document.getElementById('bdMount');
+  const b = BD.current;
+  mount.innerHTML = `
+    <div class="panel">
+      <div class="cd-title">
+        <button class="btn micro-btn" id="bdBackBtn">← Volver</button>
+        <input type="text" id="bdNameInput" class="search" value="${sgEsc(b.name)}" style="flex:1;margin-left:8px">
+        <button class="btn primary" id="bdSaveBtn">Guardar</button>
+        <button class="btn" id="bdCalcBtn">💰 Calcular Costo</button>
+      </div>
+      <div class="bd-editor">
+        <div class="bd-slots">
+          ${BD_SLOTS.map(s => bdSlotHTML(s, b.items[s.key])).join('')}
+        </div>
+        <div class="bd-cost" id="bdCostBox">
+          <div class="loading-cell">Tocá "Calcular Costo" para ver precios en tiempo real.</div>
+        </div>
+      </div>
+    </div>`;
+  
+  document.getElementById('bdBackBtn').onclick = () => { BD.current = null; bdRender(); };
+  document.getElementById('bdNameInput').oninput = (e) => { BD.current.name = e.target.value; };
+  document.getElementById('bdSaveBtn').onclick = () => {
+    const idx = BD.list.findIndex(x => x.id === b.id);
+    if (idx >= 0) BD.list[idx] = b; else BD.list.push(b);
+    bdSave();
+    waToast('✅ Build guardada', `"${b.name}" se guardó en tu lista.`);
+    BD.current = null;
+    bdRender();
+  };
+  document.getElementById('bdCalcBtn').onclick = () => bdCalcCost();
+}
+
+function bdSlotHTML(slot, itemId) {
+  const item = itemId ? catalogItem(itemId) : null;
+  return `
+    <div class="bd-slot" data-bd-slot="${slot.key}">
+      <div class="bd-slot-label">
+        <svg class="title-ico"><use href="#${slot.icon}"/></svg> ${slot.label}
+      </div>
+      <div class="bd-slot-content">
+        ${item ? `
+          <div class="item-cell">
+            ${iconImg(item[0], 'item-icon sm')}
+            <div>
+              <div class="item-name">${sgEsc(item[1])}</div>
+              <div class="item-meta">${sgEsc(item[0])}</div>
+            </div>
+          </div>
+          <button class="btn micro-btn" data-bd-clear="${slot.key}">✕</button>
+        ` : `
+          <div class="bd-slot-empty">Vacío</div>
+        `}
+      </div>
+      <button class="btn micro-btn" data-bd-pick="${slot.key}">Elegir</button>
+    </div>`;
+}
+
+function catalogItem(id) {
+  if (!CATALOG) return null;
+  return CATALOG.find(c => c[0] === id);
+}
+
+function bdCalcCost() {
+  if (BD.loading) return;
+  const b = BD.current;
+  const ids = BD_SLOTS.map(s => b.items[s.key]).filter(Boolean);
+  if (!ids.length) {
+    waToast('⚠️ Build vacía', 'Agregá al menos un ítem para calcular costos.', 'err');
+    return;
+  }
+  
+  BD.loading = true;
+  const box = document.getElementById('bdCostBox');
+  box.innerHTML = '<div class="loading-cell">Cargando precios…</div>';
+  
+  fetchPrices(ids, [...CITIES, BLACK_MARKET]).then(prices => {
+    BD.prices = prices;
+    BD.loading = false;
+    bdRenderCost();
+  }).catch(err => {
+    BD.loading = false;
+    box.innerHTML = `<div class="loading-cell sg-err">Error al cargar precios: ${sgEsc(err.message)}</div>`;
+  });
+}
+
+function bdRenderCost() {
+  const box = document.getElementById('bdCostBox');
+  const b = BD.current;
+  const rows = BD_SLOTS.map(s => {
+    const id = b.items[s.key];
+    if (!id) return null;
+    const p = BD.prices[id] || {};
+    const best = bdBestPrice(p);
+    return { slot: s, id, price: best };
+  }).filter(Boolean);
+  
+  const total = rows.reduce((sum, r) => sum + (r.price.value || 0), 0);
+  
+  box.innerHTML = `
+    <div class="bd-cost-table">
+      <div class="bd-cost-row bd-cost-head">
+        <div>Ítem</div>
+        <div>Mejor Precio</div>
+        <div>Ciudad</div>
+      </div>
+      ${rows.map(r => `
+        <div class="bd-cost-row">
+          <div class="item-cell">
+            ${iconImg(r.id, 'item-icon sm')}
+            <div class="item-name">${sgEsc(catalogName(r.id))}</div>
+          </div>
+          <div class="num pos">${fmt(r.price.value)}</div>
+          <div class="muted">${sgEsc(r.price.city || '—')}</div>
+        </div>`).join('')}
+      <div class="bd-cost-row bd-cost-total">
+        <div><b>TOTAL</b></div>
+        <div class="num pos"><b>${fmt(total)}</b></div>
+        <div></div>
+      </div>
+    </div>
+    <div style="padding:10px 14px">
+      <button class="btn primary" id="bdAlertBtn">🔔 Crear Alerta de Precio</button>
+      <div class="micro muted" style="margin-top:6px">La app te avisa cuando el costo total baja.</div>
+    </div>`;
+  
+  document.getElementById('bdAlertBtn').onclick = () => bdCreateAlert(total);
+}
+
+function bdBestPrice(p) {
+  let best = { value: 0, city: '' };
+  for (const city of CITIES) {
+    const v = p[city] ? p[city].sell : 0;
+    if (v > 0 && (best.value === 0 || v < best.value)) best = { value: v, city };
+  }
+  return best;
+}
+
+function bdCreateAlert(currentCost) {
+  const b = BD.current;
+  const threshold = Math.round(currentCost * 0.9); // alerta cuando baja 10%
+  const alert = {
+    uid: 'bd-' + b.id,
+    id: b.items.mainHand || b.items.chest || 'build',
+    name: 'Build: ' + b.name,
+    metric: 'sell',
+    city: CITIES[0],
+    threshold,
+    on: true,
+    fired: false,
+    once: false,
+    buildId: b.id,
+    createdAt: Date.now(),
+  };
+  WA.list.push(alert);
+  waSave();
+  waRestart();
+  waToast('🔔 Alerta creada', `Te avisamos cuando "${b.name}" baje de ${fmt(threshold)}.`);
+}
+
+// Event delegation para el editor de builds
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  
+  const edit = t.closest('[data-bd-edit]');
+  if (edit) {
+    const id = +edit.dataset.bdEdit;
+    BD.current = BD.list.find(b => b.id === id);
+    bdRender();
+    return;
+  }
+  
+  const dup = t.closest('[data-bd-dup]');
+  if (dup) {
+    const id = +dup.dataset.bdDup;
+    const orig = BD.list.find(b => b.id === id);
+    if (orig) {
+      const copy = { ...orig, id: Date.now(), name: orig.name + ' (copia)', createdAt: Date.now() };
+      BD.list.push(copy);
+      bdSave();
+      bdRender();
+      waToast('✅ Build duplicada', `"${copy.name}" se agregó a tu lista.`);
+    }
+    return;
+  }
+  
+  const del = t.closest('[data-bd-del]');
+  if (del) {
+    const id = +del.dataset.bdDel;
+    if (confirm('¿Eliminar esta build?')) {
+      BD.list = BD.list.filter(b => b.id !== id);
+      bdSave();
+      bdRender();
+    }
+    return;
+  }
+  
+  const pick = t.closest('[data-bd-pick]');
+  if (pick) {
+    const slot = pick.dataset.bdPick;
+    bdOpenPicker(slot);
+    return;
+  }
+  
+  const clear = t.closest('[data-bd-clear]');
+  if (clear) {
+    const slot = clear.dataset.bdClear;
+    BD.current.items[slot] = null;
+    bdRenderEditor();
+    return;
+  }
+});
+
+function bdOpenPicker(slotKey) {
+  const modal = document.createElement('div');
+  modal.className = 'bd-modal';
+  modal.innerHTML = `
+    <div class="bd-modal-box">
+      <div class="bd-modal-head">
+        <div class="cd-title">Elegir ítem para ${BD_SLOTS.find(s => s.key === slotKey).label}</div>
+        <button class="btn micro-btn" id="bdModalClose">✕</button>
+      </div>
+      <input type="search" id="bdModalSearch" class="search big" placeholder="Buscar ítem…" autofocus>
+      <div class="bd-modal-list" id="bdModalList"></div>
+    </div>`;
+  document.body.appendChild(modal);
+  
+  const close = () => modal.remove();
+  document.getElementById('bdModalClose').onclick = close;
+  modal.onclick = (e) => { if (e.target === modal) close(); };
+  
+  const list = document.getElementById('bdModalList');
+  const search = document.getElementById('bdModalSearch');
+  
+  const render = (q) => {
+    if (!CATALOG) { list.innerHTML = '<div class="loading-cell">Cargando catálogo…</div>'; return; }
+    const query = q.toLowerCase();
+    const items = CATALOG.filter(c => !query || c[1].toLowerCase().includes(query) || c[0].toLowerCase().includes(query)).slice(0, 100);
+    if (!items.length) { list.innerHTML = '<div class="loading-cell">Sin resultados.</div>'; return; }
+    list.innerHTML = items.map(c => `
+      <div class="bd-modal-item" data-bd-select="${sgEsc(c[0])}">
+        ${iconImg(c[0], 'item-icon sm')}
+        <div>
+          <div class="item-name">${sgEsc(c[1])}</div>
+          <div class="item-meta">${sgEsc(c[0])}</div>
+        </div>
+      </div>`).join('');
+  };
+  
+  search.oninput = () => render(search.value);
+  render('');
+  
+  list.onclick = (e) => {
+    const item = e.target.closest('[data-bd-select]');
+    if (item) {
+      BD.current.items[slotKey] = item.dataset.bdSelect;
+      close();
+      bdRenderEditor();
+    }
+  };
+}
+
+/* ====================================================================
+   🗺️ MAPA DE GUERRA DE SG
+   Herramienta exclusiva para miembros de Spetsnaz Grail.
+   Muestra territorios del gremio, timers, ataques enemigos,
+   tracker de rivales y alertas de invasión.
+   ==================================================================== */
+const WM = {
+  territories: [],
+  events: [],
+  enemies: {},
+  loading: false,
+  lastUpdate: null,
+};
+
+function wmRender() {
+  const mount = document.getElementById('wmMount');
+  if (!mount) return;
+  
+  mount.innerHTML = `
+    <div class="panel">
+      <div class="cd-title">
+        <svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG
+        <button class="btn" id="wmRefreshBtn" style="margin-left:auto">
+          <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar
+        </button>
+      </div>
+      <div class="micro muted" style="padding:8px 14px">Territorios de Spetsnaz Grail, ataques recientes y tracker de enemigos.</div>
+      <div id="wmContent">
+        <div class="loading-cell">Cargando datos del mapa…</div>
+      </div>
+    </div>`;
+  
+  document.getElementById('wmRefreshBtn').onclick = () => wmLoad();
+  wmLoad();
+}
+
+async function wmLoad() {
+  if (WM.loading) return;
+  WM.loading = true;
+  const content = document.getElementById('wmContent');
+  content.innerHTML = '<div class="loading-cell">Cargando territorios y eventos…</div>';
+  
+  try {
+    const gid = await sgResolveGuild();
+    
+    // Cargar territorios del gremio
+    const terrData = await pfFetchRetry('/guilds/' + gid + '/territories').catch(() => null);
+    WM.territories = pfAsArray(terrData);
+    
+    // Cargar eventos recientes (kills)
+    const eventsData = await pfFetchRetry('/events?limit=50&sort=recent').catch(() => null);
+    WM.events = pfAsArray(eventsData);
+    
+    // Procesar enemigos (gremios que mataron miembros de SG)
+    WM.enemies = wmProcessEnemies();
+    WM.lastUpdate = Date.now();
+    WM.loading = false;
+    
+    wmRenderContent();
+  } catch (err) {
+    WM.loading = false;
+    content.innerHTML = `<div class="loading-cell sg-err">Error al cargar: ${sgEsc(err.message)}</div>`;
+  }
+}
+
+function wmProcessEnemies() {
+  const sgMembers = new Set((SG.room.members || []).map(m => m.Name));
+  const enemies = {};
+  
+  WM.events.forEach(ev => {
+    const victim = ev.Victim;
+    const killer = ev.Killer;
+    if (!victim || !killer) return;
+    
+    // Si la víctima es de SG y el killer es de otro gremio
+    if (sgMembers.has(victim.Name) && killer.GuildName && killer.GuildName !== SG_GUILD_NAME) {
+      const guild = killer.GuildName;
+      if (!enemies[guild]) enemies[guild] = { name: guild, kills: 0, lastKill: null };
+      enemies[guild].kills++;
+      if (!enemies[guild].lastKill || new Date(ev.TimeStamp) > new Date(enemies[guild].lastKill)) {
+        enemies[guild].lastKill = ev.TimeStamp;
+      }
+    }
+  });
+  
+  return Object.values(enemies).sort((a, b) => b.kills - a.kills);
+}
+
+function wmRenderContent() {
+  const content = document.getElementById('wmContent');
+  
+  const terrHTML = WM.territories.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Territorios (${WM.territories.length})</div>
+      <div class="wm-terr-grid">
+        ${WM.territories.map(t => wmTerritoryCard(t)).join('')}
+      </div>
+    </div>` : '<div class="loading-cell">Spetsnaz Grail no tiene territorios registrados.</div>';
+  
+  const enemyHTML = WM.enemies.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Gremios Enemigos (${WM.enemies.length})</div>
+      <div class="wm-enemy-list">
+        ${WM.enemies.slice(0, 10).map(e => wmEnemyCard(e)).join('')}
+      </div>
+    </div>` : '<div class="loading-cell">Sin ataques enemigos recientes.</div>';
+  
+  const eventsHTML = WM.events.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Eventos Recientes (${WM.events.length})</div>
+      <div class="wm-events-list">
+        ${WM.events.slice(0, 20).map(e => wmEventRow(e)).join('')}
+      </div>
+    </div>` : '';
+  
+  content.innerHTML = terrHTML + enemyHTML + eventsHTML;
+}
+
+function wmTerritoryCard(t) {
+  const lastAttack = t.LastAttack ? new Date(t.LastAttack) : null;
+  const attacked = lastAttack && (Date.now() - lastAttack.getTime()) < 3600e3; // última hora
+  return `
+    <div class="wm-terr-card${attacked ? ' wm-attacked' : ''}">
+      <div class="wm-terr-name">${sgEsc(t.TerritoryName || t.Name || 'Sin nombre')}</div>
+      <div class="wm-terr-meta">
+        ${lastAttack ? `<div class="muted">Último ataque: ${wmTimeAgo(lastAttack)}</div>` : '<div class="muted">Sin ataques recientes</div>'}
+        ${attacked ? '<div class="badge warn">⚠️ Atacado</div>' : '<div class="badge" style="color:var(--green);border-color:rgba(20,185,138,.4)">Seguro</div>'}
+      </div>
+    </div>`;
+}
+
+function wmEnemyCard(e) {
+  return `
+    <div class="wm-enemy-card">
+      <div class="wm-enemy-name">${sgEsc(e.name)}</div>
+      <div class="wm-enemy-stats">
+        <div><b>${e.kills}</b> kills a SG</div>
+        <div class="muted">Último: ${wmTimeAgo(new Date(e.lastKill))}</div>
+      </div>
+    </div>`;
+}
+
+function wmEventRow(e) {
+  const victim = e.Victim;
+  const killer = e.Killer;
+  const isSgVictim = (SG.room.members || []).some(m => m.Name === victim.Name);
+  return `
+    <div class="wm-event-row${isSgVictim ? ' wm-sg-victim' : ''}">
+      <div class="wm-event-time">${new Date(e.TimeStamp).toLocaleString('es-AR')}</div>
+      <div class="wm-event-players">
+        <span class="${isSgVictim ? 'neg' : ''}">${sgEsc(killer.Name)}</span>
+        ${killer.GuildName ? `<span class="muted">[${sgEsc(killer.GuildName)}]</span>` : ''}
+        →
+        <span class="${isSgVictim ? 'pos' : ''}">${sgEsc(victim.Name)}</span>
+        ${victim.GuildName ? `<span class="muted">[${sgEsc(victim.GuildName)}]</span>` : ''}
+      </div>
+    </div>`;
+}
+
+function wmTimeAgo(date) {
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60e3);
+  if (mins < 1) return 'hace instantes';
+  if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days} días`;
+}
 
 /* ---- arranque: hash de vuelta de Discord + config del Worker ---- */
 function sgInit() {
