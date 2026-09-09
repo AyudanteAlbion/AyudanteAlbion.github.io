@@ -19,18 +19,20 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Crafteo de equipo | Armas y armaduras por ciudad de especialización, con el diario de recetas disponible |
 | Refinamiento | Madera, mineral, piedra, piel y fibra, tiers completos |
 | Alquimia | Pociones y tinturas hechas en Brecilien |
-| Encantado | Comprar el ítem encantado vs. encantar con fragmentos, con las cantidades oficiales |
-| Granja | Cultivos, animales y productores; ganancia diaria por parcela |
-| Flipping | Mejor ruta de compra/venta entre las 7 ciudades, neto de impuestos; origen y destino fijables y se recuerdan |
+| Encantado | Comprar vs. encantar con fragmentos; planificador con destino de venta independiente, incluido Black Market |
+| Granja | Cultivos y productos animales con bonos de isla por ciudad; mercado independiente, Premium, Foco y margen diario por parcela |
+| Flipping | Compra en 7 ciudades y venta en 8 destinos (incluido Black Market), con rutas netas de impuestos y preferencias guardadas |
 | Alertas de precio | Vigilan un ítem mientras la app está abierta y avisan cuando conviene comprar, vender o flippear |
 | Transmutación | Costo de subir tier o encantamiento pagando plata, comparado contra comprar el destino |
 | Artefactos | Valor esperado del melding de fragmentos según la estrategia elegida |
 | Buscador de precios | Cualquier ítem, todas las calidades, las 7 ciudades más el Mercado Negro, con historial |
 | Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem y exportación CSV |
 | Perfil | Fama, kills y muertes del personaje real desde el killboard oficial, más el cálculo del costo de Foco según tus especializaciones |
-| Gremio | Enlaces de Spetsnaz Grail y creadores del gremio con estado EN VIVO / OFFLINE de su canal de Twitch |
-| Acceso SG | Ingreso con cuenta de Discord; los miembros verificados del servidor desbloquean la Sala: ranking completo del gremio, stats, top semanal y vínculo con tu personaje |
+| SG → Spetsnaz Grail | Información del gremio, enlaces a su web y Discord, y creadores con estado EN VIVO / OFFLINE de Twitch |
+| SG → Salón de miembros | Ingreso con Discord; los miembros verificados del servidor desbloquean ranking, estadísticas, top semanal, vínculo de personaje y exportación CSV |
 | Fórmulas | Referencia de todas las cuentas que usa la app, para poder verificarlas |
+
+El **Inicio** organiza las herramientas en dos slides manuales: **Crafteo** (equipo, refinamiento, alquimia, cocina, encantado y granja) y **Flipping** (flipping, transmutación, artefactos y alertas). Se cambian con los selectores de grupo, las flechas o el teclado, sin avance automático. Buscador, Registro, Perfil y Fórmulas conservan accesos rápidos; los favoritos siguen aparte.
 
 Comportamientos comunes a las herramientas de cálculo:
 
@@ -38,11 +40,45 @@ Comportamientos comunes a las herramientas de cálculo:
 - Cada receta o ítem se puede marcar como favorito y aparece agrupado en la pantalla de inicio.
 - Filtros, rutas, favoritos y registros se guardan en `localStorage` del navegador; desde el Registro de operaciones se exportan o importan como un único JSON de respaldo.
 
+## Bonos de Granja / Islas
+
+La **ciudad de la isla** aplica el bono local de +10% nominal al producto correspondiente; la **ciudad de precios** se elige por separado. Las dos ciudades se recuerdan. Las filas bonificadas y su desglose indican el bono aplicado.
+
+El modelo distingue cultivos/hierbas, crías y productores de huevos/leche. No añade bonos a animales vivos ni monturas. Se corrigieron también las fórmulas relacionadas de cosecha, Premium, devolución de semillas y cuidados. Los resultados son estimaciones: no simulan el redondeo de cada cosecha; los márgenes de animales son antes de alimento y la carnicería no está incluida.
+
+Ver [distribución por ciudad, fuentes y fórmulas](docs/farming.md). Pruebas: `cd albion-app && node farm-test.js` (requiere `jsdom`).
+
+## Reportar errores
+
+Al final de **Inicio**, el botón **Reportar un problema** abre un nuevo issue de este repositorio en otra pestaña. Incluye una plantilla en español con herramienta afectada, descripción, pasos para reproducir, resultado esperado, entorno y capturas opcionales.
+
+El usuario revisa y envía el reporte desde su cuenta de GitHub; los issues son públicos. La app no crea reportes automáticamente ni adjunta datos del navegador, almacenamiento local o sesión de Discord. La plantilla también está disponible en `.github/ISSUE_TEMPLATE/bug_report.md` para quienes reporten directamente desde el repositorio. El enlace de la app lleva el contenido precargado, por lo que no depende de la publicación de esa plantilla.
+
+## Black Market: solo destino de venta
+
+- Disponible en Flipping, Crafteo de equipo y el planificador de Encantado. En Alertas se puede vigilar su orden de compra o incluirlo en la mejor ruta de flipping.
+- Nunca se ofrece como origen de compra ni como lugar de crafteo en el Registro. No se añade a los módulos de recursos, consumibles, artefactos ni granja: el Black Market compra equipo.
+- La venta usa `buy_price_max` (lo que paga el mercado al jugador), con impuesto de 4%/8% según Premium, sin tasa de publicación. Sin orden de compra, no se calcula una venta con `sell_price_min` como respaldo.
+- Flipping, Crafteo y Encantado consultan calidad Normal para evitar comparar precios de calidades distintas. El Buscador mantiene todas las calidades, sin mostrar compras en Black Market.
+
+Pruebas de regresión (requieren `jsdom`):
+
+```bash
+cd albion-app
+node black-market-test.js
+node qa-test.js
+node smoke-test.js
+```
+
 ## Acceso de miembros SG (Discord)
 
-La app es pública, pero tiene una sección exclusiva: los miembros de Spetsnaz Grail ingresan con su cuenta de Discord y desbloquean la **Sala de miembros** (ranking completo del gremio desde el killboard, estadísticas, top semanal y vínculo con su personaje de Albion).
+La app es pública, pero tiene una sección exclusiva: los miembros de Spetsnaz Grail ingresan con su cuenta de Discord y desbloquean el **Salón de miembros** (ranking completo del gremio desde el killboard, estadísticas, top semanal y vínculo con su personaje de Albion).
+
+La pestaña **SG** tiene dos subpestañas: **Spetsnaz Grail**, pública y seleccionada por defecto, y **Salón de miembros**, con el acceso y las herramientas. El retorno desde Discord y el acceso desde el menú de cuenta abren directamente el Salón. Las subpestañas también se recorren con las flechas del teclado, Inicio y Fin.
 
 Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudflare, que hace el intercambio OAuth2 (el secreto nunca llega al navegador), verifica si el usuario pertenece al servidor de Discord de SG y devuelve una sesión firmada válida 30 días. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros.
+
+**Alcance del acceso actual:** el Worker verifica la membresía al ingresar, pero el sitio estático utiliza la sesión como control de interfaz y los datos del killboard son públicos. No es una barrera de seguridad para información privada; cualquier futura herramienta con datos sensibles necesitará validar la sesión y los permisos en el servidor.
 
 ### Puesta en marcha (una sola vez)
 
@@ -57,7 +93,7 @@ Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudfl
    - `AA_SESSION_KEY` (secreto, opcional) — clave para firmar sesiones; si no se define, se usa el Client Secret
 5. **Deployar**: el Worker se construye solo desde este repo al pushear a `main`.
 
-Hasta que las variables existan, la app funciona normal y el botón de Discord permanece oculto (`GET /discord/config` responde `configured: false`).
+Hasta que las variables existan, la app funciona normal: el Salón muestra las herramientas disponibles y un aviso de configuración pendiente, sin ofrecer un botón de ingreso que no funciona. El botón de Discord de la barra permanece oculto (`GET /discord/config` responde `configured: false`).
 
 ### Probar sin tocar Discord
 

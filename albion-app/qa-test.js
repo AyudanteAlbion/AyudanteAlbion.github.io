@@ -137,8 +137,8 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   try {
     const fam = window.document.querySelector('#gearFamChips .chip[data-fam]');
     if (fam) { fam.click(); await sleep(700);
-      check(rowsIn('gearBody') > 2, `Crafteo: familia «${fam.textContent.trim()}» → ${rowsIn('gearBody')} filas`, 'Crafteo: tabla vacía tras elegir familia'); }
-    else errors.push('Crafteo: no hay chips de familia');
+      check(rowsIn('gearBody') > 2, `Crafteo: rama «${fam.textContent.trim()}» → ${rowsIn('gearBody')} filas`, 'Crafteo: tabla vacía tras elegir rama'); }
+    else errors.push('Crafteo: no hay chips de rama');
   } catch (e) { errors.push('Crafteo: ' + e.message); }
 
   // ── ENCANTADO ──
@@ -185,8 +185,8 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
   } catch (e) { errors.push('Flipping detalle: ' + e.message); }
   // ruta fija: fijar origen y verificar que la columna «Comprar en» lo respeta
   try {
-    check($('flipFrom') && $('flipFrom').options.length === 8 && $('flipTo').options.length === 8,
-      'Flipping: selects de ruta con 7 ciudades + «Mejor ciudad»', 'Flipping: selects de ruta mal poblados');
+    check($('flipFrom') && $('flipFrom').options.length === 8 && $('flipTo').options.length === 9,
+      'Flipping: 7 orígenes y 8 destinos (incluye Black Market) + automático', 'Flipping: selects de ruta mal poblados');
     $('flipFrom').value = 'Lymhurst';
     $('flipFrom').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(300);
     const r = $('flipBody').querySelector('tr.clickable');
@@ -527,8 +527,42 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
 
     // sin sesión → candado en la Sala + gateo del ranking en Perfil
     window.eval(`gotoTab('sg')`); await sleep(200);
+    check(!$('sgPanelGuild').hidden && $('sgPanelMembers').hidden,
+      'SG: abre por defecto Spetsnaz Grail', 'SG: no abre la información pública por defecto');
+    check($('sgPanelGuild').contains(window.document.querySelector('.sg-hero'))
+      && $('sgPanelGuild').contains(window.document.querySelector('.sg-creators'))
+      && !$('sgPanelGuild').contains($('sgRoom')),
+      'SG: información, enlaces y creadores separados del Salón', 'SG: contenido mezclado entre subpestañas');
+    check($('sgPanelGuild').querySelectorAll('.sg-links a').length === 2,
+      'SG: conserva los enlaces a web y Discord', 'SG: faltan enlaces públicos');
+    $('sgTabMembers').click();
+    check($('sgPanelGuild').hidden && !$('sgPanelMembers').hidden
+      && $('sgTabMembers').getAttribute('aria-selected') === 'true'
+      && $('sgTabGuild').tabIndex === -1,
+      'SG: clic abre el Salón y actualiza la selección accesible', 'SG: selección del Salón incorrecta');
+    const key = (id, key) => $(id).dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
+    key('sgTabMembers', 'ArrowRight');
+    check(!$('sgPanelGuild').hidden && window.document.activeElement === $('sgTabGuild'),
+      'SG: flechas cambian de subpestaña y mueven el foco', 'SG: navegación por flechas rota');
+    key('sgTabGuild', 'End');
+    check(!$('sgPanelMembers').hidden, 'SG: End abre la última subpestaña', 'SG: End no funciona');
+    key('sgTabMembers', 'Home');
+    check(!$('sgPanelGuild').hidden, 'SG: Home abre la primera subpestaña', 'SG: Home no funciona');
+    key('sgTabGuild', 'ArrowLeft');
+    window.eval(`gotoTab('home'); gotoTab('sg')`);
+    check(!$('sgPanelMembers').hidden, 'SG: recuerda la subpestaña al volver', 'SG: pierde la subpestaña elegida');
+    const configuredFetch = window.fetch;
+    window.fetch = url => String(url).includes('/discord/config')
+      ? Promise.resolve({ ok: true, json: async () => ({ configured: false }) }) : configuredFetch(url);
+    window.eval(`sgInit()`); await sleep(100);
+    check(bodyOf('sgRoomBody').includes('se está configurando')
+      && !$('sgRoomBody').querySelector('[data-sg-login]')
+      && bodyOf('sgRoomBody').includes('Exportación'),
+      'SG: sin configurar muestra beneficios y aviso, sin login roto', 'SG: estado sin configurar incorrecto');
+    window.fetch = configuredFetch;
+    window.eval(`sgInit()`); await sleep(100);
     let room = bodyOf('sgRoomBody');
-    check(room.includes('Sala exclusiva') && room.includes('Ingresar con Discord'),
+    check(room.includes('Herramientas exclusivas') && room.includes('Ingresar con Discord'),
       'SG: sin sesión muestra el candado con CTA de Discord', 'SG: candado ausente → ' + room.slice(0, 100));
     try {
       window.eval(`gotoTab('profile')`);
@@ -546,6 +580,13 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     check(room.includes('NoSocio') && room.includes('No encontramos'),
       'SG: no-miembro → tarjeta para unirse al Discord', 'SG: tarjeta de no-miembro mal → ' + room.slice(0, 100));
     check($('sgAccount') && !$('sgAccount').hidden, 'SG: chip de cuenta visible con sesión activa', 'SG: chip de cuenta no apareció');
+
+    // El retorno de Discord debe abrir el Salón, incluso para no-miembros.
+    window.eval(`gotoTab('sg', 'guild')`);
+    window.history.replaceState(null, '', '/#aa_session=' + encodeURIComponent(tokNo));
+    window.eval(`sgInit()`); await sleep(100);
+    check(!$('sgPanelMembers').hidden && $('tab-sg').classList.contains('active') && !window.location.hash,
+      'SG: retorno OAuth de no-miembro abre el Salón y limpia el hash', 'SG: retorno OAuth no abre el Salón');
 
     // sesión de miembro → Sala completa
     const tokSi = btoa(JSON.stringify({ u: { i: '42', n: 'QAMiembro', a: '' }, m: true, t: Date.now(), e: Date.now() + 86400000 })) + '.sig';
@@ -576,6 +617,21 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       check(first && first.textContent.includes('AlphaSG'), 'SG: orden alfabético al tocar la columna', 'SG: sort por nombre no ordena');
     } else errors.push('SG: falta columna ordenable «Jugador»');
 
+    // El acceso desde la cuenta apunta al Salón, no al contenido público.
+    $('sgTabGuild').click();
+    $('sgAccountBtn').click();
+    window.document.querySelector('[data-sg-goto-room]').click();
+    check(!$('sgPanelMembers').hidden && $('sgAccountMenu').hidden,
+      'SG: acceso de la cuenta abre el Salón y cierra el menú', 'SG: acceso desde la cuenta incorrecto');
+    window.eval(`gotoTab('home')`);
+    window.document.querySelector('.sg-credit').click();
+    check(!$('sgPanelGuild').hidden && $('sgPanelMembers').hidden,
+      'SG: enlace del inicio abre la información del gremio', 'SG: enlace del inicio no abre Spetsnaz Grail');
+    window.history.replaceState(null, '', '/#aa_session=' + encodeURIComponent(tokSi));
+    window.eval(`sgInit()`); await sleep(100);
+    check(!$('sgPanelMembers').hidden && bodyOf('sgRoomBody').includes('Ranking de miembros'),
+      'SG: retorno OAuth de miembro abre sus herramientas', 'SG: retorno de miembro incorrecto');
+
     // vínculo de personaje: rechaza a un jugador de otro gremio y acepta a uno de SG
     const ci = $('sgCharInput');
     if (ci) {
@@ -603,7 +659,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     check(!$('sgAccountMenu').hidden && bodyOf('sgAccountMenu').includes('Cerrar sesión'),
       'SG: menú de cuenta con cierre de sesión', 'SG: menú de cuenta no abre');
     window.eval(`sgLogout()`); await sleep(200);
-    check(!$('sgLoginBtn').hidden && bodyOf('sgRoomBody').includes('Sala exclusiva'),
+    check(!$('sgLoginBtn').hidden && bodyOf('sgRoomBody').includes('Herramientas exclusivas'),
       'SG: al cerrar sesión vuelve el candado', 'SG: logout no restauró el candado');
 
     // el botón de la barra tiene que dispara el ingreso (antes no tenía handler)
@@ -615,6 +671,12 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       const cta = window.document.querySelector('.sg-lock-card [data-sg-login]');
       check(!!cta, 'SG: la tarjeta de candado mantiene su CTA de Discord', 'SG: sin CTA en sgLockCard');
     } catch (e) { errors.push('SG botón de barra: ' + e.message); }
+    window.eval(`gotoTab('sg', 'guild')`);
+    window.history.replaceState(null, '', '/#aa_error=discord');
+    window.eval(`sgInit()`); await sleep(100);
+    check(!$('sgPanelMembers').hidden && !window.location.hash
+      && bodyOf('sgRoomBody').includes('Ingresar con Discord'),
+      'SG: error OAuth vuelve al Salón para reintentar', 'SG: error OAuth deja al usuario fuera del Salón');
   } catch (e) { errors.push('Acceso SG: ' + e.message); }
 
   /* ——— íconos: que ningún <use> quede colgado y que los SVG tengan estilo ——— */
@@ -649,6 +711,92 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     const sinBadge = window.eval(`[...document.querySelectorAll('.sg-creator:not([data-twitch]) .sg-live')].length`);
     check(sinBadge === 0, 'Creadores: «Próximamente» no lleva indicador de directo', 'Creadores: badge sobrante en la tarjeta bloqueada');
   } catch (e) { errors.push('Creadores: ' + e.message); }
+
+  // Inicio: dos slides manuales con los mismos grupos que la navegación.
+  try {
+    window.eval(`gotoTab('home')`);
+    check(window.document.querySelectorAll('.home-slide').length === 2
+      && !$('homeCraftSlide').hidden && $('homeFlipSlide').hidden,
+      'Inicio: dos slides y Crafteo visible por defecto', 'Inicio: slides o estado inicial incorrectos');
+    const tools = id => [...$(id).querySelectorAll('[data-goto]')].map(b => b.dataset.goto).join(',');
+    check(tools('homeCraftSlide') === 'gear,refine,alch,food,enchant,farm'
+      && tools('homeFlipSlide') === 'flip,transmute,meld,alerts',
+      'Inicio: herramientas agrupadas como en el menú superior', 'Inicio: herramientas mal agrupadas');
+    $('homeSlideNext').click();
+    check($('homeCraftSlide').hidden && !$('homeFlipSlide').hidden
+      && $('homeFlipTab').getAttribute('aria-selected') === 'true'
+      && $('homeCraftTab').tabIndex === -1 && $('homeSlideCount').textContent === '2 de 2',
+      'Inicio: siguiente muestra Flipping y actualiza controles accesibles', 'Inicio: siguiente no actualiza el slide');
+    $('homeSlideNext').click();
+    check(!$('homeCraftSlide').hidden, 'Inicio: siguiente vuelve al primer slide', 'Inicio: navegación circular rota');
+    $('homeSlidePrev').click();
+    check(!$('homeFlipSlide').hidden, 'Inicio: anterior vuelve al último slide', 'Inicio: anterior no funciona');
+    $('homeCraftTab').click();
+    check(!$('homeCraftSlide').hidden, 'Inicio: selector abre Crafteo directamente', 'Inicio: selector no funciona');
+    const key = (id, key) => $(id).dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
+    key('homeCraftTab', 'ArrowRight');
+    check(!$('homeFlipSlide').hidden && window.document.activeElement === $('homeFlipTab'),
+      'Inicio: flechas del teclado cambian slide y foco', 'Inicio: navegación con teclado rota');
+    key('homeFlipTab', 'Home');
+    check(!$('homeCraftSlide').hidden, 'Inicio: Home abre el primer slide', 'Inicio: Home no funciona');
+    key('homeCraftTab', 'End');
+    check(!$('homeFlipSlide').hidden, 'Inicio: End abre el último slide', 'Inicio: End no funciona');
+    key('homeFlipTab', 'ArrowLeft');
+    check(!$('homeCraftSlide').hidden, 'Inicio: flecha izquierda abre Crafteo', 'Inicio: flecha izquierda no funciona');
+    for (const [tab, slide] of [['homeCraftTab', 'homeCraftSlide'], ['homeFlipTab', 'homeFlipSlide']]) {
+      $(tab).click();
+      for (const button of $(slide).querySelectorAll('[data-goto]')) {
+        button.querySelector('.home-tool-name').click();
+        check($('tab-' + button.dataset.goto).classList.contains('active'),
+          'Inicio: acceso a ' + button.dataset.goto, 'Inicio: no abre ' + button.dataset.goto);
+        window.eval(`gotoTab('home')`);
+        check(!$(slide).hidden, 'Inicio: conserva el slide al volver de ' + button.dataset.goto,
+          'Inicio: pierde el slide al volver de ' + button.dataset.goto);
+      }
+    }
+    const shortcuts = window.document.querySelectorAll('.home-shortcuts [data-goto]');
+    check(shortcuts.length === 4, 'Inicio: cuatro accesos rápidos, sin fichas adicionales', 'Inicio: faltan accesos rápidos');
+    for (const button of shortcuts) {
+      button.click();
+      check($('tab-' + button.dataset.goto).classList.contains('active'),
+        'Inicio: acceso rápido a ' + button.dataset.goto, 'Inicio: acceso rápido roto a ' + button.dataset.goto);
+      window.eval(`gotoTab('home')`);
+    }
+    $('homeCraftTab').click();
+  } catch (e) { errors.push('Inicio slides: ' + e.message); }
+
+  // Reporte de bugs: enlace público, voluntario y sin datos de sesión.
+  try {
+    const report = $('homeReportBug');
+    const url = new URL(report.href);
+    const template = fs.readFileSync('../.github/ISSUE_TEMPLATE/bug_report.md', 'utf8').split('---\n\n')[1];
+    check($('tab-home').lastElementChild.contains(report),
+      'Reportes: botón al final de Inicio', 'Reportes: botón fuera del pie de Inicio');
+    check(url.origin === 'https://github.com' && url.pathname === '/AyudanteAlbion/AyudanteAlbion.github.io/issues/new',
+      'Reportes: abre un issue del repositorio correcto', 'Reportes: destino incorrecto');
+    check(url.searchParams.get('title') === '[Bug] ' && url.searchParams.get('body') === template,
+      'Reportes: título y plantilla en español precargados', 'Reportes: contenido distinto de la plantilla');
+    check(report.target === '_blank' && report.rel.includes('noopener') && report.rel.includes('noreferrer'),
+      'Reportes: nueva pestaña sin acceso a la app ni referrer', 'Reportes: enlace externo sin protección');
+    check([...url.searchParams.keys()].join(',') === 'title,body'
+      && $('homeReportNote').textContent.includes('público') && template.includes('No incluyas contraseñas'),
+      'Reportes: aviso de privacidad y sin diagnóstico automático', 'Reportes: falta aviso o se agregaron parámetros');
+  } catch (e) { errors.push('Reportes: ' + e.message); }
+
+  // Limpieza de textos y terminología de crafteo.
+  const removedCopy = [
+    'Exclusivo para miembros verificados del Discord de SG',
+    'Se abre Discord, autorizás',
+    'El registro se guarda en este navegador (localStorage).',
+    'Bonos de crafteo por ciudad (+15% además del +18% base)',
+    'Cada parcela aloja 9 unidades.',
+  ];
+  check(removedCopy.every(text => !window.document.body.textContent.includes(text)),
+    'Textos: se eliminaron las cinco explicaciones solicitadas', 'Textos: queda alguna explicación eliminada');
+  check($('gearFamSearch').placeholder.startsWith('Buscar rama')
+    && $('gearScan').textContent.includes('todas las ramas')
+    && !/familia/i.test($('tab-gear').textContent),
+    'Crafteo: buscador, escaneo y ayudas usan rama/ramas', 'Crafteo: terminología de rama incompleta');
 
   finish();
 
