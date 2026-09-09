@@ -4,8 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=64">
+<link rel="stylesheet" href="styles.css?v=66">
 <link rel="icon" href="img/logo-app.png">
+<link rel="apple-touch-icon" href="img/logo-app.png">
+<!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ayudante Albion — Calculadora de crafteo y mercado">
+<meta property="og:description" content="Rentabilidad de crafteo, refinamiento, alquimia, granja y flipping en Albion Online (Americas West).">
+<meta property="og:image" content="https://ayudantealbion.github.io/img/logo-app.png">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
 
@@ -34,9 +41,9 @@
       </div>
     </div>
     <nav class="tabs" id="mainTabs">
-      <button class="tab active" data-tab="home">Inicio</button>
+      <button class="tab active" data-tab="home"><svg class="tab-ico"><use href="#i-home"/></svg>Inicio</button>
       <div class="tab-dd" id="craftDd">
-        <button class="tab dd-trigger" id="craftDdBtn" aria-haspopup="true" aria-expanded="false">Crafteo <span class="dd-caret">▾</span></button>
+        <button class="tab dd-trigger" id="craftDdBtn" aria-haspopup="true" aria-expanded="false"><svg class="tab-ico"><use href="#i-sword"/></svg>Crafteo <span class="dd-caret">▾</span></button>
         <div class="dd-menu" role="menu">
           <button class="dd-item" data-tab="gear" role="menuitem">
             <span class="chip-ico dd-chip"><svg><use href="#i-sword"/></svg></span>
@@ -65,7 +72,7 @@
         </div>
       </div>
       <div class="tab-dd" id="flipDd">
-        <button class="tab dd-trigger" id="flipDdBtn" aria-haspopup="true" aria-expanded="false">Flipping <span class="dd-caret">▾</span></button>
+        <button class="tab dd-trigger" id="flipDdBtn" aria-haspopup="true" aria-expanded="false"><svg class="tab-ico"><use href="#i-flip"/></svg>Flipping <span class="dd-caret">▾</span></button>
         <div class="dd-menu" role="menu">
           <button class="dd-item" data-tab="flip" role="menuitem">
             <span class="chip-ico dd-chip"><svg><use href="#i-flip"/></svg></span>
@@ -85,30 +92,32 @@
           </button>
         </div>
       </div>
-      <button class="tab" data-tab="profile">Perfil</button>
-      <button class="tab" data-tab="sg">SG</button>
-      <button class="tab" data-tab="formulas">Fórmulas</button>
+      <button class="tab" data-tab="profile"><svg class="tab-ico"><use href="#i-user"/></svg>Perfil</button>
+      <button class="tab" data-tab="sg"><svg class="tab-ico"><use href="#i-shield"/></svg>SG</button>
+      <button class="tab" data-tab="formulas"><svg class="tab-ico"><use href="#i-rule"/></svg>Fórmulas</button>
     </nav>
     <div class="top-actions">
-      <button class="top-action" data-tab="search" title="Buscador de precios">
-        <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+      <button class="top-action" type="button" data-tab="search" title="Buscador de precios">
+        <svg><use href="#i-search"/></svg>
       </button>
-      <button class="top-action" data-tab="ledgerlog" title="Registro de operaciones">
-        <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h7"/><path d="M9 12h7"/><path d="M9 16h4"/></svg>
+      <button class="top-action" type="button" data-tab="ledgerlog" title="Registro de operaciones">
+        <svg><use href="#i-book"/></svg>
       </button>
-      <button class="top-action" id="sgLoginBtn" hidden title="Ingresar con Discord — acceso de miembros SG">
+      <!-- data-sg-login: la delegación del módulo SG (app.js) es la que dispara el
+           ingreso con Discord; sin el atributo el botón de la barra no hacía nada -->
+      <button class="top-action" type="button" id="sgLoginBtn" data-sg-login hidden title="Ingresar con Discord — acceso de miembros SG">
         <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
       </button>
       <div class="sg-account" id="sgAccount" hidden>
-        <button class="sg-account-btn" id="sgAccountBtn" title="Tu cuenta de Discord">
+        <button class="sg-account-btn" type="button" id="sgAccountBtn" title="Tu cuenta de Discord">
           <img id="sgAccountImg" alt="" hidden>
           <span class="sg-account-initial" id="sgAccountInitial"></span>
           <span class="sg-account-dot" id="sgAccountDot"></span>
         </button>
         <div class="sg-account-menu" id="sgAccountMenu" hidden></div>
       </div>
-      <button class="top-action" id="kaBtn" aria-pressed="true" title="⚡ Anti-pausa: evita que el navegador congele la app en segundo plano">
-        <svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+      <button class="top-action" type="button" id="kaBtn" aria-pressed="true" title="⚡ Anti-pausa: evita que el navegador congele la app en segundo plano">
+        <svg><use href="#i-bolt"/></svg>
       </button>
     </div>
   </div>
@@ -137,6 +146,20 @@
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
   <symbol id="i-skull" viewBox="0 0 24 24"><path d="M12 3a8 8 0 0 0-8 8c0 3 1.5 5 3.5 6.2V20h9v-2.8C18.5 16 20 14 20 11a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.4"/><circle cx="15" cy="11" r="1.4"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19.5a2.5 2.5 0 0 0 4 0"/></symbol>
+  <!-- íconos de la barra y del módulo SG (gremio, Sala, ranking) -->
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.2V20h13V9.2"/><path d="M9.5 20v-5.6h5V20"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.4c0 4.6-3.1 8-7.5 9.6-4.4-1.6-7.5-5-7.5-9.6V6z"/><path d="M9 11.8l2.2 2.2 4-4.2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/><path d="M12 14.4v2.6"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7.5 4h9v4.6a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 5.6H4.6v.9a3.4 3.4 0 0 0 3 3.3"/><path d="M16.5 5.6h2.9v.9a3.4 3.4 0 0 1-3 3.3"/><path d="M12 13.1V16.4"/><path d="M8.6 20.4h6.8l-1-4h-4.8z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 3.5V20h16.5"/><path d="M8 17v-5.4"/><path d="M12.5 17V7.6"/><path d="M17 17v-3.4"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10.2 13.8a3.6 3.6 0 0 1 0-5.1l1.9-1.9a3.6 3.6 0 0 1 5.1 5.1l-1 1"/><path d="M13.8 10.2a3.6 3.6 0 0 1 0 5.1l-1.9 1.9a3.6 3.6 0 0 1-5.1-5.1l1-1"/></symbol>
+  <symbol id="i-gamepad" viewBox="0 0 24 24"><rect x="2.5" y="7.6" width="19" height="10.8" rx="4.6"/><path d="M7 11v4"/><path d="M5 13h4"/><circle cx="15.4" cy="12.4" r="1.15"/><circle cx="18" cy="15.2" r="1.15"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.6v10.6"/><path d="M7.6 10.2 12 14.6l4.4-4.4"/><path d="M4.5 19.6h15"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M20.9 3.4v4.7h-4.7"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.4l2.7 5.5 6 .9-4.35 4.2 1.03 6-5.38-2.83L6.62 20l1.03-6L3.3 9.8l6-.9z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.6 12.6l4.9 4.9L19.4 7.6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 6.4l11.2 11.2"/><path d="M17.6 6.4 6.4 17.6"/></symbol>
+  <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></symbol>
 </svg>
 
 <!-- ============ TAB: INICIO ============ -->
@@ -157,7 +180,7 @@
 
   <div class="panel home-favs" id="homeFavs" style="display:none">
     <div class="home-favs-head">
-      <h2>★ Tus favoritos</h2>
+      <h2><span class="chip-ico fav-chip"><svg><use href="#i-star"/></svg></span> Tus favoritos</h2>
       <span class="micro muted">Marcá cualquier receta o ítem con ☆ en su detalle y aparecerá acá.</span>
     </div>
     <div class="home-fav-list" id="homeFavList"></div>
@@ -977,26 +1000,29 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
       <p class="muted micro">Seguí a nuestros creadores en Twitch</p>
     </div>
     <div class="sg-creator-grid">
+      <!-- el indicador EN VIVO/OFFLINE va pegado abajo de la foto: es lo primero
+           que se quiere ver de cada canal, antes que el nombre (app.js lo pinta
+           con .sg-live sobre .sg-creator[data-twitch], sin importar la posición) -->
       <a class="sg-creator" data-twitch="j4acksp4rr0w" href="https://www.twitch.tv/j4acksp4rr0w" target="_blank" rel="noopener">
         <img class="sg-creator-pic" src="img/creators/j4acksp4rr0w.png" alt="J4ackSp4rr0w">
+        <span class="sg-live"></span>
         <span class="sg-creator-name">J4ackSp4rr0w</span>
         <span class="sg-creator-title">Líder del Gremio</span>
         <span class="sg-creator-handle">twitch.tv/j4acksp4rr0w</span>
-        <span class="sg-live"></span>
       </a>
       <a class="sg-creator" data-twitch="santiagosigma" href="https://www.twitch.tv/santiagosigma" target="_blank" rel="noopener">
         <img class="sg-creator-pic" src="img/creators/santiagosigma.png" alt="SantiagoSigma">
+        <span class="sg-live"></span>
         <span class="sg-creator-name">SantiagoSigma</span>
         <span class="sg-creator-title">Creador Oficial de SG</span>
         <span class="sg-creator-handle">twitch.tv/santiagosigma</span>
-        <span class="sg-live"></span>
       </a>
       <a class="sg-creator" data-twitch="fraxuzve" href="https://www.twitch.tv/fraxuzve" target="_blank" rel="noopener">
         <img class="sg-creator-pic" src="img/creators/fraxuzve.png" alt="Fraxuzve">
+        <span class="sg-live"></span>
         <span class="sg-creator-name">Fraxuzve</span>
         <span class="sg-creator-title">Creador Oficial de SG</span>
         <span class="sg-creator-handle">twitch.tv/fraxuzve</span>
-        <span class="sg-live"></span>
       </a>
       <a class="sg-creator sg-creator-soon" href="#" onclick="return false">
         <span class="chip-ico sg-soon-ico"><svg><use href="#i-tv"/></svg></span>
@@ -1012,6 +1038,6 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=65"></script>
+<script src="app.js?v=66"></script>
 </body>
 </html>
