@@ -5,17 +5,23 @@ El Worker `ayudantealbion` está conectado al repo (Workers Builds): cada push a
 **no** viaja con el código son las variables/secretos; esas se cargan una vez en el
 dashboard.
 
-## Diagnóstico (2026-09-09)
+## Estado
+
+**Activo desde el 2026-09-09.** `GET /discord/config` responde `configured:true, missing:[]`
+y `/discord/login` redirige a `discord.com/oauth2/authorize` con el Client ID correcto.
+
+## Diagnóstico de lo que pasó (2026-09-09)
 
 `GET /discord/config` en producción respondía `{"configured":false}` y `/discord/login`
 decía que faltaban `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` o `SG_DISCORD_GUILD_ID`.
 El código del Worker y de la app estaban completos: el problema era de configuración.
 
-Causa probable: Workers Builds despliega con `npx wrangler deploy`, y **sin `keep_vars`
-en `wrangler.toml` cada deploy borra las variables de tipo Text del dashboard** (los
-Secrets no se tocan). Si las variables se cargaron como Text, desaparecían con el
-siguiente merge a `main`. Ahora `wrangler.toml` lleva `keep_vars = true` y declara
-`SG_DISCORD_GUILD_ID` (es público). El resto se carga como **Secret**, una sola vez.
+Causa confirmada: faltaba `DISCORD_CLIENT_ID`. Workers Builds despliega con
+`npx wrangler deploy`, y **sin `keep_vars` en `wrangler.toml` cada deploy borra las
+variables de tipo Text del dashboard** (los Secrets no se tocan). El Client ID estaba
+como Text y desapareció con un merge a `main`. Se volvió a cargar como **Secret** y el
+acceso quedó activo al instante. Ahora `wrangler.toml` lleva `keep_vars = true` y declara
+`SG_DISCORD_GUILD_ID` (es público), así que no debería repetirse.
 
 Desde ahora `/discord/config` devuelve además `missing: [...]` con los nombres de lo
 que falta, para no tener que adivinar.
