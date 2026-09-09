@@ -207,4 +207,5 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
 if __name__ == '__main__':
-    http.server.ThreadingHTTPServer(('0.0.0.0', 3000), NoCacheHandler).serve_forever()
+    # Solo local: el simulador de Discord no debe quedar expuesto a la LAN.
+    http.server.ThreadingHTTPServer(('127.0.0.1', 3000), NoCacheHandler).serve_forever()

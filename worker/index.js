@@ -9,6 +9,7 @@
        en el código de la página: el worker hace el intercambio
    Rutas expuestas:
      GET /gameinfo/<resto>        -> gameinfo.albiononline.com/api/gameinfo/<resto>
+                                     (solo las rutas que usa la app; ver GAMEINFO_ROUTES)
      GET /twitch/uptime/<canal>   -> decapi.me/twitch/uptime/<canal>
      GET /health                  -> ok
      GET /discord/config          -> {configured} — ¿el acceso SG está activo?
@@ -24,8 +25,9 @@
      DISCORD_CLIENT_ID     (texto)   — Client ID de la app de Discord
      DISCORD_CLIENT_SECRET (secreto) — Client Secret de la app de Discord
      SG_DISCORD_GUILD_ID   (texto)   — ID del servidor de Discord de SG
-     AA_SESSION_KEY        (secreto, opcional) — clave HMAC de las sesiones;
-                                       si falta se usa el propio Client Secret
+     AA_SESSION_KEY        (secreto) — clave HMAC de las sesiones (≥32 chars,
+                                       distinta del Client Secret). Obligatoria:
+                                       sin ella el acceso SG queda desactivado
    En la app de Discord hay que registrar como «Redirect URI»:
      https://ayudantealbion.josemesina21.workers.dev/discord/callback
    El resto de la app sigue siendo público: nada se guarda del usuario,
@@ -53,6 +55,29 @@ const BROWSER_HEADERS = {
   'Origin': 'https://gameinfo.albiononline.com',
   'Referer': 'https://gameinfo.albiononline.com/game-info-players/',
 };
+
+/* Rutas del killboard que la app usa de verdad. El resto no se reenvía:
+   así el Worker no sirve de proxy genérico hacia gameinfo. */
+const GAMEINFO_ROUTES = [
+  /^\/search$/,
+  /^\/players\/[A-Za-z0-9_-]{1,64}$/,
+  /^\/players\/[A-Za-z0-9_-]{1,64}\/(kills|deaths|topkills|solokills)$/,
+  /^\/guilds\/[A-Za-z0-9_-]{1,64}$/,
+  /^\/guilds\/[A-Za-z0-9_-]{1,64}\/(members|top)$/,
+];
+const GAMEINFO_PARAMS = new Set(['q', 'range', 'limit', 'offset']);
+
+/* Orígenes (páginas) que pueden llamar al proxy desde el navegador. El exe y
+   server.py corren en localhost con puerto variable; las peticiones sin
+   Origin (curl, apps nativas) también pasan porque CORS no las protege igual. */
+function corsOrigin(request) {
+  const o = request.headers.get('Origin');
+  if (!o) return '*';
+  try {
+    const u = new URL(o);
+    return ALLOWED_HOSTS.includes(u.hostname) ? o : null;
+  } catch (e) { return null; }
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -87,14 +112,23 @@ async function handle(request, env, net) {
   if (path === '/' || path === '/health') return plain('ok');
 
   if (path === '/gameinfo' || path.startsWith('/gameinfo/')) {
-    const target = GAMEINFO + path.slice('/gameinfo'.length) + url.search;
-    return forward(target, { '200-299': 60, '500-502': 0, '503-599': 0 }, BROWSER_HEADERS, net);
+    const origin = corsOrigin(request);
+    if (!origin) return plain('origen no permitido', 403);
+    const sub = path.slice('/gameinfo'.length);
+    if (!GAMEINFO_ROUTES.some(re => re.test(sub))) return plain('ruta no permitida', 404);
+    const qs = new URLSearchParams();
+    for (const [k, v] of url.searchParams) if (GAMEINFO_PARAMS.has(k) && v.length <= 100) qs.set(k, v);
+    const q = qs.toString();
+    const target = GAMEINFO + sub + (q ? '?' + q : '');
+    return forward(target, { '200-299': 60, '500-502': 0, '503-599': 0 }, BROWSER_HEADERS, net, origin);
   }
 
   if (path.startsWith('/twitch/uptime/')) {
+    const origin = corsOrigin(request);
+    if (!origin) return plain('origen no permitido', 403);
     const chan = path.slice('/twitch/uptime/'.length);
     if (!/^[A-Za-z0-9_]{2,39}$/.test(chan)) return plain('canal inválido', 400);
-    return forward(DECAPI + chan.toLowerCase(), { '200-299': 45, '400-599': 5 }, undefined, net);
+    return forward(DECAPI + chan.toLowerCase(), { '200-299': 45, '400-599': 5 }, undefined, net, origin);
   }
 
   /* ---------------- acceso de miembros SG (Discord OAuth2) ---------------- */
@@ -116,11 +150,12 @@ function discordConfig(env) {
   const clientId = (env.DISCORD_CLIENT_ID || '').trim();
   const secret = (env.DISCORD_CLIENT_SECRET || '').trim();
   const guildId = (env.SG_DISCORD_GUILD_ID || '').trim();
-  const ok = !!(clientId && secret && guildId);
-  return {
-    ok, clientId, secret, guildId,
-    sessionKey: (env.AA_SESSION_KEY || '').trim() || secret,
-  };
+  const sessionKey = (env.AA_SESSION_KEY || '').trim();
+  /* la clave de sesión debe existir y no reutilizar el Client Secret: si
+     alguna vez se filtra la firma, no cae también el OAuth (y viceversa) */
+  const keyOk = sessionKey.length >= 32 && sessionKey !== secret;
+  const ok = !!(clientId && secret && guildId && keyOk);
+  return { ok, clientId, secret, guildId, sessionKey, keyOk };
 }
 
 /* redirect permitido: http(s) + host de la lista (cualquier puerto/camino).
@@ -139,7 +174,9 @@ function callbackUrl(url) {
 
 async function discordLogin(request, url, env) {
   const dc = discordConfig(env);
-  if (!dc.ok) return json({ error: 'no-configurado', msg: 'Faltan DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET o SG_DISCORD_GUILD_ID en las variables del worker.' }, 503);
+  if (!dc.ok) return json({ error: 'no-configurado', msg: dc.keyOk
+    ? 'Faltan DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET o SG_DISCORD_GUILD_ID en las variables del worker.'
+    : 'Falta AA_SESSION_KEY (secreto de al menos 32 caracteres, distinto del Client Secret) en las variables del worker.' }, 503);
 
   const redirect = safeRedirect(url.searchParams.get('redirect') || '');
   if (!redirect) return json({ error: 'redirect', msg: 'Origen de la app no permitido (ayudantealbion.github.io o localhost).' }, 400);
@@ -309,7 +346,7 @@ function fromB64url(s) {
 /* Reenvía la respuesta tal cual. El navegador ve no-store para que la
    app siempre traiga lo último al actualizar; la cache de borde (cf.
    cacheTtlByStatus) es la que descarga a los upstreams. */
-async function forward(target, ttlByStatus, extraHeaders, net) {
+async function forward(target, ttlByStatus, extraHeaders, net, origin = '*') {
   let res;
   try {
     res = await net(target, {
@@ -320,8 +357,10 @@ async function forward(target, ttlByStatus, extraHeaders, net) {
     return plain('arriba sin respuesta', 502);
   }
   const headers = new Headers();
-  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Origin', origin);
+  if (origin !== '*') headers.set('Vary', 'Origin');
   headers.set('Cache-Control', 'no-store');
+  headers.set('X-Content-Type-Options', 'nosniff');
   const type = (res.headers.get('content-type') || '').includes('json')
     ? 'application/json; charset=utf-8'
     : 'text/plain; charset=utf-8';

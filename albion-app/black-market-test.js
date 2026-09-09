@@ -66,8 +66,7 @@ w.eval(fs.readFileSync('app.js', 'utf8') + '\nwindow.testBM = { GEAR, EN, PS, WA
   check(bmRow.cells[1].textContent === 'No disponible' && bmRow.cells[2].textContent === fmt(1500), 'Detalle: BM no tiene precio de compra para el jugador');
   check(bmRow.cells[4].textContent.includes('9/9/2026'), 'Detalle: fecha de la orden de compra, no del ask');
   const sellButton = [...$('flipDetail').querySelectorAll('button')].find(b => b.textContent.includes('Registrar venta'));
-  // Los onclick no se ejecutan en jsdom outside-only: ejecutar su código explícitamente.
-  w.eval(sellButton.getAttribute('onclick'));
+  sellButton.click(); // botón delegado por data-ll-* (sin onclick inline: CSP)
   check($('llType').value === 'sell' && $('llCity').value === BM && +$('llPrice').value === 1500, 'Registrar desde Flipping conserva destino y bid');
   change('llType', 'buy');
   check(!hasBM('llCity') && $('llCity').value !== BM, 'Registro: cambiar a compra elimina BM');
@@ -116,7 +115,7 @@ w.eval(fs.readFileSync('app.js', 'utf8') + '\nwindow.testBM = { GEAR, EN, PS, WA
   $('enResult').querySelector('.reset-price[data-city="Black Market"]').click();
   check(+$('enResult').querySelector('.price-edit[data-city="Black Market"]').value === 1500, 'Encantado restaura el bid de la API');
   const enSell = [...$('enResult').querySelectorAll('button')].find(b => b.textContent.includes('Registrar venta'));
-  w.eval(enSell.getAttribute('onclick'));
+  enSell.click();
   check($('llCity').value === BM && +$('llPrice').value === 1500, 'Encantado registra venta en BM, no una compra allí');
   change('enSellCity', '');
   check(!$('enResult').querySelector('.price-edit[data-city="Black Market"]'), 'Encantado puede volver a vender en la ciudad de compra');
