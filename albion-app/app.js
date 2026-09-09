@@ -3253,11 +3253,11 @@ function pfEvDetail(ev) {
   return `<tr class="craft-detail"><td colspan="6">
     <div class="cd-grid">
       <div class="cd-section">
-        <div class="cd-title">⚔ ${ev.Killer.Name} (asesino) · IP ${fmt(ev.Killer.AverageItemPower) || '—'}</div>
+        <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> ${ev.Killer.Name} (asesino) · IP ${fmt(ev.Killer.AverageItemPower) || '—'}</div>
         ${gearCol(ev.Killer)}
       </div>
       <div class="cd-section">
-        <div class="cd-title">💀 ${ev.Victim.Name} (víctima) · IP ${fmt(ev.Victim.AverageItemPower) || '—'}</div>
+        <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> ${ev.Victim.Name} (víctima) · IP ${fmt(ev.Victim.AverageItemPower) || '—'}</div>
         ${gearCol(ev.Victim)}
         ${inv.length ? `<div class="cd-line muted" style="margin-top:6px"><span>Inventario perdido</span><span>${inv.length} ítems</span></div>` : ''}
       </div>
@@ -3331,7 +3331,7 @@ function pfRender(d, kills, deaths, guild) {
   </div>
 
   <div class="panel table-wrap">
-    <div class="cd-title" style="padding:14px 14px 4px"><svg style="width:15px;height:15px;vertical-align:-2px"><use href="#i-bolt"/></svg> Asesinatos</div>
+    <div class="cd-title" style="padding:14px 14px 4px"><svg class="title-ico"><use href="#i-bolt"/></svg> Asesinatos</div>
     <div class="chips" style="padding:4px 14px 8px" id="pfKillChips">
       <button class="chip ${PF.killMode === 'recent' ? 'active' : ''}" data-kmode="recent">Recientes ${kills ? `(${kills.length})` : ''}</button>
       <button class="chip ${PF.killMode === 'top' ? 'active' : ''}" data-kmode="top">Mejores (por fama)</button>
@@ -3351,11 +3351,11 @@ function pfRender(d, kills, deaths, guild) {
   </div>
 
   <div class="panel table-wrap">
-    <div class="cd-title" style="padding:14px 14px 4px"><svg style="width:15px;height:15px;vertical-align:-2px"><use href="#i-skull"/></svg> Últimas muertes ${deaths ? `(${deaths.length})` : ''}</div>
+    <div class="cd-title" style="padding:14px 14px 4px"><svg class="title-ico"><use href="#i-skull"/></svg> Últimas muertes ${deaths ? `(${deaths.length})` : ''}</div>
     ${deaths && deaths.length ? `<table class="ledger">
       <thead><tr><th>Fecha</th><th>Asesino</th><th class="num">IP asesino</th><th class="num">IP tuya</th><th class="num">Fama perdida</th><th class="num">Participantes</th></tr></thead>
       <tbody>${deaths.map(ev => pfKillRow(ev, 'death')).join('')}</tbody>
-    </table>` : `<div class="loading-cell">${deaths ? 'Sin muertes recientes. 🛡️' : 'El killboard no respondió — probá «Actualizar».'}</div>`}
+    </table>` : `<div class="loading-cell">${deaths ? 'Sin muertes recientes.' : 'El killboard no respondió — probá «Actualizar».'}</div>`}
   </div>
   <div class="micro muted pad">Fuente: killboard oficial de Albion Online (servidor Américas). La fama y los eventos pueden demorar en actualizarse. IP = poder de ítem promedio en el evento.</div>`;
 }
@@ -4069,6 +4069,8 @@ const SG_KEYS = { sess: 'aaDiscordSession', char: 'aaSGChar', guild: 'aaSGGuild'
 const SG_GUILD_NAME = 'Spetsnaz Grail';
 const SG_SESS_DAYS = 30;
 const SG_DC_INVITE = 'https://discord.gg/TCNWUUA7UY';
+/* logo de Discord como ícono: lo usan todos los CTA de ingreso */
+const SG_DC_LOGO = '<svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>';
 
 function sgEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4167,13 +4169,13 @@ function sgPaintMenu() {
       ${sgAvatarHTML(s.u, 'sg-menu-av')}
       <div style="min-width:0">
         <div class="sg-menu-name">${sgEsc(s.u.n)}</div>
-        <div class="sg-menu-status ${s.m ? 'ok' : ''}">${s.m ? '✔ Miembro de Spetsnaz Grail' : 'Sin membresía SG'}</div>
+        <div class="sg-menu-status ${s.m ? 'ok' : ''}">${s.m ? '<svg class="title-ico"><use href="#i-check"/></svg> Miembro de Spetsnaz Grail' : '<svg class="title-ico"><use href="#i-close"/></svg> Sin membresía SG'}</div>
       </div>
     </div>
     ${hasta ? `<div class="sg-menu-meta micro muted">Sesión verificada hasta el ${hasta}</div>` : ''}
     <div class="sg-menu-actions">
-      ${s.m ? `<button class="btn" data-sg-goto-room>🔐 Sala de miembros</button>` : ''}
-      <button class="btn" data-sg-verify>↻ Volver a verificar</button>
+      ${s.m ? `<button class="btn" data-sg-goto-room><svg class="btn-ico"><use href="#i-lock"/></svg> Sala de miembros</button>` : ''}
+      <button class="btn" data-sg-verify><svg class="btn-ico"><use href="#i-refresh"/></svg> Volver a verificar</button>
       <button class="btn" data-sg-logout>Cerrar sesión</button>
     </div>`;
 }
@@ -4192,18 +4194,17 @@ function sgLockCard(msg) {
     <h3>Sala exclusiva de miembros</h3>
     <p class="muted">${msg}</p>
     <ul>
-      <li>🏆 Ranking completo del gremio: fama de kills, muertes y ratio de cada miembro</li>
-      <li>📊 Estadísticas de Spetsnaz Grail y mejores asesinatos de la semana</li>
-      <li>🎮 Vinculá tu personaje de Albion y mirá tu puesto en la tabla</li>
-      <li>⬇️ Exportación del ranking en CSV</li>
+      <li><svg class="title-ico"><use href="#i-trophy"/></svg> Ranking completo del gremio: fama de kills, muertes y ratio de cada miembro</li>
+      <li><svg class="title-ico"><use href="#i-chart"/></svg> Estadísticas de Spetsnaz Grail y mejores asesinatos de la semana</li>
+      <li><svg class="title-ico"><use href="#i-gamepad"/></svg> Vinculá tu personaje de Albion y mirá tu puesto en la tabla</li>
+      <li><svg class="title-ico"><use href="#i-download"/></svg> Exportación del ranking en CSV</li>
     </ul>
     ${SG.configured ? `
     <button class="btn btn-discord" data-sg-login>
-      <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-      Ingresar con Discord
+      ${SG_DC_LOGO} Ingresar con Discord
     </button>
     <div class="micro muted">Se abre Discord, autorizás «Ayudante Albion» y volvés acá solo. La sesión dura ${SG_SESS_DAYS} días en este navegador y no guardamos ningún dato tuyo.</div>`
-    : `<div class="micro muted">🛠️ El ingreso con Discord se está configurando — disponible en breve.</div>`}
+    : `<div class="micro muted"><svg class="title-ico"><use href="#i-tools"/></svg> El ingreso con Discord se está configurando — disponible en breve.</div>`}
   </div>`;
 }
 
@@ -4213,10 +4214,10 @@ function sgLockNote(msg) {
   <div class="sg-lock-note">
     <span class="chip-ico"><svg><use href="#i-lock"/></svg></span>
     <div style="min-width:0">
-      <div class="sg-lock-note-t">🔒 Exclusivo para miembros SG</div>
+      <div class="sg-lock-note-t">Exclusivo para miembros SG</div>
       <div class="micro muted">${msg}</div>
     </div>
-    ${SG.configured ? `<button class="btn btn-discord" data-sg-login>Ingresar con Discord</button>`
+    ${SG.configured ? `<button class="btn btn-discord" data-sg-login>${SG_DC_LOGO}Ingresar con Discord</button>`
       : `<button class="btn" data-sg-goto-room>Ver la Sala de miembros</button>`}
   </div>`;
 }
@@ -4226,7 +4227,7 @@ function sgRoomRender() {
   const body = document.getElementById('sgRoomBody');
   if (!body) return;
   if (!SG.configured && !SG.session) {
-    body.innerHTML = `<div class="loading-cell">🛠️ El acceso con Discord se está configurando — la Sala de miembros llega en breve.</div>`;
+    body.innerHTML = `<div class="loading-cell"><svg class="title-ico"><use href="#i-tools"/></svg> El acceso con Discord se está configurando — la Sala de miembros llega en breve.</div>`;
     return;
   }
   if (!SG.session) {
@@ -4236,12 +4237,12 @@ function sgRoomRender() {
   if (!sgIsMember()) {
     body.innerHTML = `
     <div class="sg-lock-card">
-      <span class="sg-lock-ico">🛡️</span>
+      <span class="sg-lock-ico"><svg><use href="#i-shield"/></svg></span>
       <h3>Hola, ${sgEsc(SG.session.u.n)}</h3>
       <p class="muted">No encontramos <b>Spetsnaz Grail</b> entre los servidores de tu cuenta de Discord.</p>
       <div class="sg-menu-actions">
-        <a class="btn btn-discord" href="${SG_DC_INVITE}" target="_blank" rel="noopener">Unirme al Discord de SG</a>
-        <button class="btn" data-sg-verify>↻ Volver a verificar</button>
+        <a class="btn btn-discord" href="${SG_DC_INVITE}" target="_blank" rel="noopener">${SG_DC_LOGO}Unirme al Discord de SG</a>
+        <button class="btn" data-sg-verify><svg class="btn-ico"><use href="#i-refresh"/></svg> Volver a verificar</button>
         <button class="btn" data-sg-logout>Cerrar sesión</button>
       </div>
       <div class="micro muted">Si acabás de entrar al servidor, dale a «Volver a verificar»: Discord a veces demora en refrescar la lista.</div>
@@ -4257,7 +4258,7 @@ function sgRoomRender() {
         <div class="micro muted">Cargando la Sala de miembros…</div>
       </div>
       <div class="sg-welcome-actions">
-        <button class="btn" data-sg-verify>↻ Re-verificar</button>
+        <button class="btn" data-sg-verify><svg class="btn-ico"><use href="#i-refresh"/></svg> Re-verificar</button>
         <button class="btn" data-sg-logout>Cerrar sesión</button>
       </div>
     </div>
@@ -4294,7 +4295,7 @@ async function sgLoadRoom() {
         </div>
         <div class="sg-welcome-actions"><button class="btn" data-sg-logout>Cerrar sesión</button></div>
       </div>
-      <div class="loading-cell">El killboard no respondió. <button class="btn" data-sg-refresh style="margin-left:10px">↻ Reintentar</button></div>`;
+      <div class="loading-cell">El killboard no respondió. <button class="btn" data-sg-refresh style="margin-left:10px"><svg class="btn-ico"><use href="#i-refresh"/></svg> Reintentar</button></div>`;
     SG.room.loading = false;
     return;
   }
@@ -4332,8 +4333,8 @@ function sgRoomContent() {
       <div class="micro muted">${linked ? `Jugás como <b>${sgEsc(linked.name)}</b>${myPos ? ` · puesto <b>#${myPos}</b> de ${mem.length} en fama de kills` : ''}` : 'Vinculá tu personaje abajo para marcarte en la tabla'}</div>
     </div>
     <div class="sg-welcome-actions">
-      <button class="btn" data-sg-refresh title="Volver a pedir los datos al killboard">↻ Actualizar</button>
-      <button class="btn" data-sg-verify>↻ Re-verificar</button>
+      <button class="btn" data-sg-refresh title="Volver a pedir los datos al killboard"><svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar</button>
+      <button class="btn" data-sg-verify><svg class="btn-ico"><use href="#i-refresh"/></svg> Re-verificar</button>
       <button class="btn" data-sg-logout>Cerrar sesión</button>
     </div>
   </div>
@@ -4357,13 +4358,13 @@ function sgRoomContent() {
     <div class="cd-title"><span class="chip-ico"><svg><use href="#i-trophy"/></svg></span> Ranking de miembros</div>
     <div class="sg-rank-tools">
       <input type="search" id="sgRankSearch" class="search" placeholder="Buscar miembro por nombre…" value="${sgEsc(SG.room.filter)}">
-      <button class="btn" data-sg-csv title="Descargar el ranking visible en CSV">⬇ CSV</button>
+      <button class="btn" data-sg-csv title="Descargar el ranking visible en CSV"><svg class="btn-ico"><use href="#i-download"/></svg> CSV</button>
     </div>
   </div>
   <div id="sgRankTable">${sgRankTableHTML()}</div>
 
   <div class="sg-week">
-    <div class="cd-title">💥 Mejores asesinatos de la semana</div>
+    <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Mejores asesinatos de la semana</div>
     ${sgWeekHTML()}
   </div>`;
 }
@@ -4378,7 +4379,7 @@ function sgCharBoxHTML() {
     <div class="micro muted" id="sgCharMsg">Lo verificamos contra el killboard: tiene que figurar en Spetsnaz Grail.</div>`;
   return `
     <div class="sg-char-linked">
-      <span class="sg-char-tag">🎮 <b>${sgEsc(linked.name)}</b></span>
+      <span class="sg-char-tag"><svg class="title-ico"><use href="#i-gamepad"/></svg> <b>${sgEsc(linked.name)}</b></span>
       <button class="btn" data-sg-char-edit>cambiar</button>
       <button class="btn" data-sg-char-del>quitar</button>
     </div>

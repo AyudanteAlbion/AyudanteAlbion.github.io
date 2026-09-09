@@ -62,7 +62,7 @@ Hasta que las variables existan, la app funciona normal y el botón de Discord p
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs     # 32 chequeos del OAuth con Discord simulado
+node worker/selftest.mjs     # 33 chequeos del OAuth con Discord simulado
 cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
 ```
 

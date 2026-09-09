@@ -150,10 +150,18 @@ a:hover { text-decoration: underline; }
 .tabs { display: flex; gap: 2px; flex: 1; }
 .tab {
   position: relative;
+  display: inline-flex; align-items: center; gap: 7px;
   background: none; border: none; color: var(--muted); font: inherit;
   padding: 9px 14px; border-radius: 6px; cursor: pointer; font-weight: 500;
   transition: color .12s, background .12s;
 }
+/* ícono de cada pestaña de la barra (mismo lenguaje visual que el menú Crafteo) */
+.tab-ico {
+  width: 15px; height: 15px; flex: none; opacity: .8;
+  stroke: currentColor; fill: none; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.tab:hover .tab-ico, .tab.active .tab-ico { opacity: 1; }
 .tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
 .tab.active { color: var(--text); background: none; }
 .tab.active::after {
@@ -332,6 +340,13 @@ a:hover { text-decoration: underline; }
 .craft-detail { display: flex; flex-wrap: wrap; gap: 22px; padding: 16px 20px 20px 46px; }
 .cd-section { flex: 1; min-width: 320px; }
 .cd-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
+/* ícono suelto dentro de un título o una fila (sin la ficha .chip-ico) */
+.title-ico {
+  width: 15px; height: 15px; flex: none; vertical-align: -2px;
+  stroke: currentColor; fill: none; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.cd-title .title-ico { color: var(--accent); }
 .cd-table td, .cd-table th { padding: 6px 10px; }
 .cd-summary { max-width: 420px; }
 .cd-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; font-size: 0.88rem; border-bottom: 1px dashed rgba(48,57,80,0.5); font-variant-numeric: tabular-nums; }
@@ -665,7 +680,10 @@ img { max-width: 100%; }
 .fav-btn.on { border-color: var(--accent); color: var(--accent); }
 .home-favs { padding: 16px; margin-bottom: 18px; }
 .home-favs-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-.home-favs-head h2 { margin: 0; font-size: 1.05rem; color: var(--accent); }
+.home-favs-head h2 { margin: 0; font-size: 1.05rem; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+/* la ficha de favoritos es igual a la de las tarjetas pero más chica */
+.fav-chip { width: 30px; height: 30px; border-radius: 8px; }
+.fav-chip svg { width: 16px; height: 16px; }
 .home-fav-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .fav-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border, #2a3040); border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.02); }
 .fav-row:hover { border-color: var(--accent); }
@@ -697,13 +715,17 @@ img { max-width: 100%; }
 @keyframes wa-toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 /* ---- creadores de SG: indicador EN VIVO / OFFLINE ---- */
+/* Va debajo de la foto del creador (antes que el nombre), como pastillita:
+   así se ve de un vistazo quién está al aire sin leer la tarjeta entera. */
 .sg-live {
-  display: none; align-items: center; gap: 6px; margin-top: 7px;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em;
+  display: none; align-items: center; justify-content: center; gap: 6px;
+  margin: 0 0 7px; padding: 3px 9px; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; line-height: 1.5;
+  border: 1px solid var(--border); background: rgba(0, 0, 0, .22);
 }
-.sg-live.live, .sg-live.off { display: flex; }
-.sg-live .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.sg-live.live { color: #ff6b6b; }
+.sg-live.live, .sg-live.off { display: inline-flex; }
+.sg-live .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.sg-live.live { color: #ff7070; border-color: rgba(255, 59, 59, .45); background: rgba(255, 59, 59, .1); }
 .sg-live.live .dot { background: #ff3b3b; box-shadow: 0 0 8px rgba(255, 59, 59, 0.9); animation: sg-live-pulse 1.3s ease-in-out infinite; }
 .sg-live.off { color: var(--muted); }
 .sg-live.off .dot { background: #64748b; }
@@ -723,7 +745,7 @@ img { max-width: 100%; }
 
 /* ===== 🔐 Acceso de miembros SG (login con Discord + Sala de miembros) ===== */
 .sg-dc-svg { width: 20px; height: 15px; fill: currentColor; stroke: none; }
-.btn .sg-dc-svg { width: 18px; height: 14px; }
+.btn .sg-dc-svg { width: 18px; height: 14px; vertical-align: -3px; margin-right: 3px; }
 
 /* botón + chip de cuenta en la barra superior */
 #sgLoginBtn svg { fill: currentColor; stroke: none; width: 20px; height: 15px; }
@@ -756,11 +778,14 @@ img { max-width: 100%; }
 }
 .sg-menu-head { display: flex; align-items: center; gap: 10px; }
 .sg-menu-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sg-menu-status { font-size: 0.74rem; color: var(--muted); }
+.sg-menu-status { display: flex; align-items: center; gap: 5px; font-size: 0.74rem; color: var(--muted); }
 .sg-menu-status.ok { color: var(--green); font-weight: 600; }
+.sg-menu-status svg { width: 12px; height: 12px; }
 .sg-menu-meta { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .sg-menu-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.sg-menu-actions .btn { width: 100%; }
+.sg-menu-actions .btn {
+  width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+}
 .sg-av { position: relative; width: 38px; height: 38px; border-radius: 50%; flex: none; }
 .sg-av img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; display: block; }
 .sg-av-ini {
@@ -789,14 +814,20 @@ img { max-width: 100%; }
   width: 52px; height: 52px; border-radius: 14px; font-size: 1.5rem;
   background: var(--panel-3); color: var(--gold); margin-bottom: 12px;
 }
-.sg-lock-ico svg { width: 24px; height: 24px; }
+.sg-lock-ico svg {
+  width: 24px; height: 24px;
+  stroke: currentColor; fill: none; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
 .sg-lock-card h3 { font-size: 1.12rem; margin-bottom: 6px; }
 .sg-lock-card p { font-size: 0.88rem; }
 .sg-lock-card ul {
   list-style: none; text-align: left; display: inline-grid; gap: 7px;
   margin: 16px auto; font-size: 0.85rem; color: var(--text);
 }
-.sg-lock-card li::before { content: "✓ "; color: var(--green); font-weight: 700; }
+/* cada beneficio con su ícono de línea (el ícono reemplaza al tilde ✓) */
+.sg-lock-card li { display: flex; align-items: center; gap: 9px; }
+.sg-lock-card li svg { width: 15px; height: 15px; flex: none; color: var(--green); }
 .sg-lock-card .btn-discord { margin-top: 4px; }
 .sg-lock-card .micro { margin-top: 12px; }
 
@@ -828,6 +859,7 @@ img { max-width: 100%; }
 .sg-char-form .search { flex: 1; min-width: 180px; }
 .sg-char-linked { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .sg-char-tag {
+  display: inline-flex; align-items: center; gap: 7px;
   background: var(--green-soft); border: 1px solid rgba(20, 185, 138, .35); color: var(--green);
   border-radius: 6px; padding: 6px 12px; font-size: 0.9rem;
 }

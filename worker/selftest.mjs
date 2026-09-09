@@ -155,6 +155,17 @@ check(r404.status === 404, 'ruta desconocida → 404', 'ruta desconocida → ' +
 const rPost = await w6.fetch(new Request('http://w.test/health', { method: 'POST' }));
 check(rPost.status === 405, 'POST → 405 (solo GET)', 'POST → ' + rPost.status);
 
+/* Upstream que responde sin cuerpo (204/304): construir new Response(cuerpo,
+   {status:204}) lanza RangeError en el runtime de Workers, así que el proxy
+   tiene que nulear el cuerpo en esos statuses. */
+const w7 = createWorker(ENV, async () => ({
+  status: 204, headers: new Headers({ 'content-type': 'text/plain' }), body: 'no debería ir',
+}));
+try {
+  const r204 = await w7.fetch(new Request('http://w.test/twitch/uptime/canal1'));
+  check(r204.status === 204 && (await r204.text()) === '', 'upstream 204 → se reenvía sin cuerpo', 'upstream 204 → ' + r204.status);
+} catch (e) { check(false, '', 'upstream 204 lanzó ' + e.message); }
+
 /* gameinfo/twitch dependen de la red: tolerantes */
 try {
   const res = await w6.fetch(new Request('http://w.test/gameinfo/search?q=x'));

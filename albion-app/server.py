@@ -13,7 +13,18 @@ import urllib.request
 import urllib.error
 
 GAMEINFO = 'https://gameinfo.albiononline.com/api/gameinfo'
-DEC = 'https://decapi.me'
+DEC = 'https://decapi.me/twitch'   # ojo: /twitch es parte de la ruta de DecAPI
+
+# gameinfo bloquea User-Agents de bot desde el borde de Cloudflare (502).
+# Mismas cabeceras que usa el Worker de Cloudflare: sin esto el killboard
+# solo funciona a través del Worker y el Perfil/la Sala quedan vacíos.
+BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+    'Origin': 'https://gameinfo.albiononline.com',
+    'Referer': 'https://gameinfo.albiononline.com/game-info-players/',
+}
 
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -124,6 +135,7 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         """Estado EN VIVO/OFFLINE de canales de Twitch vía DecAPI (sin clave).
         La app intenta el fetch directo primero; esto es el respaldo para
         entornos donde DecAPI no manda CORS (hosting estático)."""
+        # la app pide /twitch/uptime/<canal> -> https://decapi.me/twitch/uptime/<canal>
         url = DEC + self.path[len('/twitch'):]
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'AyudanteAlbion/1.0'})
@@ -142,7 +154,7 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def proxy_gameinfo(self):
         url = GAMEINFO + self.path[len('/gameinfo'):]
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'AyudanteAlbion/1.0'})
+            req = urllib.request.Request(url, headers=BROWSER_HEADERS)
             with urllib.request.urlopen(req, timeout=15) as r:
                 body = r.read()
                 self.send_response(200)
