@@ -1,15 +1,22 @@
+<div align="center">
+
+<img src="docs/portada_AA.png" width="100%" alt="Ayudante Albion — calculadora de mercado y crafteo para Albion Online, por SheniaLiam">
+
 # Ayudante Albion
 
-![Portada](docs/hero.jpg)
+Calculadora de mercado y crafteo para **Albion Online** (servidor West), hecha para el gremio <img src="docs/sg_logo.png" width="30" alt="Escudo de Spetsnaz Grail"> **Spetsnaz Grail**
 
-Calculadora de mercado y crafteo para Albion Online (servidor West), hecha para el gremio Spetsnaz Grail.
+<a href="https://discord.gg/FH3RzqMPA4" title="Unite al servidor de Discord de Ayudante Albion"><img src="docs/boton_discord.png" width="520" alt="Unite a nuestro Discord: servidor de la comunidad Ayudante Albion"></a>
+
+</div>
 
 Combina las recetas reales del juego con precios de mercado de la comunidad para responder una sola pregunta: cuánto ganás (o perdés) en cada operación. Accede a la página web o descarga el ejecutable de escritorio.
 
 - Accede a la App: https://ayudantealbion.github.io
 - Descarga y notas de versión: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io
 - Web del gremio: https://spetsnazgrail.com
-- Discord: https://discord.gg/TCNWUUA7UY
+- Discord del gremio (Spetsnaz Grail): https://discord.gg/TCNWUUA7UY
+- Discord de la app (Ayudante Albion): https://discord.gg/FH3RzqMPA4
 
 ## Módulos
 
@@ -53,6 +60,10 @@ Ver [distribución por ciudad, fuentes y fórmulas](docs/farming.md). Pruebas: `
 Al final de **Inicio**, el botón **Reportar un problema** abre un nuevo issue de este repositorio en otra pestaña. Incluye una plantilla en español con herramienta afectada, descripción, pasos para reproducir, resultado esperado, entorno y capturas opcionales.
 
 El usuario revisa y envía el reporte desde su cuenta de GitHub; los issues son públicos. La app no crea reportes automáticamente ni adjunta datos del navegador, almacenamiento local o sesión de Discord. La plantilla también está disponible en `.github/ISSUE_TEMPLATE/bug_report.md` para quienes reporten directamente desde el repositorio. El enlace de la app lleva el contenido precargado, por lo que no depende de la publicación de esa plantilla.
+
+## Comunidad
+
+El botón de arriba lleva al **servidor de Discord de Ayudante Albion** (https://discord.gg/FH3RzqMPA4): ahí se comparten novedades, avisos de versiones, bugs y pedidos de funciones de la app. Es un servidor separado del del gremio — para jugar con Spetsnaz Grail hay que pasar por su Discord (https://discord.gg/TCNWUUA7UY), que además es el que verifica el acceso al Salón de miembros.
 
 ## Black Market: solo destino de venta
 
@@ -135,3 +146,5 @@ El código de este repositorio está bajo licencia MIT (ver `LICENSE`). La licen
 ## Créditos
 
 Desarrollado por SheniaLiam para el gremio Spetsnaz Grail. Los íconos y datos provienen de proyectos comunitarios; el killboard es de Sandbox Interactive.
+
+**Assets de marca**: el arte de alta resolución está en `docs/branding/` (`portada_AA.png`, `logo_AA.png`, `sg_logo.png`) y no forma parte de la app ni del `.zip` de la release. Lo que usa este README son versiones optimizadas en `docs/`: la portada con esquinas redondeadas, el escudo de SG recortado con fondo transparente (para que funcione igual en tema claro y oscuro) y el botón de Discord, compuesto con el logo de Ayudante Albion.
