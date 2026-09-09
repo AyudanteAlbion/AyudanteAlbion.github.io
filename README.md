@@ -63,7 +63,9 @@ El usuario revisa y envía el reporte desde su cuenta de GitHub; los issues son 
 
 ## Comunidad
 
-El botón de arriba lleva al **servidor de Discord de Ayudante Albion** (https://discord.gg/FH3RzqMPA4): ahí se comparten novedades, avisos de versiones, bugs y pedidos de funciones de la app. Es un servidor separado del del gremio — para jugar con Spetsnaz Grail hay que pasar por su Discord (https://discord.gg/TCNWUUA7UY), que además es el que verifica el acceso al Salón de miembros.
+El botón de arriba lleva al **servidor de Discord de Ayudante Albion** (https://discord.gg/FH3RzqMPA4): ahí se comparten novedades, avisos de versiones, bugs y pedidos de funciones de la app. Dentro de la app el mismo destino está en el **Inicio**, en la pastilla «Únete a nuestra comunidad», justo debajo del crédito del gremio.
+
+Es un servidor separado del del gremio — para jugar con Spetsnaz Grail hay que pasar por su Discord (https://discord.gg/TCNWUUA7UY), que además es el que verifica el acceso al Salón de miembros.
 
 ## Black Market: solo destino de venta
 
