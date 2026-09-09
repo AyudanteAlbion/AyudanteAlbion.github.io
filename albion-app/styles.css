@@ -720,3 +720,134 @@ img { max-width: 100%; }
 }
 .top-action.ka-on:hover { color: var(--green); border-color: var(--green); }
 .top-action.ka-on svg { fill: rgba(20, 185, 138, .25); }
+
+/* ===== 🔐 Acceso de miembros SG (login con Discord + Sala de miembros) ===== */
+.sg-dc-svg { width: 20px; height: 15px; fill: currentColor; stroke: none; }
+.btn .sg-dc-svg { width: 18px; height: 14px; }
+
+/* botón + chip de cuenta en la barra superior */
+#sgLoginBtn svg { fill: currentColor; stroke: none; width: 20px; height: 15px; }
+#sgLoginBtn:hover { color: #aab4ff; border-color: #5865f2; background: rgba(88, 101, 242, 0.13); }
+.sg-account { position: relative; }
+.sg-account-btn {
+  display: flex; align-items: center; justify-content: center; position: relative;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: transparent; border: 1px solid var(--border-strong); color: var(--text);
+  cursor: pointer; transition: all .15s;
+}
+.sg-account-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+#sgAccountImg { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; display: block; }
+.sg-account-initial {
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--panel-3); color: var(--gold); font-weight: 700; font-size: 0.8rem; text-transform: uppercase;
+}
+.sg-account-dot {
+  position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--muted); border: 2px solid var(--bg);
+}
+.sg-account-dot.member { background: var(--green); box-shadow: 0 0 6px rgba(20, 185, 138, .8); }
+
+/* menú desplegable de la cuenta */
+.sg-account-menu {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 900;
+  min-width: 250px; padding: 14px;
+  background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.sg-menu-head { display: flex; align-items: center; gap: 10px; }
+.sg-menu-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-menu-status { font-size: 0.74rem; color: var(--muted); }
+.sg-menu-status.ok { color: var(--green); font-weight: 600; }
+.sg-menu-meta { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.sg-menu-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.sg-menu-actions .btn { width: 100%; }
+.sg-av { position: relative; width: 38px; height: 38px; border-radius: 50%; flex: none; }
+.sg-av img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; display: block; }
+.sg-av-ini {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--panel-3); color: var(--gold); font-weight: 700; border-radius: 50%; font-size: 0.95rem;
+}
+
+/* botón principal de Discord */
+.btn-discord {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  background: #5865f2; color: #fff; border: 1px solid #6c78f5;
+  padding: 11px 22px; border-radius: 7px; font: inherit; font-weight: 600;
+  cursor: pointer; text-decoration: none; transition: all .15s;
+}
+.btn-discord:hover { background: #6c78f5; border-color: #aab4ff; transform: translateY(-1px); }
+
+/* Sala de miembros */
+.sg-room-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 16px 16px 0; }
+.sg-room-head h2 { font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
+.sg-room-ico { background: rgba(88, 101, 242, 0.14); color: #aab4ff; }
+#sgRoomBody { padding: 14px 16px 16px; }
+
+.sg-lock-card { text-align: center; padding: 26px 18px 30px; max-width: 460px; margin: 0 auto; }
+.sg-lock-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 52px; height: 52px; border-radius: 14px; font-size: 1.5rem;
+  background: var(--panel-3); color: var(--gold); margin-bottom: 12px;
+}
+.sg-lock-ico svg { width: 24px; height: 24px; }
+.sg-lock-card h3 { font-size: 1.12rem; margin-bottom: 6px; }
+.sg-lock-card p { font-size: 0.88rem; }
+.sg-lock-card ul {
+  list-style: none; text-align: left; display: inline-grid; gap: 7px;
+  margin: 16px auto; font-size: 0.85rem; color: var(--text);
+}
+.sg-lock-card li::before { content: "✓ "; color: var(--green); font-weight: 700; }
+.sg-lock-card .btn-discord { margin-top: 4px; }
+.sg-lock-card .micro { margin-top: 12px; }
+
+.sg-lock-note {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; margin-top: 10px;
+}
+.sg-lock-note .chip-ico { flex: none; }
+.sg-lock-note-t { font-weight: 600; margin-bottom: 2px; }
+.sg-lock-note .btn { margin-left: auto; }
+
+.sg-welcome {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.sg-welcome-name { font-size: 1.05rem; }
+.sg-welcome-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sg-room-stats { margin-bottom: 14px; }
+
+.sg-char {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.sg-char .chip-ico { flex: none; margin-top: 2px; }
+.sg-char-main { flex: 1; min-width: 0; }
+.sg-char-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.sg-char-form .search { flex: 1; min-width: 180px; }
+.sg-char-linked { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.sg-char-tag {
+  background: var(--green-soft); border: 1px solid rgba(20, 185, 138, .35); color: var(--green);
+  border-radius: 6px; padding: 6px 12px; font-size: 0.9rem;
+}
+.sg-err { color: var(--red) !important; }
+
+.sg-rank-bar { margin-bottom: 10px; }
+.sg-rank-bar .cd-title { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sg-rank-tools { display: flex; gap: 8px; }
+.sg-rank-tools .search { flex: 1; min-width: 160px; }
+
+.ledger tr.sg-me { background: var(--green-soft); }
+.ledger tr.sg-me td { border-bottom-color: rgba(20, 185, 138, .3); }
+.ledger tr.sg-me:hover { background: rgba(20, 185, 138, 0.16); }
+.sg-you { color: var(--green); font-size: 0.74rem; font-weight: 700; }
+
+.sg-week { margin-top: 16px; }
+.sg-week .cd-title { margin-bottom: 10px; }
+
+@media (max-width: 640px) {
+  .sg-account-menu { right: -60px; }
+  .sg-welcome-actions { width: 100%; }
+  .sg-welcome-actions .btn { flex: 1; }
+}

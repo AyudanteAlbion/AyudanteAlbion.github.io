@@ -33,6 +33,13 @@ jobs:
         run: npm install --no-save jsdom
         working-directory: albion-app
 
+      - name: Selftest del worker (acceso SG + proxies)
+        run: node worker/selftest.mjs
+
+      - name: QA completa (todos los módulos + acceso SG)
+        run: node qa-test.js
+        working-directory: albion-app
+
       - name: Build (sintaxis + smoke + exe + zip)
         run: |
           GO_BIN="$(command -v go)" ./build.sh

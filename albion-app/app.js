@@ -131,7 +131,7 @@ function gotoTab(key) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + key));
   const mod = craftModules[key];
   if (mod && !mod.loadedOnce) mod.loadPrices();
-  if (key === 'sg') twCheckAll(); // refresca EN VIVO/OFFLINE al entrar a la pestaña
+  if (key === 'sg') { twCheckAll(); sgRoomRender(); } // EN VIVO/OFFLINE + Sala de miembros
   window.scrollTo({ top: 0 });
 }
 document.getElementById('mainTabs').addEventListener('click', e => {
@@ -3453,6 +3453,11 @@ function pfRender(d, kills, deaths, guild) {
     }
     const mbtn = e.target.closest('#pfMembersBtn');
     if (mbtn && PF.guildId) {
+      /* ranking de miembros: exclusivo para miembros SG verificados */
+      if (!sgIsMember()) {
+        document.getElementById('pfMembersBox').innerHTML = sgLockNote('El ranking completo de miembros del gremio es exclusivo de los miembros verificados de SG.');
+        return;
+      }
       mbtn.textContent = 'Cargando miembros…'; mbtn.disabled = true;
       try {
         const members = pfAsArray(await pfFetchRetry(`/guilds/${PF.guildId}/members`));
@@ -4043,3 +4048,580 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('focus', kaRunDue);
 document.addEventListener('resume', kaRunDue); // Page Lifecycle: descongela → catch-up
 kaStart();
+
+/* ====================================================================
+   🔐 ACCESO DE MIEMBROS SG — login con Discord + Sala de miembros.
+   ...
+   Flujo: «Ingresar con Discord» → /discord/login del Worker (Cloudflare)
+   → Discord pide autorización (identidad + servidores) → el Worker
+   canjea el código, verifica si el usuario pertenece al servidor de
+   Discord de SG y devuelve una sesión firmada (HMAC) válida 30 días.
+   La app la guarda en localStorage y desbloquea la Sala de miembros.
+   El secreto de Discord vive solo en el Worker; la app nunca lo ve.
+   ==================================================================== */
+const SG = {
+  session: null,      // {u:{i,n,a}, m, t, e} decodificado del token
+  configured: false,  // ¿el Worker tiene las variables de Discord?
+  loginUrl: '',
+  room: { guildId: null, guildData: null, members: null, top: [], loadedOnce: false, loading: false, sort: 'kf', dir: -1, filter: '' },
+};
+const SG_KEYS = { sess: 'aaDiscordSession', char: 'aaSGChar', guild: 'aaSGGuild' };
+const SG_GUILD_NAME = 'Spetsnaz Grail';
+const SG_SESS_DAYS = 30;
+const SG_DC_INVITE = 'https://discord.gg/cqG7rDmUSJ';
+
+function sgEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* base64url → JSON (unicode-safe; el Worker codifica con TextEncoder) */
+function sgFromB64url(s) {
+  const bin = atob(String(s).replace(/-/g, '+').replace(/_/g, '/'));
+  try { return JSON.parse(decodeURIComponent(escape(bin))); } catch (e) { return JSON.parse(bin); }
+}
+
+/* decodifica y valida una sesión; ignora la firma (la valida el Worker
+   al emitirla: en un sitio estático el candado de la Sala es de UX) */
+function sgDecodeSession(raw) {
+  try {
+    const pl = String(raw).split('.')[0];
+    const s = sgFromB64url(pl);
+    if (!s || !s.u || !s.u.i) return null;
+    if (!s.e || s.e < Date.now()) return null; // vencida
+    return s;
+  } catch (e) { return null; }
+}
+
+function sgIsMember() { return !!(SG.session && SG.session.m === true); }
+function sgChar() { try { return JSON.parse(localStorage.getItem(SG_KEYS.char) || 'null'); } catch (e) { return null; } }
+
+function sgSaveSession(raw) {
+  const s = sgDecodeSession(raw);
+  if (!s) return false;
+  SG.session = s;
+  try { localStorage.setItem(SG_KEYS.sess, raw); } catch (e) {}
+  sgPaintAccount();
+  sgRoomRender();
+  return true;
+}
+
+function sgLogout() {
+  SG.session = null;
+  try { localStorage.removeItem(SG_KEYS.sess); } catch (e) {}
+  sgToggleMenu(false);
+  sgPaintAccount();
+  sgRoomRender();
+  waToast('🔐 Sesión cerrada', 'Seguís pudiendo usar toda la app pública.');
+}
+
+function sgLogin() {
+  if (!SG.configured) {
+    waToast('🔐 Acceso SG', 'El ingreso con Discord todavía no está activo en esta versión.', 'err');
+    return;
+  }
+  const base = SG.loginUrl || (WORKER_URL + '/discord/login');
+  location.href = base + '?redirect=' + encodeURIComponent(location.origin + location.pathname);
+}
+
+/* avatar: imagen de Discord con inicial de respaldo */
+window.sgAvatarFail = function (img) { img.style.display = 'none'; };
+function sgAvatarHTML(u, cls) {
+  const ini = sgEsc((u.n || '?').trim().charAt(0).toUpperCase() || '?');
+  const url = u.a ? `https://cdn.discordapp.com/avatars/${sgEsc(u.i)}/${sgEsc(u.a)}.png?size=64` : '';
+  return `<span class="sg-av ${cls || ''}">${url
+    ? `<img src="${url}" alt="" onerror="sgAvatarFail(this)">` : ''}<span class="sg-av-ini">${ini}</span></span>`;
+}
+
+/* ---- chip de cuenta + menú en la barra superior ---- */
+function sgPaintAccount() {
+  const loginBtn = document.getElementById('sgLoginBtn');
+  const wrap = document.getElementById('sgAccount');
+  if (!loginBtn || !wrap) return;
+  const s = SG.session;
+  loginBtn.hidden = !(SG.configured && !s);
+  wrap.hidden = !s;
+  if (!s) { sgToggleMenu(false); return; }
+  const img = document.getElementById('sgAccountImg');
+  const ini = document.getElementById('sgAccountInitial');
+  const dot = document.getElementById('sgAccountDot');
+  if (s.u.a) {
+    img.src = `https://cdn.discordapp.com/avatars/${s.u.i}/${s.u.a}.png?size=64`;
+    img.hidden = false; ini.textContent = '';
+    img.onerror = () => { img.hidden = true; ini.textContent = (s.u.n || '?').charAt(0).toUpperCase(); };
+  } else {
+    img.hidden = true;
+    ini.textContent = (s.u.n || '?').charAt(0).toUpperCase();
+  }
+  dot.className = 'sg-account-dot' + (s.m ? ' member' : '');
+  document.getElementById('sgAccountBtn').title = s.u.n + (s.m ? ' — miembro SG' : ' — cuenta de Discord');
+  sgPaintMenu();
+}
+
+function sgPaintMenu() {
+  const menu = document.getElementById('sgAccountMenu');
+  if (!menu || !SG.session) return;
+  const s = SG.session;
+  const hasta = s.e ? new Date(s.e).toLocaleDateString('es-AR') : '';
+  menu.innerHTML = `
+    <div class="sg-menu-head">
+      ${sgAvatarHTML(s.u, 'sg-menu-av')}
+      <div style="min-width:0">
+        <div class="sg-menu-name">${sgEsc(s.u.n)}</div>
+        <div class="sg-menu-status ${s.m ? 'ok' : ''}">${s.m ? '✔ Miembro de Spetsnaz Grail' : 'Sin membresía SG'}</div>
+      </div>
+    </div>
+    ${hasta ? `<div class="sg-menu-meta micro muted">Sesión verificada hasta el ${hasta}</div>` : ''}
+    <div class="sg-menu-actions">
+      ${s.m ? `<button class="btn" data-sg-goto-room>🔐 Sala de miembros</button>` : ''}
+      <button class="btn" data-sg-verify>↻ Volver a verificar</button>
+      <button class="btn" data-sg-logout>Cerrar sesión</button>
+    </div>`;
+}
+
+function sgToggleMenu(force) {
+  const menu = document.getElementById('sgAccountMenu');
+  if (!menu) return;
+  menu.hidden = typeof force === 'boolean' ? !force : !menu.hidden;
+}
+
+/* ---- tarjetas de candado ---- */
+function sgLockCard(msg) {
+  return `
+  <div class="sg-lock-card">
+    <span class="sg-lock-ico"><svg><use href="#i-lock"/></svg></span>
+    <h3>Sala exclusiva de miembros</h3>
+    <p class="muted">${msg}</p>
+    <ul>
+      <li>🏆 Ranking completo del gremio: fama de kills, muertes y ratio de cada miembro</li>
+      <li>📊 Estadísticas de Spetsnaz Grail y mejores asesinatos de la semana</li>
+      <li>🎮 Vinculá tu personaje de Albion y mirá tu puesto en la tabla</li>
+      <li>⬇️ Exportación del ranking en CSV</li>
+    </ul>
+    ${SG.configured ? `
+    <button class="btn btn-discord" data-sg-login>
+      <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+      Ingresar con Discord
+    </button>
+    <div class="micro muted">Se abre Discord, autorizás «Ayudante Albion» y volvés acá solo. La sesión dura ${SG_SESS_DAYS} días en este navegador y no guardamos ningún dato tuyo.</div>`
+    : `<div class="micro muted">🛠️ El ingreso con Discord se está configurando — disponible en breve.</div>`}
+  </div>`;
+}
+
+/* nota compacta de candado (usada en Perfil) */
+function sgLockNote(msg) {
+  return `
+  <div class="sg-lock-note">
+    <span class="chip-ico"><svg><use href="#i-lock"/></svg></span>
+    <div style="min-width:0">
+      <div class="sg-lock-note-t">🔒 Exclusivo para miembros SG</div>
+      <div class="micro muted">${msg}</div>
+    </div>
+    ${SG.configured ? `<button class="btn btn-discord" data-sg-login>Ingresar con Discord</button>`
+      : `<button class="btn" data-sg-goto-room>Ver la Sala de miembros</button>`}
+  </div>`;
+}
+
+/* ---- Sala de miembros ---- */
+function sgRoomRender() {
+  const body = document.getElementById('sgRoomBody');
+  if (!body) return;
+  if (!SG.configured && !SG.session) {
+    body.innerHTML = `<div class="loading-cell">🛠️ El acceso con Discord se está configurando — la Sala de miembros llega en breve.</div>`;
+    return;
+  }
+  if (!SG.session) {
+    body.innerHTML = sgLockCard('Ingresá con tu cuenta de Discord: verificamos solos si sos de Spetsnaz Grail y desbloqueamos la Sala.');
+    return;
+  }
+  if (!sgIsMember()) {
+    body.innerHTML = `
+    <div class="sg-lock-card">
+      <span class="sg-lock-ico">🛡️</span>
+      <h3>Hola, ${sgEsc(SG.session.u.n)}</h3>
+      <p class="muted">No encontramos <b>Spetsnaz Grail</b> entre los servidores de tu cuenta de Discord.</p>
+      <div class="sg-menu-actions">
+        <a class="btn btn-discord" href="${SG_DC_INVITE}" target="_blank" rel="noopener">Unirme al Discord de SG</a>
+        <button class="btn" data-sg-verify>↻ Volver a verificar</button>
+        <button class="btn" data-sg-logout>Cerrar sesión</button>
+      </div>
+      <div class="micro muted">Si acabás de entrar al servidor, dale a «Volver a verificar»: Discord a veces demora en refrescar la lista.</div>
+    </div>`;
+    return;
+  }
+  /* miembro: contenido de la Sala */
+  if (!SG.room.loadedOnce) {
+    body.innerHTML = `
+    <div class="sg-welcome">
+      <div class="sg-welcome-txt">
+        <div class="sg-welcome-name">Hola, <b>${sgEsc(SG.session.u.n)}</b> 👋</div>
+        <div class="micro muted">Cargando la Sala de miembros…</div>
+      </div>
+      <div class="sg-welcome-actions">
+        <button class="btn" data-sg-verify>↻ Re-verificar</button>
+        <button class="btn" data-sg-logout>Cerrar sesión</button>
+      </div>
+    </div>
+    <div class="loading-cell">Buscando a Spetsnaz Grail en el killboard…</div>`;
+    sgLoadRoom();
+    return;
+  }
+  sgRoomContent();
+}
+
+async function sgLoadRoom() {
+  if (SG.room.loading) return;
+  SG.room.loading = true;
+  try {
+    const gid = await sgResolveGuild();
+    SG.room.guildId = gid;
+    const [g, mem, top] = await Promise.all([
+      pfFetchRetry('/guilds/' + gid).catch(() => null),
+      pfFetchRetry('/guilds/' + gid + '/members').catch(() => null),
+      pfFetchRetry('/guilds/' + gid + '/top?range=week').catch(() => null),
+    ]);
+    const members = pfAsArray(mem);
+    if (!members.length) throw new Error('sin miembros');
+    SG.room.guildData = g && g.Name ? g : null;
+    SG.room.members = members;
+    SG.room.top = pfAsArray(top);
+    SG.room.loadedOnce = true;
+  } catch (err) {
+    const body = document.getElementById('sgRoomBody');
+    if (body) body.innerHTML = `
+      <div class="sg-welcome">
+        <div class="sg-welcome-txt">
+          <div class="sg-welcome-name">Hola, <b>${sgEsc((SG.session || { u: { n: '' } }).u.n)}</b> 👋</div>
+        </div>
+        <div class="sg-welcome-actions"><button class="btn" data-sg-logout>Cerrar sesión</button></div>
+      </div>
+      <div class="loading-cell">El killboard no respondió. <button class="btn" data-sg-refresh style="margin-left:10px">↻ Reintentar</button></div>`;
+    SG.room.loading = false;
+    return;
+  }
+  SG.room.loading = false;
+  sgRoomRender();
+}
+
+/* resuelve el ID del gremio in-game por nombre (cache 24 h) */
+async function sgResolveGuild(force) {
+  if (!force) {
+    try {
+      const c = JSON.parse(localStorage.getItem(SG_KEYS.guild) || 'null');
+      if (c && c.id && Date.now() - c.t < 24 * 3600e3) return c.id;
+    } catch (e) {}
+  }
+  const data = await pfFetchRetry('/search?q=' + encodeURIComponent(SG_GUILD_NAME));
+  const gs = (data && data.guilds) || [];
+  const g = gs.find(x => (x.Name || '').toLowerCase() === SG_GUILD_NAME.toLowerCase()) || gs[0];
+  if (!g || !g.Id) throw new Error('gremio no encontrado');
+  try { localStorage.setItem(SG_KEYS.guild, JSON.stringify({ id: g.Id, t: Date.now() })); } catch (e) {}
+  return g.Id;
+}
+
+function sgRoomContent() {
+  const body = document.getElementById('sgRoomBody');
+  if (!body) return;
+  const g = SG.room.guildData, mem = SG.room.members || [];
+  const linked = sgChar();
+  const byKf = [...mem].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
+  const myPos = linked ? byKf.findIndex(m => m.Id === linked.id) + 1 : 0;
+  body.innerHTML = `
+  <div class="sg-welcome">
+    <div class="sg-welcome-txt">
+      <div class="sg-welcome-name">Hola, <b>${sgEsc(SG.session.u.n)}</b> 👋</div>
+      <div class="micro muted">${linked ? `Jugás como <b>${sgEsc(linked.name)}</b>${myPos ? ` · puesto <b>#${myPos}</b> de ${mem.length} en fama de kills` : ''}` : 'Vinculá tu personaje abajo para marcarte en la tabla'}</div>
+    </div>
+    <div class="sg-welcome-actions">
+      <button class="btn" data-sg-refresh title="Volver a pedir los datos al killboard">↻ Actualizar</button>
+      <button class="btn" data-sg-verify>↻ Re-verificar</button>
+      <button class="btn" data-sg-logout>Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div class="stats sg-room-stats">
+    <div class="stat"><div class="k">Miembros</div><div class="v">${fmt(g ? g.MemberCount : mem.length)}</div><div class="s">Spetsnaz Grail</div></div>
+    <div class="stat"><div class="k">Fama de asesinatos</div><div class="v pos">${fmt(g ? g.killFame : byKf.reduce((s, m) => s + (m.KillFame || 0), 0))}</div><div class="s">todo el gremio</div></div>
+    <div class="stat"><div class="k">Fama de muertes</div><div class="v neg">${fmt(g ? g.DeathFame : mem.reduce((s, m) => s + (m.DeathFame || 0), 0))}</div><div class="s">todo el gremio</div></div>
+    <div class="stat"><div class="k">Fundado</div><div class="v" style="font-size:1rem">${g && g.Founded ? new Date(g.Founded).toLocaleDateString('es-AR') : '—'}</div><div class="s">${g && g.FounderName ? 'por ' + sgEsc(g.FounderName) : ''}</div></div>
+  </div>
+
+  <div class="sg-char">
+    <span class="chip-ico"><svg><use href="#i-link"/></svg></span>
+    <div class="sg-char-main">
+      <div class="cd-title">Tu personaje de Albion</div>
+      <div id="sgCharBox">${sgCharBoxHTML()}</div>
+    </div>
+  </div>
+
+  <div class="sg-rank-bar">
+    <div class="cd-title"><span class="chip-ico"><svg><use href="#i-trophy"/></svg></span> Ranking de miembros</div>
+    <div class="sg-rank-tools">
+      <input type="search" id="sgRankSearch" class="search" placeholder="Buscar miembro por nombre…" value="${sgEsc(SG.room.filter)}">
+      <button class="btn" data-sg-csv title="Descargar el ranking visible en CSV">⬇ CSV</button>
+    </div>
+  </div>
+  <div id="sgRankTable">${sgRankTableHTML()}</div>
+
+  <div class="sg-week">
+    <div class="cd-title">💥 Mejores asesinatos de la semana</div>
+    ${sgWeekHTML()}
+  </div>`;
+}
+
+function sgCharBoxHTML() {
+  const linked = sgChar();
+  if (!linked) return `
+    <div class="sg-char-form">
+      <input type="text" id="sgCharInput" class="search" placeholder="Nombre exacto de tu personaje…" maxlength="30">
+      <button class="btn primary" id="sgCharBtn">Vincular</button>
+    </div>
+    <div class="micro muted" id="sgCharMsg">Lo verificamos contra el killboard: tiene que figurar en Spetsnaz Grail.</div>`;
+  return `
+    <div class="sg-char-linked">
+      <span class="sg-char-tag">🎮 <b>${sgEsc(linked.name)}</b></span>
+      <button class="btn" data-sg-char-edit>cambiar</button>
+      <button class="btn" data-sg-char-del>quitar</button>
+    </div>
+    <div class="micro muted">Tu fila queda marcada con <span class="sg-you">(vos)</span> en el ranking.</div>`;
+}
+
+function sgSortedMembers() {
+  const list = (SG.room.members || []).filter(m =>
+    !SG.room.filter || (m.Name || '').toLowerCase().includes(SG.room.filter));
+  const k = SG.room.sort, dir = SG.room.dir;
+  const ratio = m => (m.DeathFame > 0 ? (m.KillFame || 0) / m.DeathFame : -1);
+  return list.sort((a, b) => {
+    let d = 0;
+    if (k === 'name') d = String(a.Name || '').localeCompare(String(b.Name || ''), 'es', { sensitivity: 'base' });
+    else if (k === 'df') d = (a.DeathFame || 0) - (b.DeathFame || 0);
+    else if (k === 'ratio') d = ratio(a) - ratio(b);
+    else d = (a.KillFame || 0) - (b.KillFame || 0);
+    return d * dir;
+  });
+}
+
+function sgRankTableHTML() {
+  const linked = sgChar();
+  const rows = sgSortedMembers();
+  if (!rows.length) return `<div class="loading-cell">Ningún miembro coincide con la búsqueda.</div>`;
+  const arrow = k => SG.room.sort === k ? (SG.room.dir < 0 ? ' ▾' : ' ▴') : '';
+  const base = [...(SG.room.members || [])].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
+  const pos = {}; base.forEach((m, i) => { pos[m.Id] = i + 1; });
+  return `
+  <div class="table-wrap"><table class="ledger">
+    <thead><tr>
+      <th>#</th>
+      <th class="sortable" data-sg-sort="name">Jugador${arrow('name')}</th>
+      <th class="sortable num" data-sg-sort="kf">Fama de kills${arrow('kf')}</th>
+      <th class="sortable num" data-sg-sort="df">Fama de muertes${arrow('df')}</th>
+      <th class="sortable num" data-sg-sort="ratio">Ratio K/D${arrow('ratio')}</th>
+    </tr></thead>
+    <tbody>${rows.map(m => {
+      const r = m.DeathFame > 0 ? (m.KillFame || 0) / m.DeathFame : null;
+      const me = linked && linked.id === m.Id;
+      return `<tr class="clickable${me ? ' sg-me' : ''}" data-sg-member="${sgEsc(m.Id)}" data-sg-name="${sgEsc(m.Name)}" title="Ver el perfil de ${sgEsc(m.Name)} en la pestaña Perfil">
+        <td class="muted">${pos[m.Id] || ''}</td>
+        <td><b>${sgEsc(m.Name)}</b>${me ? ' <span class="sg-you">(vos)</span>' : ''}</td>
+        <td class="num pos">${fmt(m.KillFame)}</td>
+        <td class="num">${fmt(m.DeathFame)}</td>
+        <td class="num ${r == null ? '' : r >= 1 ? 'pos' : 'neg'}">${r == null ? '—' : r.toFixed(2)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>
+  <div class="micro muted" style="padding:6px 2px">${rows.length} de ${(SG.room.members || []).length} miembros · fuente: killboard oficial (puede demorar en reflejar cambios). Tocá un nombre para ver su perfil.</div>`;
+}
+
+function sgWeekHTML() {
+  const top = (SG.room.top || []).slice(0, 5);
+  if (!top.length) return `<div class="loading-cell">Sin asesinatos del gremio esta semana.</div>`;
+  return `<div class="table-wrap"><table class="ledger">
+    <thead><tr><th>Fecha</th><th>Asesino</th><th>Víctima</th><th class="num">Fama</th></tr></thead>
+    <tbody>${top.map(ev => `<tr>
+      <td class="muted">${ev.TimeStamp ? new Date(ev.TimeStamp).toLocaleDateString('es-AR') : '—'}</td>
+      <td><b>${sgEsc((ev.Killer || {}).Name || '?')}</b></td>
+      <td>${sgEsc((ev.Victim || {}).Name || '?')}</td>
+      <td class="num pos">${fmt(ev.TotalVictimKillFame)}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+/* ---- vínculo de personaje ---- */
+async function sgSaveChar() {
+  const inp = document.getElementById('sgCharInput');
+  const msg = document.getElementById('sgCharMsg');
+  const btn = document.getElementById('sgCharBtn');
+  if (!inp || !msg || !btn) return;
+  const q = inp.value.trim();
+  if (q.length < 3) { msg.textContent = 'Escribí al menos 3 caracteres.'; msg.className = 'micro sg-err'; return; }
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  try {
+    const data = await pfFetchRetry('/search?q=' + encodeURIComponent(q));
+    const players = (data && data.players) || [];
+    let p = players.find(x => (x.Name || '').toLowerCase() === q.toLowerCase()) || players[0];
+    if (!p) throw new Error('no-encontrado');
+    /* el personaje debe figurar en Spetsnaz Grail */
+    let gname = p.GuildName;
+    if (gname == null) {
+      try { const d = await pfFetchRetry('/players/' + p.Id); gname = d.GuildName; } catch (e) {}
+    }
+    if (gname != null && String(gname).toLowerCase() !== SG_GUILD_NAME.toLowerCase()) {
+      throw new Error('otro-gremio:' + (gname || 'sin gremio'));
+    }
+    try { localStorage.setItem(SG_KEYS.char, JSON.stringify({ id: p.Id, name: p.Name })); } catch (e) {}
+    waToast('🎮 Personaje vinculado', `«${p.Name}» queda marcado como vos en el ranking.`);
+  } catch (err) {
+    const m = String(err.message || '');
+    msg.textContent = m.startsWith('otro-gremio:')
+      ? `«${q}» figura en «${m.split(':')[1]}», no en Spetsnaz Grail. Si acabás de entrar al gremio, esperá a que el killboard se actualice.`
+      : `No encontramos el personaje «${q}» en el killboard. Probá el nombre exacto.`;
+    msg.className = 'micro sg-err';
+    btn.disabled = false; btn.textContent = 'Vincular';
+    return;
+  }
+  SG.room.loadedOnce ? sgRoomContent() : sgRoomRender();
+}
+
+function sgCharEditForm() {
+  const box = document.getElementById('sgCharBox');
+  if (!box) return;
+  try { localStorage.removeItem(SG_KEYS.char); } catch (e) {}
+  box.innerHTML = sgCharBoxHTML();
+}
+function sgCharDelete() {
+  try { localStorage.removeItem(SG_KEYS.char); } catch (e) {}
+  SG.room.loadedOnce ? sgRoomContent() : sgRoomRender();
+}
+
+/* ---- CSV del ranking visible ---- */
+function sgMembersCSV() {
+  const rows = sgSortedMembers();
+  const base = [...(SG.room.members || [])].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
+  const pos = {}; base.forEach((m, i) => { pos[m.Id] = i + 1; });
+  const head = 'puesto,jugador,fama_kills,fama_muertes,ratio_kd\n';
+  return head + rows.map(m => [
+    pos[m.Id] || '',
+    `"${String(m.Name || '').replace(/"/g, '""')}"`,
+    m.KillFame || 0,
+    m.DeathFame || 0,
+    m.DeathFame > 0 ? ((m.KillFame || 0) / m.DeathFame).toFixed(2) : '',
+  ].join(',')).join('\n');
+}
+function sgDownloadCSV() {
+  if (typeof URL.createObjectURL !== 'function') return; // entorno sin descargas (pruebas)
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + sgMembersCSV()], { type: 'text/csv' }));
+  a.download = `spetsnaz-grail-ranking-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+}
+
+function sgOpenMember(id, name) {
+  gotoTab('profile');
+  const inp = document.getElementById('pfSearch');
+  if (inp) inp.value = name;
+  pfLoadPlayer(id, name);
+}
+
+/* ---- eventos globales del módulo ---- */
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  if (t.closest('#sgAccountBtn')) { sgToggleMenu(); return; }
+  if (t.closest('[data-sg-login]')) { sgToggleMenu(false); sgLogin(); return; }
+  if (t.closest('[data-sg-verify]')) { sgToggleMenu(false); sgLogin(); return; }
+  if (t.closest('[data-sg-logout]')) { sgLogout(); return; }
+  if (t.closest('[data-sg-goto-room]')) { sgToggleMenu(false); gotoTab('sg'); return; }
+  if (t.closest('[data-sg-refresh]')) { SG.room.loadedOnce = false; sgRoomRender(); return; }
+  if (t.closest('[data-sg-csv]')) { sgDownloadCSV(); return; }
+  if (t.closest('#sgCharBtn')) { sgSaveChar(); return; }
+  if (t.closest('[data-sg-char-edit]')) { sgCharEditForm(); return; }
+  if (t.closest('[data-sg-char-del]')) { sgCharDelete(); return; }
+  const sort = t.closest('[data-sg-sort]');
+  if (sort) {
+    const k = sort.dataset.sgSort;
+    if (SG.room.sort === k) SG.room.dir *= -1;
+    else { SG.room.sort = k; SG.room.dir = k === 'name' ? 1 : -1; }
+    const box = document.getElementById('sgRankTable');
+    if (box) box.innerHTML = sgRankTableHTML();
+    return;
+  }
+  const mem = t.closest('[data-sg-member]');
+  if (mem) { sgOpenMember(mem.dataset.sgMember, mem.dataset.sgName); return; }
+  if (!t.closest('#sgAccountMenu') && !t.closest('#sgAccountBtn')) sgToggleMenu(false);
+});
+document.addEventListener('input', e => {
+  if (e.target && e.target.id === 'sgRankSearch') {
+    SG.room.filter = e.target.value.trim().toLowerCase();
+    const box = document.getElementById('sgRankTable');
+    if (box) box.innerHTML = sgRankTableHTML();
+  }
+});
+
+/* ---- arranque: hash de vuelta de Discord + config del Worker ---- */
+function sgInit() {
+  /* ¿volvimos del OAuth con una sesión o un error? (fragmento: no viaja al servidor) */
+  const h = location.hash || '';
+  if (h.includes('#aa_session=')) {
+    const raw = decodeURIComponent(h.split('#aa_session=')[1] || '');
+    if (sgSaveSession(raw)) {
+      const s = SG.session;
+      waToast(s.m ? '🔐 ¡Ingreso correcto!' : '🔐 Ingresaste con Discord',
+        s.m ? `Hola ${s.u.n}: Sala de miembros desbloqueada.` : `Hola ${s.u.n}: no vimos Spetsnaz Grail entre tus servidores.`, s.m ? '' : 'err');
+      gotoTab('sg'); // aterrizar en la Sala: desbloqueada o con la tarjeta para unirse
+    } else {
+      waToast('🔐 Ingreso con Discord', 'La sesión que llegó está vencida o es inválida. Probá de nuevo.', 'err');
+    }
+    history.replaceState(null, '', location.pathname + location.search);
+  } else if (h.includes('#aa_error=')) {
+    const code = (h.split('#aa_error=')[1] || '').trim();
+    const msgs = {
+      config: 'El acceso con Discord todavía no está activo en el servidor de la app.',
+      discord: 'Discord rechazó el código de ingreso. Probá de nuevo.',
+      gremio: 'No pudimos consultar tu membresía en el servidor SG. Probá en un rato.',
+    };
+    waToast('🔐 Ingreso con Discord', msgs[code] || 'No se pudo completar el ingreso.', 'err');
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  /* sesión guardada */
+  try {
+    const raw = localStorage.getItem(SG_KEYS.sess);
+    if (raw) {
+      const s = sgDecodeSession(raw);
+      if (s) SG.session = s; else localStorage.removeItem(SG_KEYS.sess);
+    }
+  } catch (e) {}
+
+  /* ¿el acceso está activo? Primero el proxy local (server.py de desarrollo
+     trae un simulador de Discord); si no, el Worker de producción */
+  (async () => {
+    const cfg = await sgFetchConfig();
+    SG.configured = cfg.configured;
+    SG.loginUrl = cfg.loginUrl;
+    sgPaintAccount();
+    const p = document.getElementById('tab-sg');
+    if (p && p.classList.contains('active')) sgRoomRender();
+  })();
+}
+
+async function sgFetchConfig() {
+  try {
+    const r = await fetch('/discord/config', { cache: 'no-store' });
+    if (r && r.ok) {
+      const c = await r.json();
+      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login' };
+    }
+  } catch (e) {}
+  if (WORKER_URL) {
+    try {
+      const r = await fetch(WORKER_URL + '/discord/config', { cache: 'no-store' });
+      if (r && r.ok) {
+        const c = await r.json();
+        if (c && typeof c === 'object' && !Array.isArray(c)) {
+          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login') };
+        }
+      }
+    } catch (e) {}
+  }
+  return { configured: false, loginUrl: '' };
+}
+sgInit();
