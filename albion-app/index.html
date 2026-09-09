@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=66">
+<link rel="stylesheet" href="styles.css?v=72">
 <link rel="icon" href="img/logo-app.png">
 <link rel="apple-touch-icon" href="img/logo-app.png">
 <!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
@@ -159,6 +159,7 @@
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.4l2.7 5.5 6 .9-4.35 4.2 1.03 6-5.38-2.83L6.62 20l1.03-6L3.3 9.8l6-.9z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.6 12.6l4.9 4.9L19.4 7.6"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 6.4l11.2 11.2"/><path d="M17.6 6.4 6.4 17.6"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="14" rx="5"/><path d="M9 7V5a3 3 0 0 1 6 0v2M12 11v10M3 8l4 3M17 11l4-3M2 14h5M17 14h5M3 21l4-4M17 17l4 4"/></symbol>
   <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></symbol>
 </svg>
 
@@ -186,152 +187,97 @@
     <div class="home-fav-list" id="homeFavList"></div>
   </div>
 
-  <div class="home-grid">
-    <div class="panel home-card" data-goto="gear">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-sword"/></svg></span><h2>Crafteo</h2></div>
-      <p>Rentabilidad de <b>todo el equipo del Destiny Board</b>, con diarios y Mercado Negro incluidos.</p>
-      <ul>
-        <li>Elegí una familia (espadas, arcos…), fijá tier y actualizá precios.</li>
-        <li>Expandí una fila para ver materiales y editar precios.</li>
-        <li>Armá tu sesión en el planeador y mirá la ganancia total.</li>
-      </ul>
-      <button class="btn primary">Ir a Crafteo →</button>
+  <section class="panel home-carousel" aria-labelledby="homeToolsTitle" aria-roledescription="carrusel">
+    <div class="home-carousel-head">
+      <h2 id="homeToolsTitle">Herramientas</h2>
+      <div class="home-slide-tabs" role="tablist" aria-label="Grupos de herramientas">
+        <button type="button" id="homeCraftTab" class="home-slide-tab active" role="tab" aria-selected="true" aria-controls="homeCraftSlide" data-home-slide="0">Crafteo</button>
+        <button type="button" id="homeFlipTab" class="home-slide-tab" role="tab" aria-selected="false" aria-controls="homeFlipSlide" tabindex="-1" data-home-slide="1">Flipping</button>
+      </div>
+      <div class="home-slide-controls">
+        <button type="button" class="home-slide-arrow" id="homeSlidePrev" aria-label="Slide anterior" aria-controls="homeSlides">←</button>
+        <span class="home-slide-count" id="homeSlideCount" aria-live="polite" aria-atomic="true">1 de 2</span>
+        <button type="button" class="home-slide-arrow" id="homeSlideNext" aria-label="Slide siguiente" aria-controls="homeSlides">→</button>
+      </div>
     </div>
+    <div class="home-slides" id="homeSlides">
+      <div id="homeCraftSlide" class="home-slide" role="tabpanel" aria-labelledby="homeCraftTab">
+        <div class="home-slide-intro">
+          <span class="home-slide-kicker">01 / Producción</span>
+          <h3>Crafteo</h3>
+          <p>De los materiales al producto final. Calculá costos, retornos y ganancias.</p>
+        </div>
+        <div class="home-tool-grid">
+          <button type="button" class="home-tool" data-goto="gear">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-sword"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Crafteo de equipo</span><span class="home-tool-desc">Armas y armaduras, diarios y venta en Black Market.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="refine">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-wood"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Refinamiento</span><span class="home-tool-desc">Transformá recursos con el bono de cada ciudad.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="alch">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-flask"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Alquimia</span><span class="home-tool-desc">Pociones y tinturas: ingredientes, Foco y rentabilidad.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="food">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-pot"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Cocina</span><span class="home-tool-desc">Compará recetas y calculá cuánto ganás cocinando.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="enchant">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-spark"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Encantado</span><span class="home-tool-desc">Compará comprar encantado o usar fragmentos.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="farm">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-sprout"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Granja</span><span class="home-tool-desc">Cultivos y animales: ganancia por parcela y por día.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </div>
+      <div id="homeFlipSlide" class="home-slide" role="tabpanel" aria-labelledby="homeFlipTab" hidden>
+        <div class="home-slide-intro">
+          <span class="home-slide-kicker">02 / Mercado</span>
+          <h3>Flipping</h3>
+          <p>Encontrá oportunidades de mercado y compará tu próxima operación.</p>
+        </div>
+        <div class="home-tool-grid home-tool-grid-market">
+          <button type="button" class="home-tool" data-goto="flip">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-flip"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Flipping</span><span class="home-tool-desc">Comprá en las ciudades y vendé donde más convenga, incluido Black Market.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="transmute">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-transmute"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Transmutación</span><span class="home-tool-desc">Calculá el costo de subir tier o encantamiento de recursos.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="meld">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-meld"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Artefactos</span><span class="home-tool-desc">Evaluá la rentabilidad de fusionar runas, almas y reliquias.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="alerts">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-bell"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Alertas de precio</span><span class="home-tool-desc">Recibí avisos de precios y rutas rentables mientras la app está abierta.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <div class="panel home-card" data-goto="flip">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-flip"/></svg></span><h2>Flipping</h2></div>
-      <p>Comprá barato en una ciudad y vendé caro en otra, con una lista de <b>ítems recomendados</b>.</p>
-      <ul>
-        <li>Compara precios en las 7 ciudades automáticamente.</li>
-        <li>Fijá ciudad origen y/o destino para planear tu ruta (se recuerda).</li>
-        <li>«Flip rápido»: vender al instante a la mejor orden de compra.</li>
-      </ul>
-      <button class="btn primary">Ir a Flipping →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="alerts">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-bell"/></svg></span><h2>Alertas de precio</h2></div>
-      <p>Que la app te avise <b>mientras está abierta</b> cuando un precio te conviene.</p>
-      <ul>
-        <li>Avisos por toast, sonido o notificación del navegador.</li>
-        <li>Comprá cuando la venta cae, vendé cuando la compra sube.</li>
-        <li>Alertas de flip: esperá a que una ruta rinda tu margen mínimo.</li>
-      </ul>
-      <button class="btn primary">Ir a Alertas →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="transmute">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-transmute"/></svg></span><h2>Transmutación</h2></div>
-      <p>Subí recursos <b>1 tier o 1 encantamiento</b> pagando plata, con el costo oficial del juego.</p>
-      <ul>
-        <li>Ganancia por unidad: comprar el origen, transmutar y vender el destino.</li>
-        <li>Descuento global calculado en vivo según el precio del oro.</li>
-        <li>Planificador de ruta: encuentra la cadena más barata hasta tu recurso.</li>
-      </ul>
-      <button class="btn primary">Ir a Transmutación →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="meld">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-meld"/></svg></span><h2>Artefactos</h2></div>
-      <p>Fusioná <b>runas, almas y reliquias</b> en artefactos aleatorios y analizá si conviene.</p>
-      <ul>
-        <li>Valor esperado, margen y % de tiradas ganadoras por estrategia.</li>
-        <li>Pool completo expandible con precios editables.</li>
-        <li>Simulador de sesión con rango probable según la cantidad de tiradas.</li>
-      </ul>
-      <button class="btn primary">Ir a Artefactos →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="refine">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-wood"/></svg></span><h2>Refinamiento</h2></div>
-      <p>Convertí recursos brutos en refinados: tablas, lingotes, cuero, tela y bloques, de T2 a T8.</p>
-      <ul>
-        <li>Tocá una ciudad en la guía para aplicar su bono de especialización.</li>
-        <li>Filtrá por tipo de recurso, tier y encantamiento.</li>
-      </ul>
-      <button class="btn primary">Ir a Refinamiento →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="alch">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-flask"/></svg></span><h2>Alquimia</h2></div>
-      <p>Rentabilidad de <b>pociones</b>: curación, energía, gigante y más. Bono de ciudad en <b>Brecilien</b>.</p>
-      <ul>
-        <li>Elegí dónde comprar ingredientes y dónde vender.</li>
-        <li>Activá Foco, bono diario y premium según tu cuenta.</li>
-      </ul>
-      <button class="btn primary">Ir a Alquimia →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="food">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-pot"/></svg></span><h2>Cocina</h2></div>
-      <p>Rentabilidad de <b>comidas</b>: estofados, sopas, sándwiches y banquetes. Bono de ciudad en <b>Caerleon</b>.</p>
-      <ul>
-        <li>Comprá ingredientes, cociná y vendé donde más pague.</li>
-        <li>Ordená por ganancia, margen o plata por Foco.</li>
-      </ul>
-      <button class="btn primary">Ir a Cocina →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="enchant">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-spark"/></svg></span><h2>Encantado</h2></div>
-      <p>¿Comprar el ítem encantado o <b>encantarlo vos con fragmentos</b>? La respuesta, nivel por nivel.</p>
-      <ul>
-        <li>Cantidades oficiales de runas, almas y reliquias por pieza.</li>
-        <li>Ahorro exacto en plata y en porcentaje para .1, .2 y .3.</li>
-      </ul>
-      <button class="btn primary">Ir a Encantado →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="farm">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-sprout"/></svg></span><h2>Granja</h2></div>
-      <p>Rentabilidad de tu <b>isla personal</b>: cultivos, cría de animales y productores de huevos y leche.</p>
-      <ul>
-        <li>Ganancia por parcela y por día, con semilla devuelta y crías extra.</li>
-        <li>Premium, Foco y cantidad de parcelas configurables.</li>
-      </ul>
-      <button class="btn primary">Ir a Granja →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="search">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-search"/></svg></span><h2>Buscador de precios</h2></div>
-      <p>El precio de <b>cualquier ítem del juego</b> en las 7 ciudades y el Mercado Negro, al instante.</p>
-      <ul>
-        <li>Todas las calidades, de Normal a Obra maestra.</li>
-        <li>Historial de búsquedas recientes con un clic.</li>
-      </ul>
-      <button class="btn primary">Ir al Buscador →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="ledgerlog">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-book"/></svg></span><h2>Registro de operaciones</h2></div>
-      <p>Tu <b>diario de mercado personal</b>: anotá compras, ventas y crafteos, y mirá tu ganancia real.</p>
-      <ul>
-        <li>P&amp;L total y de los últimos 7 días, calculado solo.</li>
-        <li>Exportá todo a CSV compatible con Excel.</li>
-      </ul>
-      <button class="btn primary">Ir al Registro →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="profile">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-user"/></svg></span><h2>Perfil</h2></div>
-      <p>Tu <b>personaje real</b> del juego: fama, asesinatos, muertes y gremio desde el killboard oficial.</p>
-      <ul>
-        <li>Buscá por nombre y mirá tu historial PvP con equipo e IP.</li>
-        <li>Cargá tus especializaciones: el costo de Foco se calcula solo.</li>
-      </ul>
-      <button class="btn primary">Ir al Perfil →</button>
-    </div>
-
-    <div class="panel home-card" data-goto="formulas">
-      <div class="home-card-head"><span class="chip-ico"><svg><use href="#i-rule"/></svg></span><h2>Fórmulas</h2></div>
-      <p>La matemática detrás de cada número: retorno, impuestos, tasas de estación, Foco y diarios.</p>
-      <ul>
-        <li>Cómo se convierte el bono en retorno real.</li>
-        <li>Ejemplos numéricos paso a paso.</li>
-      </ul>
-      <button class="btn primary">Ver Fórmulas →</button>
-    </div>
-  </div>
+  <nav class="home-shortcuts" aria-label="Accesos rápidos">
+    <button type="button" class="home-shortcut" data-goto="search"><svg class="btn-ico" aria-hidden="true"><use href="#i-search"/></svg>Buscador de precios<span aria-hidden="true">→</span></button>
+    <button type="button" class="home-shortcut" data-goto="ledgerlog"><svg class="btn-ico" aria-hidden="true"><use href="#i-book"/></svg>Registro de operaciones<span aria-hidden="true">→</span></button>
+    <button type="button" class="home-shortcut" data-goto="profile"><svg class="btn-ico" aria-hidden="true"><use href="#i-user"/></svg>Perfil<span aria-hidden="true">→</span></button>
+    <button type="button" class="home-shortcut" data-goto="formulas"><svg class="btn-ico" aria-hidden="true"><use href="#i-rule"/></svg>Fórmulas<span aria-hidden="true">→</span></button>
+  </nav>
 
   <div class="panel home-tips">
     <h2>Consejos rápidos</h2>
@@ -339,10 +285,21 @@
       <li><b>Ciudad de crafteo</b>: elegí una ciudad y el bono especial se aplica solo a los ítems que corresponden; el resto usa ciudad real (+18%).</li>
       <li><b>Black Market</b>: al vender equipo, suele pagar más que las ciudades y no cobra tasa de publicación — está seleccionado por defecto en Crafteo.</li>
       <li><b>Diarios</b>: activá «Usar diarios» en Crafteo; comprar vacíos y vender llenos suma una ganancia extra que muchos crafteadores ignoran.</li>
-      <li><b>Escanear rentables</b>: en Crafteo, filtrá por tier y encantamiento y tocá «Escanear» para ver los mejores crafteos de todas las familias de una sola vez.</li>
+      <li><b>Escanear rentables</b>: en Crafteo, filtrá por tier y encantamiento y tocá «Escanear» para ver los mejores crafteos de todas las ramas de una sola vez.</li>
       <li><b>Planeador de sesión</b>: agregá varios ítems con cantidades y obtené la lista total de materiales netos y la ganancia esperada de toda la sesión.</li>
     </ul>
   </div>
+  <section class="panel home-report" aria-labelledby="homeReportTitle">
+    <div class="home-report-copy">
+      <h2 id="homeReportTitle">¿Encontraste un error?</h2>
+      <p id="homeReportNote">Reportalo en GitHub para que podamos revisarlo. Necesitás una cuenta y el reporte será público.</p>
+    </div>
+    <a id="homeReportBug" class="btn home-report-btn" href="https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/issues/new?title=%5BBug%5D%20&amp;body=%23%23%20Herramienta%20afectada%0AIndic%C3%A1%20en%20qu%C3%A9%20secci%C3%B3n%20de%20Ayudante%20Albion%20ocurre%20el%20problema.%0A%0A%23%23%20Qu%C3%A9%20ocurri%C3%B3%0ADescrib%C3%AD%20el%20error.%0A%0A%23%23%20Pasos%20para%20reproducirlo%0A1.%20...%0A2.%20...%0A3.%20...%0A%0A%23%23%20Qu%C3%A9%20esperabas%20que%20ocurriera%0A%0A%23%23%20Entorno%0A-%20Web%20o%20ejecutable%20de%20Windows%3A%0A-%20Navegador%20y%20sistema%20operativo%3A%0A-%20Versi%C3%B3n%20de%20la%20app%20%28si%20la%20conoc%C3%A9s%29%3A%0A%0A%23%23%20Capturas%20o%20informaci%C3%B3n%20adicional%0APod%C3%A9s%20adjuntar%20capturas%20en%20GitHub.%20Si%20aplica%2C%20indic%C3%A1%20%C3%ADtem%2C%20tier%2C%20encantamiento%20y%20ciudad.%0A%0A%3E%20Este%20reporte%20ser%C3%A1%20p%C3%BAblico.%20No%20incluyas%20contrase%C3%B1as%2C%20tokens%2C%20sesiones%20de%20Discord%20ni%20datos%20personales.%0A" target="_blank" rel="noopener noreferrer" aria-describedby="homeReportNote">
+      <svg class="btn-ico" aria-hidden="true"><use href="#i-bug"/></svg>
+      <span>Reportar un problema<span class="home-report-destination">GitHub · abre otra pestaña</span></span>
+      <span class="home-report-go" aria-hidden="true">↗</span>
+    </a>
+  </section>
 </section>
 
 <!-- Pestañas de crafteo: el contenido se genera desde app.js con la misma plantilla -->
@@ -645,7 +602,6 @@
       </thead>
       <tbody id="llBody"></tbody>
     </table>
-    <div class="micro muted pad">El registro se guarda en este navegador (localStorage). Exportá a CSV como respaldo. P&L = ventas − compras − crafteos.</div>
   </div>
 </section>
 
@@ -659,8 +615,12 @@
       </div>
       <div class="toggles inline">
         <div class="control">
-          <label>Ciudad</label>
+          <label>Comprar en</label>
           <select id="enCity"></select>
+        </div>
+        <div class="control">
+          <label>Vender en</label>
+          <select id="enSellCity"></select>
         </div>
         <label class="check"><input type="checkbox" id="enPremium" checked> Premium (impuesto 4%)</label>
         <button class="btn primary" id="enRefresh">↻ Actualizar</button>
@@ -676,12 +636,16 @@
   <div class="panel controls">
     <div class="control-grid">
       <div class="control">
-        <label>Ciudad (precios)</label>
+        <label for="fmIslandCity">Ciudad de la isla</label>
+        <select id="fmIslandCity"></select>
+      </div>
+      <div class="control">
+        <label for="fmCity">Ciudad de precios</label>
         <select id="fmCity"></select>
       </div>
       <div class="toggles">
-        <label class="check"><input type="checkbox" id="fmPremium" checked> Premium (impuesto 4% y +50% cosecha)</label>
-        <label class="check"><input type="checkbox" id="fmFocus"> Usar Foco (rendimiento con bono)</label>
+        <label class="check"><input type="checkbox" id="fmPremium" checked> Premium (impuesto 4% y doble cosecha)</label>
+        <label class="check"><input type="checkbox" id="fmFocus"> Usar Foco (regar / cuidar)</label>
       </div>
       <div class="control">
         <label>Parcelas</label>
@@ -698,9 +662,9 @@
         <button class="chip" data-k="animal">Animales</button>
       </div>
     </div>
-    <div class="micro muted">Cada parcela aloja 9 unidades. Ganancia diaria = valor de lo cosechado − costo de semillas/crías, normalizado por el tiempo de crecimiento real de cada especie. Semillas devueltas y crías extra ya descontadas.</div>
   </div>
 
+  <div class="micro muted fm-bonus-info" id="fmBonusInfo" role="status">El bono depende de la ciudad de la isla, no de dónde comprás o vendés.</div>
   <div class="stat-row" id="fmStats"></div>
 
   <div class="panel table-wrap">
@@ -711,14 +675,14 @@
           <th class="num">Costo unidad</th>
           <th class="num">Produce</th>
           <th class="num">Ciclo</th>
-          <th class="num sortable" data-sort="unit">Ganancia/unidad</th>
-          <th class="num sortable" data-sort="daily">Ganancia/día · parcela</th>
+          <th class="num sortable" data-sort="unit">Margen/unidad</th>
+          <th class="num sortable" data-sort="daily">Margen/día · parcela</th>
           <th class="num sortable" data-sort="total">Total (parcelas)</th>
         </tr>
       </thead>
       <tbody id="fmBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
     </table>
-    <div class="micro muted pad">Los precios de semillas/crías y productos salen del mercado (editables al expandir). Animales productores (gallina, cabra, ganso, oveja, vaca) generan producto por ciclo sin consumirse.</div>
+    <div class="micro muted pad">Estimación con rendimientos medios y bono local nominal; las cosechas reales varían por azar y redondeo. Los márgenes de animales no descuentan alimento ni la inversión inicial del productor. El bono de carnicería no se aplica a la venta de animales vivos.</div>
   </div>
 </section>
 
@@ -746,6 +710,7 @@
       Flipping: comprá al precio de venta más bajo en una ciudad y vendé en otra donde el precio sea mayor.
       La ganancia ya descuenta impuestos. Con «Mejor ciudad» se elige automáticamente la ruta más rentable;
       fijá origen y/o destino para planear tu propia ruta (se recuerda entre sesiones).
+      Black Market solo permite vender: usa su orden de compra, sin tasa de publicación. Precios de calidad Normal.
       Con 🔔 en cada fila creás una alerta de precio.
     </div>
   </div>
@@ -900,7 +865,8 @@ plata_por_foco = ganancia_con_foco / foco_real</pre>
 
     <h3>7 · Flipping</h3>
     <pre>ganancia_flip = precio_venta_destino × (1 − impuesto − tasa_publicación) − precio_compra_origen
-flip_rápido  = mejor_orden_compra_destino × (1 − impuesto) − precio_compra_origen</pre>
+flip_rápido  = mejor_orden_compra_destino × (1 − impuesto) − precio_compra_origen
+Black Market: precio_venta_destino = mejor_orden_compra; tasa_publicación = 0</pre>
 
     <h3>8 · Transmutación de recursos</h3>
     <pre>costo = costo_base × (1 − descuento_global) + valor_ítem × 5 × (tarifa / 100)
@@ -921,14 +887,19 @@ ahorro = precio_ítem_encantado − costo_encantar   [conviene encantar si ahorr
     <p>Cada pieza usa una <b>cantidad fija N de fragmentos del mismo tier</b>, extraída de los datos oficiales del juego: runas para .0→.1, almas para .1→.2 y reliquias para .2→.3. La cantidad depende del tipo de pieza (por ejemplo: arma a dos manos 384, armadura/bolsa/capa 192, casco/zapatos 96). El salto .3→.4 no usa fragmentos —se craftea con materiales encantados—, por eso la herramienta cubre hasta .3. Encantar no tiene costo de plata ni de Foco: solo el ítem base y los fragmentos.</p>
 
     <h3>11 · Granja e isla personal</h3>
-    <pre>Cultivos:  costo_neto_semilla = precio_semilla × (1 − semilla_devuelta)
-           ganancia_unidad = venta_neta_cosecha − costo_neto_semilla
-Crías:     ganancia_unidad = venta_neta_adulto × (1 + crías_extra) − precio_cría − alimento
-Productores: ganancia_ciclo = venta_neta_producto − alimento   [el animal no se consume]
+    <pre>producción_media = rendimiento_base × (Premium ? 2 : 1) × (1 + bono_isla)
+bono_isla = 10% solo para cultivos, hierbas, huevos o leche bonificados
 
-por_parcela_día = ganancia_unidad × rendimiento / días_de_ciclo
-rendimiento = 9 por parcela   (13,5 con premium: +50%)</pre>
-    <p><b>Semilla devuelta</b>: cada cultivo tiene una probabilidad oficial de devolver semillas al cosechar (por ejemplo, el nabo devuelve ~0,73 por planta), que descuenta el costo real de la semilla. <b>Crías extra</b>: al crecer, los animales tienen una probabilidad de generar crías adicionales, que se suman como ingreso. El <b>Foco</b> multiplica el rendimiento según el bono propio de cada especie, y la venta neta descuenta el impuesto de mercado (4% u 8% sin/con premium). Los ciclos usan los tiempos reales del juego: 22 h para cultivos y productores, y el tiempo de crecimiento propio de cada animal.</p>
+Cultivos: semillas_devueltas = retorno_base + bono_de_riego (si usás Foco)
+          costo_neto_semilla = precio_semilla × (1 − semillas_devueltas)
+          ganancia_unidad = producción_media × precio_producto × (1 − impuesto) − costo_neto_semilla
+Crías:    crías_esperadas = retorno_base + bono_de_cuidado × cuidados (si usás Foco)
+          margen_unidad = venta_neta_adulto + valor_crías_esperadas − precio_cría
+Productores: margen_ciclo = producción_media × precio_producto × (1 − impuesto)
+
+margen_parcela_día = margen_unidad × 9 / días_de_ciclo</pre>
+    <p>La ciudad de la isla define el bono; la ciudad de precios define las cotizaciones. El Foco mejora la devolución de semillas o las crías, no la cosecha de productos. Premium duplica la cosecha y los productos animales, y reduce a la mitad el crecimiento de las crías; no duplica semillas ni crías. Los cultivos y productores tienen ciclos de 22 h. El impuesto es 4% con Premium y 8% sin Premium.</p>
+    <p class="muted micro">Modelo de medias con el bono nominal de +10%, sin simular el redondeo de cada recolección. Los márgenes de animales son antes de alimento; los productores no descuentan la inversión inicial. La carnicería queda fuera de esta calculadora: su bono no aumenta la cantidad de animales vivos ni de monturas.</p>
 
     <h3>12 · Costo de Foco y especializaciones (Perfil)</h3>
     <pre>FCE = especialización × 250 + maestría × 30
@@ -971,65 +942,75 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 </section>
 
 <section id="tab-sg" class="tab-panel">
-  <div class="panel home-hero sg-hero">
-    <img class="home-hero-logo" src="img/logo.png" alt="Spetsnaz Grail">
-    <h1>Spetsnaz Grail</h1>
-    <p class="home-lead">Somos <b>Spetsnaz Grail</b>, un gremio dedicado al contenido ZvZ de Zona Negra.
-    Nos enfocamos en contenido PvP de grande y mediana escala, PvE en Dg Avalonianas y contenido de Dragones.
-    Somos una comunidad activa donde cada integrante suma, desde el recolector novato hasta el shot-caller de ZvZ.</p>
-    <div class="sg-links">
-      <a class="btn-shimmer shim-web" href="https://spetsnazgrail.com" target="_blank" rel="noopener"><svg class="btn-ico"><use href="#i-globe"/></svg> Página web</a>
-      <a class="btn-shimmer shim-discord" href="https://discord.gg/TCNWUUA7UY" target="_blank" rel="noopener">
-        <svg class="discord-logo" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-        Servidor de Discord</a>
+  <div class="sg-subtabs" role="tablist" aria-label="Secciones de SG">
+    <button type="button" class="sg-subtab active" id="sgTabGuild" role="tab" aria-selected="true" aria-controls="sgPanelGuild" data-sg-tab="guild">
+      <svg class="tab-ico" aria-hidden="true"><use href="#i-shield"/></svg> Spetsnaz Grail
+    </button>
+    <button type="button" class="sg-subtab" id="sgTabMembers" role="tab" aria-selected="false" aria-controls="sgPanelMembers" tabindex="-1" data-sg-tab="members">
+      <svg class="tab-ico" aria-hidden="true"><use href="#i-lock"/></svg> Salón de miembros
+    </button>
+  </div>
+  <div id="sgPanelGuild" class="sg-subpanel" role="tabpanel" aria-labelledby="sgTabGuild" tabindex="0">
+    <div class="panel home-hero sg-hero">
+      <img class="home-hero-logo" src="img/logo.png" alt="Spetsnaz Grail">
+      <h1>Spetsnaz Grail</h1>
+      <p class="home-lead">Somos <b>Spetsnaz Grail</b>, un gremio dedicado al contenido ZvZ de Zona Negra.
+      Nos enfocamos en contenido PvP de grande y mediana escala, PvE en Dg Avalonianas y contenido de Dragones.
+      Somos una comunidad activa donde cada integrante suma, desde el recolector novato hasta el shot-caller de ZvZ.</p>
+      <div class="sg-links">
+        <a class="btn-shimmer shim-web" href="https://spetsnazgrail.com" target="_blank" rel="noopener"><svg class="btn-ico"><use href="#i-globe"/></svg> Página web</a>
+        <a class="btn-shimmer shim-discord" href="https://discord.gg/TCNWUUA7UY" target="_blank" rel="noopener">
+          <svg class="discord-logo" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+          Servidor de Discord</a>
+      </div>
+    </div>
+
+    <div class="panel sg-creators">
+      <div class="sg-creators-head">
+        <h2><span class="chip-ico twitch-chip"><svg><use href="#i-twitch"/></svg></span> Creadores de Contenido Spetsnaz Grail</h2>
+        <p class="muted micro">Seguí a nuestros creadores en Twitch</p>
+      </div>
+      <div class="sg-creator-grid">
+        <!-- el indicador EN VIVO/OFFLINE va pegado abajo de la foto: es lo primero
+             que se quiere ver de cada canal, antes que el nombre (app.js lo pinta
+             con .sg-live sobre .sg-creator[data-twitch], sin importar la posición) -->
+        <a class="sg-creator" data-twitch="j4acksp4rr0w" href="https://www.twitch.tv/j4acksp4rr0w" target="_blank" rel="noopener">
+          <img class="sg-creator-pic" src="img/creators/j4acksp4rr0w.png" alt="J4ackSp4rr0w">
+          <span class="sg-live"></span>
+          <span class="sg-creator-name">J4ackSp4rr0w</span>
+          <span class="sg-creator-title">Líder del Gremio</span>
+          <span class="sg-creator-handle">twitch.tv/j4acksp4rr0w</span>
+        </a>
+        <a class="sg-creator" data-twitch="santiagosigma" href="https://www.twitch.tv/santiagosigma" target="_blank" rel="noopener">
+          <img class="sg-creator-pic" src="img/creators/santiagosigma.png" alt="SantiagoSigma">
+          <span class="sg-live"></span>
+          <span class="sg-creator-name">SantiagoSigma</span>
+          <span class="sg-creator-title">Creador Oficial de SG</span>
+          <span class="sg-creator-handle">twitch.tv/santiagosigma</span>
+        </a>
+        <a class="sg-creator" data-twitch="fraxuzve" href="https://www.twitch.tv/fraxuzve" target="_blank" rel="noopener">
+          <img class="sg-creator-pic" src="img/creators/fraxuzve.png" alt="Fraxuzve">
+          <span class="sg-live"></span>
+          <span class="sg-creator-name">Fraxuzve</span>
+          <span class="sg-creator-title">Creador Oficial de SG</span>
+          <span class="sg-creator-handle">twitch.tv/fraxuzve</span>
+        </a>
+        <a class="sg-creator sg-creator-soon" href="#" onclick="return false">
+          <span class="chip-ico sg-soon-ico"><svg><use href="#i-tv"/></svg></span>
+          <span class="sg-creator-name">Próximamente</span>
+          <span class="sg-creator-title">Creador Oficial de SG</span>
+          <span class="sg-creator-handle">&nbsp;</span>
+        </a>
+      </div>
     </div>
   </div>
-
-  <!-- Sala exclusiva: el contenido lo arma app.js según la sesión de Discord -->
-  <div class="panel sg-room" id="sgRoom">
-    <div class="sg-room-head">
-      <h2><span class="chip-ico sg-room-ico"><svg><use href="#i-lock"/></svg></span> Sala de miembros</h2>
-      <span class="micro muted">Exclusivo para miembros verificados del Discord de SG</span>
-    </div>
-    <div id="sgRoomBody"><div class="loading-cell">Cargando…</div></div>
-  </div>
-
-  <div class="panel sg-creators">
-    <div class="sg-creators-head">
-      <h2><span class="chip-ico twitch-chip"><svg><use href="#i-twitch"/></svg></span> Creadores de Contenido Spetsnaz Grail</h2>
-      <p class="muted micro">Seguí a nuestros creadores en Twitch</p>
-    </div>
-    <div class="sg-creator-grid">
-      <!-- el indicador EN VIVO/OFFLINE va pegado abajo de la foto: es lo primero
-           que se quiere ver de cada canal, antes que el nombre (app.js lo pinta
-           con .sg-live sobre .sg-creator[data-twitch], sin importar la posición) -->
-      <a class="sg-creator" data-twitch="j4acksp4rr0w" href="https://www.twitch.tv/j4acksp4rr0w" target="_blank" rel="noopener">
-        <img class="sg-creator-pic" src="img/creators/j4acksp4rr0w.png" alt="J4ackSp4rr0w">
-        <span class="sg-live"></span>
-        <span class="sg-creator-name">J4ackSp4rr0w</span>
-        <span class="sg-creator-title">Líder del Gremio</span>
-        <span class="sg-creator-handle">twitch.tv/j4acksp4rr0w</span>
-      </a>
-      <a class="sg-creator" data-twitch="santiagosigma" href="https://www.twitch.tv/santiagosigma" target="_blank" rel="noopener">
-        <img class="sg-creator-pic" src="img/creators/santiagosigma.png" alt="SantiagoSigma">
-        <span class="sg-live"></span>
-        <span class="sg-creator-name">SantiagoSigma</span>
-        <span class="sg-creator-title">Creador Oficial de SG</span>
-        <span class="sg-creator-handle">twitch.tv/santiagosigma</span>
-      </a>
-      <a class="sg-creator" data-twitch="fraxuzve" href="https://www.twitch.tv/fraxuzve" target="_blank" rel="noopener">
-        <img class="sg-creator-pic" src="img/creators/fraxuzve.png" alt="Fraxuzve">
-        <span class="sg-live"></span>
-        <span class="sg-creator-name">Fraxuzve</span>
-        <span class="sg-creator-title">Creador Oficial de SG</span>
-        <span class="sg-creator-handle">twitch.tv/fraxuzve</span>
-      </a>
-      <a class="sg-creator sg-creator-soon" href="#" onclick="return false">
-        <span class="chip-ico sg-soon-ico"><svg><use href="#i-tv"/></svg></span>
-        <span class="sg-creator-name">Próximamente</span>
-        <span class="sg-creator-title">Creador Oficial de SG</span>
-        <span class="sg-creator-handle">&nbsp;</span>
-      </a>
+  <div id="sgPanelMembers" class="sg-subpanel" role="tabpanel" aria-labelledby="sgTabMembers" tabindex="0" hidden>
+    <!-- Salón exclusivo: el contenido lo arma app.js según la sesión de Discord -->
+    <div class="panel sg-room" id="sgRoom">
+      <div class="sg-room-head">
+        <h2><span class="chip-ico sg-room-ico"><svg><use href="#i-lock"/></svg></span> Salón de miembros</h2>
+      </div>
+      <div id="sgRoomBody"><div class="loading-cell">Cargando…</div></div>
     </div>
   </div>
 </section>
@@ -1038,6 +1019,6 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 
 <footer class="container footer muted micro"></footer>
 
-<script src="app.js?v=66"></script>
+<script src="app.js?v=72"></script>
 </body>
 </html>

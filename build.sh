@@ -64,7 +64,8 @@ zip -q -r AyudanteAlbion.zip \
   albion-exe/AyudanteAlbion.exe albion-exe/LEEME.txt \
   albion-exe/main.go albion-exe/go.mod albion-app \
   -x "albion-app/node_modules/*" -x "albion-app/img/logo-opts/*" \
-  -x "albion-app/smoke-test.js" -x "albion-app/qa-test.js"
+  -x "albion-app/smoke-test.js" -x "albion-app/qa-test.js" \
+  -x "albion-app/black-market-test.js" -x "albion-app/farm-test.js"
 ls -lh AyudanteAlbion.zip | awk '{print "   " $5 "  " $9}'
 
 echo ""

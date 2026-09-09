@@ -44,6 +44,17 @@ function iconImg(id, cls, title) {
   return `<img class="${cls}" loading="lazy" src="${src}" data-local="${local ? 1 : 0}" data-base="${ICON(id)}" onerror="imgRetry(this)" alt=""${title ? ` title="${title}"` : ''}>`;
 }
 const CITIES = ['Bridgewatch','Caerleon','Fort Sterling','Lymhurst','Martlock','Thetford','Brecilien'];
+// El Black Market compra equipo al jugador; nunca es origen de compra.
+const BLACK_MARKET = 'Black Market';
+const SELL_CITIES = [...CITIES, BLACK_MARKET];
+function saleQuote(p, city) {
+  return city === BLACK_MARKET
+    ? { price: p?.buy || 0, date: p?.buyDate }
+    : { price: p?.sell || 0, date: p?.sellDate };
+}
+function saleTax(city, premium, setup) {
+  return (premium ? 0.04 : 0.08) + (city !== BLACK_MARKET && setup ? 0.025 : 0);
+}
 const fmt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-AR');
 const pct = n => n == null || isNaN(n) ? '—' : (n * 100).toFixed(1).replace('.', ',') + '%';
 
@@ -82,7 +93,7 @@ async function fetchPrices(itemIds, locations) {
     for (const row of data) {
       const id = row.item_id;
       (out[id] = out[id] || {})[row.city] = {
-        sell: row.sell_price_min || 0,
+        sell: row.city === BLACK_MARKET ? 0 : row.sell_price_min || 0,
         sellDate: row.sell_price_min_date,
         buy: row.buy_price_max || 0,
         buyDate: row.buy_price_max_date,
@@ -121,7 +132,7 @@ const DD_GROUPS = [
   { dd: 'craftDd', btn: 'craftDdBtn', keys: ['gear', 'refine', 'alch', 'food', 'enchant', 'farm'] },
   { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute', 'meld', 'alerts'] },
 ];
-function gotoTab(key) {
+function gotoTab(key, sgTab) {
   document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
   document.querySelectorAll('.dd-item').forEach(i => i.classList.toggle('active', i.dataset.tab === key));
   document.querySelectorAll('.top-action').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
@@ -131,7 +142,7 @@ function gotoTab(key) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + key));
   const mod = craftModules[key];
   if (mod && !mod.loadedOnce) mod.loadPrices();
-  if (key === 'sg') { twCheckAll(); sgRoomRender(); } // EN VIVO/OFFLINE + Sala de miembros
+  if (key === 'sg') sgSelectTab(sgTab || SG.tab);
   window.scrollTo({ top: 0 });
 }
 document.getElementById('mainTabs').addEventListener('click', e => {
@@ -183,8 +194,37 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllDd()
 // Accesos directos de la página de inicio
 document.getElementById('tab-home').addEventListener('click', e => {
   const card = e.target.closest('[data-goto]'); if (!card) return;
-  gotoTab(card.dataset.goto);
+  gotoTab(card.dataset.goto, card.dataset.goto === 'sg' ? 'guild' : undefined);
 });
+
+/* ---- slides de Inicio: Crafteo y Flipping ---- */
+const homeSlideTabs = [...document.querySelectorAll('[data-home-slide]')];
+let homeSlideIndex = 0;
+function homeShowSlide(index, focusTab = false) {
+  // Flechas cíclicas: después del último slide vuelve el primero.
+  homeSlideIndex = (index + homeSlideTabs.length) % homeSlideTabs.length;
+  homeSlideTabs.forEach((tab, i) => {
+    const active = i === homeSlideIndex;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    document.getElementById(tab.getAttribute('aria-controls')).hidden = !active;
+  });
+  document.getElementById('homeSlideCount').textContent = `${homeSlideIndex + 1} de ${homeSlideTabs.length}`;
+  if (focusTab) homeSlideTabs[homeSlideIndex].focus();
+}
+homeSlideTabs.forEach(tab => {
+  tab.addEventListener('click', () => homeShowSlide(+tab.dataset.homeSlide));
+  tab.addEventListener('keydown', e => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const index = e.key === 'Home' ? 0 : e.key === 'End' ? homeSlideTabs.length - 1
+      : homeSlideIndex + (e.key === 'ArrowRight' ? 1 : -1);
+    homeShowSlide(index, true);
+  });
+});
+document.getElementById('homeSlidePrev').addEventListener('click', () => homeShowSlide(homeSlideIndex - 1));
+document.getElementById('homeSlideNext').addEventListener('click', () => homeShowSlide(homeSlideIndex + 1));
 
 /* ====================================================================
    FAVORITOS — marcá recetas/ítems con ★ y velos juntos en Inicio
@@ -818,13 +858,13 @@ function flipRestorePrefs() {
     flipUserAdded.add(id);
   }
   if (CITIES.includes(p.from)) document.getElementById('flipFrom').value = p.from;
-  if (CITIES.includes(p.to) && p.to !== document.getElementById('flipFrom').value) document.getElementById('flipTo').value = p.to;
+  if (SELL_CITIES.includes(p.to) && p.to !== document.getElementById('flipFrom').value) document.getElementById('flipTo').value = p.to;
 }
 
 /* ---- ruta fija: selects de ciudad de compra y de venta ---- */
 for (const selId of ['flipFrom', 'flipTo']) {
   const sel = document.getElementById(selId);
-  for (const c of CITIES) {
+  for (const c of (selId === 'flipFrom' ? CITIES : SELL_CITIES)) {
     const o = document.createElement('option');
     o.value = c; o.textContent = c;
     sel.appendChild(o);
@@ -843,7 +883,7 @@ async function loadFlipPrices(ids) {
   const btn = document.getElementById('refreshFlip');
   btn.disabled = true;
   try {
-    const data = await fetchPrices(ids, CITIES);
+    const data = await fetchPrices(ids, SELL_CITIES);
     Object.assign(flipData, data);
   } catch (err) {
     document.getElementById('flipBody').innerHTML = `<tr><td colspan="8" class="loading-cell">Error: ${err.message}. Esperá unos segundos y reintentá.</td></tr>`;
@@ -854,33 +894,41 @@ async function loadFlipPrices(ids) {
   renderFlip();
 }
 
-function flipCalc(id) {
-  const cityData = flipData[id] || {};
-  const fixedFrom = document.getElementById('flipFrom').value;
-  const fixedTo = document.getElementById('flipTo').value;
-  let bestBuy = null, bestSell = null, bestQuick = null;
-  for (const city of CITIES) {
+// Misma comparación para Flipping y sus alertas: rutas válidas, netas de tasas.
+function marketRoute(cityData, fixedFrom = '', fixedTo = '', premium = true, setup = true) {
+  const buys = CITIES.filter(city => (!fixedFrom || city === fixedFrom) && city !== fixedTo)
+    .map(city => ({ city, price: cityData[city]?.sell || 0, date: cityData[city]?.sellDate }))
+    .filter(p => p.price > 0).sort((a, b) => a.price - b.price);
+  const sells = SELL_CITIES.filter(city => (!fixedTo || city === fixedTo) && city !== fixedFrom)
+    .map(city => ({ city, ...saleQuote(cityData[city], city) }))
+    .filter(p => p.price > 0)
+    .map(p => ({ ...p, net: p.price * (1 - saleTax(p.city, premium, setup)) }))
+    .sort((a, b) => b.net - a.net);
+  let bestBuy = buys[0] || null, bestSell = sells[0] || null;
+  let profit = NaN;
+  for (const buy of buys) for (const sell of sells) {
+    if (buy.city === sell.city) continue;
+    const gain = sell.net - buy.price;
+    if (isNaN(profit) || gain > profit) {
+      bestBuy = buy; bestSell = sell; profit = gain;
+    }
+  }
+  let bestQuick = null;
+  for (const city of SELL_CITIES) {
+    if ((fixedTo && city !== fixedTo) || city === bestBuy?.city) continue;
     const p = cityData[city];
-    if (!p) continue;
-    // en modo auto, el origen descarta la ciudad de destino fijada (y viceversa):
-    // sin eso, si la ciudad más barata coincide con el destino el flip quedaba inválido
-    const buyOk = fixedFrom ? city === fixedFrom : city !== fixedTo;
-    const sellOk = fixedTo ? city === fixedTo : city !== fixedFrom;
-    if (buyOk && p.sell > 0 && (!bestBuy || p.sell < bestBuy.price)) bestBuy = { city, price: p.sell, date: p.sellDate };
-    if (sellOk && p.sell > 0 && (!bestSell || p.sell > bestSell.price)) bestSell = { city, price: p.sell, date: p.sellDate };
-    if ((fixedTo ? city === fixedTo : true) && p.buy > 0 && (!bestQuick || p.buy > bestQuick.price)) bestQuick = { city, price: p.buy };
+    if (p?.buy > 0 && (!bestQuick || p.buy > bestQuick.price)) {
+      bestQuick = { city, price: p.buy, date: p.buyDate };
+    }
   }
-  const premium = document.getElementById('flipPremium').checked;
-  const setup = document.getElementById('flipSetup').checked;
-  const tax = (premium ? 0.04 : 0.08) + (setup ? 0.025 : 0);
-  const quickTax = premium ? 0.04 : 0.08;
-  let profit = NaN, margin = NaN, quick = NaN;
-  if (bestBuy && bestSell && bestSell.city !== bestBuy.city) {
-    profit = bestSell.price * (1 - tax) - bestBuy.price;
-    margin = profit / bestBuy.price;
-  }
-  if (bestBuy && bestQuick) quick = bestQuick.price * (1 - quickTax) - bestBuy.price;
+  const margin = !isNaN(profit) && bestBuy ? profit / bestBuy.price : NaN;
+  const quick = bestBuy && bestQuick ? bestQuick.price * (1 - saleTax(BLACK_MARKET, premium, false)) - bestBuy.price : NaN;
   return { bestBuy, bestSell, bestQuick, profit, margin, quick };
+}
+function flipCalc(id) {
+  return marketRoute(flipData[id] || {},
+    document.getElementById('flipFrom').value, document.getElementById('flipTo').value,
+    document.getElementById('flipPremium').checked, document.getElementById('flipSetup').checked);
 }
 
 function catalogName(fullId) {
@@ -927,9 +975,9 @@ function renderFlip() {
     const qCls = f.quick > 0 ? 'pos' : (isNaN(f.quick) ? '' : 'neg');
     // con ciudad fijada sin datos, explicar el "—" en vez de dejarlo huérfano
     const buyCell = f.bestBuy ? fmt(f.bestBuy.price) + '<span class="price-sub">' + f.bestBuy.city + '</span>'
-      : (fixedFrom ? '<span class="badge warn" title="Sin ventas activas en la ciudad elegida: editá un precio manual o dejá «Mejor ciudad»">sin datos en ' + fixedFrom + '</span>' : '—');
-    const sellCell = f.bestSell ? fmt(f.bestSell.price) + '<span class="price-sub">' + f.bestSell.city + '</span>'
-      : (fixedTo ? '<span class="badge warn" title="Sin ventas activas en la ciudad elegida: editá un precio manual o dejá «Mejor ciudad»">sin datos en ' + fixedTo + '</span>' : '—');
+      : (fixedFrom ? '<span class="badge warn" title="Sin precios disponibles en la ciudad elegida: actualizá o dejá «Mejor ciudad»">sin datos en ' + fixedFrom + '</span>' : '—');
+    const sellCell = f.bestSell ? fmt(f.bestSell.price) + '<span class="price-sub">' + f.bestSell.city + (f.bestSell.city === BLACK_MARKET ? ' · orden de compra' : '') + '</span>'
+      : (fixedTo ? '<span class="badge warn" title="Sin precios disponibles en la ciudad elegida: actualizá o dejá «Mejor ciudad»">sin datos en ' + fixedTo + '</span>' : '—');
     return `<tr class="clickable" data-id="${id}">
       <td><div class="item-cell">${iconImg(id, 'item-icon')}
         <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id}</div></div></div></td>
@@ -967,22 +1015,23 @@ function showFlipDetail(id) {
   const panel = document.getElementById('flipDetail');
   const cityData = flipData[id] || {};
   const f = flipCalc(id);
-  const rows = CITIES.map(city => {
+  const rows = SELL_CITIES.map(city => {
     const p = cityData[city];
+    const sale = saleQuote(p, city);
     const isBuy = f.bestBuy?.city === city, isSell = f.bestSell?.city === city;
     return `<tr>
       <td>${city}${isBuy ? ' <span class="badge gold">comprar acá</span>' : ''}${isSell ? ' <span class="badge gold">vender acá</span>' : ''}</td>
-      <td class="${isBuy ? 'best-buy' : ''}">${p?.sell ? fmt(p.sell) : '—'}</td>
-      <td class="${isSell ? 'best-sell' : ''}">${p?.sell ? fmt(p.sell) : '—'}</td>
+      <td class="${isBuy ? 'best-buy' : ''}">${city === BLACK_MARKET ? 'No disponible' : p?.sell ? fmt(p.sell) : '—'}</td>
+      <td class="${isSell ? 'best-sell' : ''}">${sale.price ? fmt(sale.price) : '—'}</td>
       <td>${p?.buy ? fmt(p.buy) : '—'}</td>
-      <td class="muted micro">${p?.sellDate && !p.sellDate.startsWith('0001') ? new Date(p.sellDate + 'Z').toLocaleString('es-AR') : '—'}</td>
+      <td class="muted micro">${sale.date && !sale.date.startsWith('0001') ? new Date(sale.date + 'Z').toLocaleString('es-AR') : '—'}</td>
     </tr>`;
   }).join('');
   panel.style.display = '';
   panel.innerHTML = `
     <div class="detail-head">
       ${iconImg(id, 'item-icon')}
-      <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id} · matriz de precios en las 7 ciudades</div></div>
+      <div><div class="item-name">${catalogName(id)}</div><div class="item-meta">${id} · calidad Normal · 7 ciudades + Black Market</div></div>
       ${f.bestBuy ? `<button class="btn micro-btn" onclick="llPrefill('${id}','buy',${f.bestBuy.price},'${f.bestBuy.city}')" title="Anotar la compra en el Registro de operaciones">✎ Registrar compra</button>` : ''}
       ${f.bestSell ? `<button class="btn micro-btn" onclick="llPrefill('${id}','sell',${f.bestSell.price},'${f.bestSell.city}')" title="Anotar la venta en el Registro de operaciones">✎ Registrar venta</button>` : ''}
       <button class="btn micro-btn" onclick="waPrefillFlip('${id}')" title="Crear una alerta de precio para este ítem">🔔 Alerta de precio</button>
@@ -990,7 +1039,7 @@ function showFlipDetail(id) {
       <button class="btn detail-close" onclick="this.closest('#flipDetail').style.display='none'">Cerrar</button>
     </div>
     <div class="table-wrap"><table class="matrix">
-      <thead><tr><th>Ciudad</th><th>Venta acá — para comprar</th><th>Venta acá — para vender</th><th>Mejor orden de compra</th><th>Actualizado</th></tr></thead>
+      <thead><tr><th>Ciudad</th><th>Venta acá — para comprar</th><th>Precio para vender</th><th>Mejor orden de compra</th><th>Actualizado</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1011,18 +1060,17 @@ function saveGearPlan() { localStorage.setItem('gearPlan', JSON.stringify(GEAR.p
 
 const G = id => document.getElementById('gear' + id);
 
-// Precios del Black Market: agrega la mejor orden de compra entre todas las calidades
+// Black Market: orden de compra de calidad Normal, igual que materiales y equipo.
 async function fetchBM(ids) {
   const out = {};
   const chunks = []; let cur = [];
   for (const id of ids) { cur.push(id); if (cur.join(',').length > 3500) { chunks.push(cur); cur = []; } }
   if (cur.length) chunks.push(cur);
   for (const chunk of chunks) {
-    const data = await fetchJSON(`${API}/prices/${chunk.join(',')}.json?locations=Black%20Market`);
+    const data = await fetchJSON(`${API}/prices/${chunk.join(',')}.json?locations=Black%20Market&qualities=1`);
     for (const row of data) {
-      const o = out[row.item_id] = out[row.item_id] || { buy: 0, sell: 0, date: null };
+      const o = out[row.item_id] = out[row.item_id] || { buy: 0, date: null };
       if (row.buy_price_max > o.buy) { o.buy = row.buy_price_max; o.date = row.buy_price_max_date; }
-      if (row.sell_price_min > 0 && (!o.sell || row.sell_price_min < o.sell)) o.sell = row.sell_price_min;
     }
   }
   return out;
@@ -1035,7 +1083,7 @@ function gEff(id, city, kind) {
   return { value: (kind === 'buy' ? p?.buy : p?.sell) || 0, manual: false };
 }
 
-// familia → ciudad que la bonifica (derivado de cityBonuses)
+// rama → ciudad que la bonifica (derivado de cityBonuses)
 let gearFamCity = null;
 function gearBonusCityOf(family) {
   if (!gearFamCity) {
@@ -1106,7 +1154,7 @@ function gearCalc(r, o) {
   if (o.sellBM) {
     const k = mpKey(r.id, 'Black Market', 'bm');
     if (k in manualPrices) { sellPrice = manualPrices[k]; sellManual = true; }
-    else { const b = GEAR.bm[r.id]; sellPrice = b?.buy || b?.sell || 0; sellDate = b?.date; }
+    else { const b = GEAR.bm[r.id]; sellPrice = b?.buy || 0; sellDate = b?.date; }
   } else {
     const ep = gEff(r.id, o.sellCity, 'sell');
     sellPrice = ep.value; sellManual = ep.manual;
@@ -1179,8 +1227,8 @@ function renderGear() {
   const o = gearOpts();
   if (o.craftCity) {
     G('RrrValue').innerHTML = `
-      <span class="rrr-part"><span class="rrr-num">${pct(o.rrrHi)}</span><span class="rrr-cap">familias con bono en ${o.craftCity}</span></span>
-      <span class="rrr-part"><span class="rrr-num dim">${pct(o.rrrLo)}</span><span class="rrr-cap">resto de las familias</span></span>`;
+      <span class="rrr-part"><span class="rrr-num">${pct(o.rrrHi)}</span><span class="rrr-cap">ramas con bono en ${o.craftCity}</span></span>
+      <span class="rrr-part"><span class="rrr-num dim">${pct(o.rrrLo)}</span><span class="rrr-cap">resto de las ramas</span></span>`;
     G('RrrSub').textContent = '';
   } else {
     G('RrrValue').innerHTML = `
@@ -1205,7 +1253,7 @@ function renderGear() {
   const priced = rows.filter(x => !isNaN(x.c.profit));
   const profitable = priced.filter(x => x.c.profit > 0);
   const best = profitable.slice().sort((a, b) => b.c.profit - a.c.profit)[0];
-  const famName = GEAR.family ? (GEAR.DATA.families.find(f => f[0] === GEAR.family) || [])[1] : 'todas las familias';
+  const famName = GEAR.family ? (GEAR.DATA.families.find(f => f[0] === GEAR.family) || [])[1] : 'todas las ramas';
   G('Stats').innerHTML = `
     <div class="stat"><div class="k">Líneas rentables</div><div class="v ${profitable.length ? 'pos' : ''}">${profitable.length}</div><div class="s">de ${priced.length} con precio · ${famName}</div></div>
     <div class="stat"><div class="k">Mejor crafteo</div><div class="v">${best ? best.name : '—'}</div><div class="s">${best ? '+' + fmt(best.c.profit) + ' plata/u' + (best.r.ench ? ' (.' + best.r.ench + ')' : '') : 'sin datos aún'}</div></div>
@@ -1216,7 +1264,7 @@ function renderGear() {
   const shown = rows.slice(0, 50);
   const body = G('Body');
   if (!shown.length) {
-    body.innerHTML = `<tr><td colspan="7" class="loading-cell">${GEAR.family ? 'Sin resultados. Tocá «↻ Actualizar precios» para cargar esta familia.' : 'Elegí una familia arriba (o usá «Escanear rentables») para empezar.'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="loading-cell">${GEAR.family ? 'Sin resultados. Tocá «↻ Actualizar precios» para cargar esta rama.' : 'Elegí una rama arriba (o usá «Escanear rentables») para empezar.'}</td></tr>`;
     return;
   }
   body.innerHTML = shown.map(({ r, c, name }) => {
@@ -1275,7 +1323,7 @@ function gearDetailRow(r, c, o) {
   const j = c.j;
   const sellCityLabel = o.sellBM ? 'Black Market' : o.sellCity;
   const sellKey = o.sellBM ? ['bm', 'Black Market'] : ['sell', o.sellCity];
-  const sellApi = o.sellBM ? (GEAR.bm[r.id]?.buy || GEAR.bm[r.id]?.sell || 0) : (GEAR.prices[r.id]?.[o.sellCity]?.sell || 0);
+  const sellApi = o.sellBM ? (GEAR.bm[r.id]?.buy || 0) : (GEAR.prices[r.id]?.[o.sellCity]?.sell || 0);
   const sellManualKey = mpKey(r.id, sellKey[1], sellKey[0]);
   const sellIsManual = sellManualKey in manualPrices;
 
@@ -1416,8 +1464,7 @@ function buildGearUI() {
   root.innerHTML = `
   <div class="panel city-guide">
     <div class="cg-head">
-      <div class="cd-title">Bonos de crafteo por ciudad (+15% además del +18% base)</div>
-      <div class="micro muted">Cada ciudad bonifica familias específicas. Hacé clic en una familia para seleccionarla y configurar su ciudad con bono.</div>
+      <div class="micro muted">Cada ciudad bonifica ramas específicas. Hacé clic en una rama para seleccionarla y configurar su ciudad con bono.</div>
     </div>
     <div class="cg-grid gear-guide">
       ${Object.entries(D.cityBonuses).map(([city, fams]) => `
@@ -1448,7 +1495,7 @@ function buildGearUI() {
           <option value="">— sin ciudad (usa lugar de crafteo)</option>
           ${CITIES.map(c => `<option value="${c}">${c}</option>`).join('')}
         </select>
-        <div class="micro muted">Solo las familias bonificadas en esa ciudad reciben +33%; el resto, ciudad real (+18%)</div></div>
+        <div class="micro muted">Solo las ramas bonificadas en esa ciudad reciben +33%; el resto, ciudad real (+18%)</div></div>
       <div class="control"><label>Bono diario</label>
         <div class="daily-bonus-row">
           <label class="check"><input type="checkbox" id="gearDailyOn"></label>
@@ -1475,12 +1522,12 @@ function buildGearUI() {
       </div>
       <div class="control"><button class="btn primary" id="gearRefresh">↻ Actualizar precios</button>
         <div class="micro muted" id="gearUpdated"></div></div>
-      <div class="control"><button class="btn shimmer" id="gearScan"><svg class="btn-ico"><use href="#i-bolt"/></svg> Escanear rentables (todas las familias)</button></div>
+      <div class="control"><button class="btn shimmer" id="gearScan"><svg class="btn-ico"><use href="#i-bolt"/></svg> Escanear rentables (todas las ramas)</button></div>
     </div>
   </div>
 
   <div class="panel filters">
-    <input type="search" id="gearFamSearch" placeholder="Buscar familia… (ej: espadas, arcos, capuchas)" class="search">
+    <input type="search" id="gearFamSearch" placeholder="Buscar rama… (ej: espadas, arcos, capuchas)" class="search">
     <div class="fam-chips" id="gearFamChips"></div>
   </div>
 
@@ -1510,7 +1557,7 @@ function buildGearUI() {
         <th class="num sortable" data-sort="margin">Margen</th>
         <th></th>
       </tr></thead>
-      <tbody id="gearBody"><tr><td colspan="7" class="loading-cell">Elegí una familia arriba (o usá «Escanear rentables») para empezar.</td></tr></tbody>
+      <tbody id="gearBody"><tr><td colspan="7" class="loading-cell">Elegí una rama arriba (o usá «Escanear rentables») para empezar.</td></tr></tbody>
     </table>
   </div>
 
@@ -1518,10 +1565,10 @@ function buildGearUI() {
 
   const buySel = G('BuyCity'), sellSel = G('SellCity');
   for (const c of CITIES) buySel.add(new Option(c, c));
-  for (const c of [...CITIES, 'Black Market']) sellSel.add(new Option(c, c));
+  for (const c of SELL_CITIES) sellSel.add(new Option(c, c));
   buySel.value = 'Caerleon'; sellSel.value = 'Black Market';
 
-  // chips de familias
+  // chips de ramas
   function renderFamChips(filter) {
     const q = (filter || '').toLowerCase();
     G('FamChips').innerHTML = D.families
@@ -1538,7 +1585,7 @@ function buildGearUI() {
     else renderGear();
   });
 
-  // guía de ciudades: clic en familia
+  // guía de ciudades: clic en rama
   root.querySelector('.gear-guide').addEventListener('click', e => {
     const t = e.target.closest('.fam-tag'); if (!t) return;
     GEAR.family = t.dataset.fam;
@@ -2362,7 +2409,7 @@ const PS = { item: null, ench: 0, data: null, history: [] };
 try { PS.history = JSON.parse(localStorage.getItem('psHistory') || '[]'); } catch (e) {}
 
 const QUALITY_ES = { 1: 'Normal', 2: 'Buena', 3: 'Notable', 4: 'Excelente', 5: 'Obra maestra' };
-const PS_CITIES = [...CITIES, 'Black Market'];
+const PS_CITIES = SELL_CITIES;
 
 function psSaveHistory(id, name) {
   PS.history = [[id, name], ...PS.history.filter(h => h[0] !== id)].slice(0, 10);
@@ -2395,7 +2442,7 @@ function psRender(id) {
   const grid = {};
   for (const r of PS.data) {
     (grid[r.city] = grid[r.city] || {})[r.quality] = {
-      sell: r.sell_price_min, sellD: r.sell_price_min_date,
+      sell: r.city === BLACK_MARKET ? 0 : r.sell_price_min, sellD: r.sell_price_min_date,
       buy: r.buy_price_max, buyD: r.buy_price_max_date,
     };
   }
@@ -2422,7 +2469,7 @@ function psRender(id) {
     <table class="ledger">
       <thead><tr><th>Ciudad</th><th>Calidad</th><th class="num">Venta (más barato)</th><th class="num">Orden de compra (mejor)</th></tr></thead>
       <tbody>${cities.map(c => {
-        const quals = Object.keys(grid[c]).map(Number).sort();
+        const quals = Object.keys(grid[c]).map(Number).filter(q => grid[c][q].sell || grid[c][q].buy).sort();
         return quals.map((q, i) => {
           const v = grid[c][q];
           if (!v.sell && !v.buy) return '';
@@ -2489,6 +2536,7 @@ function llPrefill(id, type, price, city) {
   LL.item = id;
   document.getElementById('llItem').value = catalogName(id);
   document.getElementById('llType').value = type;
+  llUpdateCities();
   document.getElementById('llQty').value = 1;
   document.getElementById('llPrice').value = price && isFinite(price) ? Math.round(price) : '';
   const sel = document.getElementById('llCity');
@@ -2575,8 +2623,15 @@ function llRender() {
     </tr>`;
   }).join('');
 }
+function llUpdateCities() {
+  const sel = document.getElementById('llCity'), previous = sel.value;
+  const cities = document.getElementById('llType').value === 'sell' ? SELL_CITIES : CITIES;
+  sel.replaceChildren(...['—', ...cities].map(c => new Option(c, c)));
+  sel.value = ['—', ...cities].includes(previous) ? previous : '—';
+}
 (function initLL() {
-  document.getElementById('llCity').innerHTML = ['—', ...CITIES, 'Black Market'].map(c => `<option>${c}</option>`).join('');
+  llUpdateCities();
+  document.getElementById('llType').addEventListener('change', llUpdateCities);
   const inp = document.getElementById('llItem');
   const res = document.getElementById('llResults');
   inp.addEventListener('input', () => {
@@ -2600,6 +2655,7 @@ function llRender() {
     res.classList.remove('open');
   });
   document.getElementById('llAdd').addEventListener('click', () => {
+    llUpdateCities();
     const qty = Math.max(1, parseInt(document.getElementById('llQty').value) || 1);
     const price = parseFloat(document.getElementById('llPrice').value);
     if (!LL.item || isNaN(price) || price < 0) {
@@ -2705,9 +2761,8 @@ async function enLoad() {
       box.innerHTML = '<div class="panel"><div class="loading-cell">Este ítem no se puede encantar con fragmentos.</div></div>';
       EN.loading = false; return;
     }
-    const city = document.getElementById('enCity').value;
     const ids = [EN.item, ...[1, 2, 3].map(l => EN.item + '@' + l), ...new Set(rec.u.map(u => u[1]))];
-    EN.prices = await fetchPrices(ids, [city]);
+    EN.prices = await fetchPrices(ids, SELL_CITIES);
     enRender();
   } catch (e) {
     box.innerHTML = `<div class="panel"><div class="loading-cell">Error: ${e.message}</div></div>`;
@@ -2725,6 +2780,8 @@ function enRender() {
   const box = document.getElementById('enResult');
   const rec = EN.byId[EN.item];
   const city = document.getElementById('enCity').value;
+  const sellCity = document.getElementById('enSellCity').value || city;
+  const sellKind = sellCity === city ? 'buy' : sellCity === BLACK_MARKET ? 'bm' : 'sell';
   const row = CATALOG.find(r => r[0] === EN.item);
   const name = row ? row[1] : EN.item;
   const FRAG_ES = id => id.includes('RUNE') ? 'runas' : id.includes('SOUL') ? 'almas' : 'reliquias';
@@ -2744,12 +2801,12 @@ function enRender() {
   });
 
   /* editor de precio inline: input editable + botón de reset si es manual */
-  const priceInput = (id, p, extra = '') => `
+  const priceInput = (id, p, priceCity = city, kind = 'buy') => `
     <span class="price-edit-wrap">
       <input type="number" class="price-edit ${p.manual ? 'manual' : ''}" min="0" step="1"
         value="${p.value || ''}" placeholder="sin precio"
-        data-pid="${id}" data-city="${city}" data-kind="buy" ${extra}>
-      ${p.manual ? `<button class="reset-price" data-pid="${id}" data-city="${city}" data-kind="buy" title="Volver al precio de la API">↺</button>` : ''}
+        data-pid="${id}" data-city="${priceCity}" data-kind="${kind}">
+      ${p.manual ? `<button class="reset-price" data-pid="${id}" data-city="${priceCity}" data-kind="${kind}" title="Volver al precio de la API">↺</button>` : ''}
     </span>`;
 
   /* ---- planificador de salto libre (.X → .Y) ---- */
@@ -2766,8 +2823,12 @@ function enRender() {
   });
   const planCost = (fromP.value && fragOk) ? fromP.value + fragTotal : null; // comprar .from + todos los fragmentos
   const planSave = (planCost != null && toP.value) ? toP.value - planCost : null;
+  const sellId = to === 0 ? EN.item : EN.item + '@' + to;
+  const sellKey = mpKey(sellId, sellCity, sellKind);
+  const sale = saleQuote(EN.prices[sellId]?.[sellCity], sellCity);
+  const sellP = sellCity === city ? toP : { value: sellKey in manualPrices ? manualPrices[sellKey] : sale.price, manual: sellKey in manualPrices };
   const tax = document.getElementById('enPremium').checked ? 0.04 : 0.08;
-  const sellNet = toP.value ? toP.value * (1 - tax - 0.025) : null; // impuesto + tasa de publicación
+  const sellNet = sellP.value ? sellP.value * (1 - tax - (sellCity === BLACK_MARKET ? 0 : 0.025)) : null; // impuesto + tasa de publicación
   const planProfit = (planCost != null && sellNet != null) ? sellNet - planCost : null;
 
   const jumpOpts = sel => [0, 1, 2, 3].map(l =>
@@ -2835,24 +2896,29 @@ function enRender() {
         <div class="cd-line"><span>Comprar ${lvlName(to)} directo</span><span>${toP.value ? fmt(toP.value) : '—'}</span></div>
         <div class="cd-line ${planSave == null ? '' : planSave > 0 ? 'pos' : 'neg'}"><span>Ahorro encantando</span>
           <span>${planSave == null ? '—' : (planSave > 0 ? '+' : '') + fmt(planSave)}</span></div>
-        <div class="cd-line muted"><span>Venta ${lvlName(to)} neta (impuesto ${(tax * 100).toFixed(0)}% + publicación 2,5%)</span>
+        <div class="cd-line"><span>Precio de venta (${sellCity}${sellCity === BLACK_MARKET ? ' · orden de compra' : ''})</span>
+          ${priceInput(sellId, sellP, sellCity, sellKind)}</div>
+        <div class="cd-line muted"><span>Venta ${lvlName(to)} neta (impuesto ${(tax * 100).toFixed(0)}%${sellCity === BLACK_MARKET ? ', sin publicación' : ' + publicación 2,5%'})</span>
           <span>${sellNet != null ? fmt(sellNet) : '—'}</span></div>
         <div class="cd-line total ${planProfit == null ? '' : planProfit > 0 ? 'pos' : 'neg'}"><span>Ganancia si lo vendés</span>
           <span>${planProfit == null ? '—' : (planProfit > 0 ? '+' : '') + fmt(planProfit)}</span></div>
         <div class="cd-actions">
           ${fromP.value ? `<button class="btn micro-btn" onclick="llPrefill('${from === 0 ? EN.item : EN.item + '@' + from}','buy',${fromP.value},'${city}')" title="Anotar la compra del ítem ${lvlName(from)} en el Registro">✎ Registrar compra ${lvlName(from)}</button>` : ''}
-          ${toP.value ? `<button class="btn micro-btn" onclick="llPrefill('${to === 0 ? EN.item : EN.item + '@' + to}','sell',${toP.value},'${city}')" title="Anotar la venta del ítem ${lvlName(to)} en el Registro">✎ Registrar venta ${lvlName(to)}</button>` : ''}
+          ${sellP.value ? `<button class="btn micro-btn" onclick="llPrefill('${sellId}','sell',${sellP.value},'${sellCity}')" title="Anotar la venta del ítem ${lvlName(to)} en el Registro">✎ Registrar venta ${lvlName(to)}</button>` : ''}
           ${favBtnHtml('enchant', EN.item, name)}
         </div>
       </div>
     </div>`}
-    <div class="micro muted pad">El plan compra el ítem en ${lvlName(from)} y aplica todos los pasos de fragmentos hasta ${lvlName(to)}. La ganancia asume que vendés en ${city} al precio de ${lvlName(to)} mostrado arriba.</div>
+    <div class="micro muted pad">El plan compra el ítem en ${lvlName(from)} y aplica todos los pasos de fragmentos hasta ${lvlName(to)}. La ganancia usa el precio de venta en ${sellCity}; las compras del ítem y fragmentos se calculan en ${city}.</div>
   </div>`;
 
   document.getElementById('enFrom').addEventListener('change', e => { EN.from = +e.target.value; enRender(); });
   document.getElementById('enTo').addEventListener('change', e => { EN.to = +e.target.value; enRender(); });
 }
 (function initEN() {
+  document.getElementById('enSellCity').replaceChildren(new Option('Misma ciudad de compra', ''),
+    ...SELL_CITIES.map(c => new Option(c, c)));
+  document.getElementById('enSellCity').addEventListener('change', () => { if (EN.item && !EN.loading) enRender(); });
   document.getElementById('enCity').innerHTML = CITIES.map(c => `<option${c === 'Caerleon' ? ' selected' : ''}>${c}</option>`).join('');
   const inp = document.getElementById('enSearch');
   const res = document.getElementById('enResults');
@@ -2905,7 +2971,9 @@ function enRender() {
 /* ====================================================================
    GRANJA — cultivos y animales de isla.
    Datos oficiales: growtime, semilla devuelta, crías, productos.
-   Ganancia/día normalizada por ciclo. Premium: +50% de cosecha.
+   Margen/día normalizado por ciclo. Premium duplica cosechas/productos.
+   Bonos locales: +10% nominal, solo cultivos, hierbas, huevos y leche.
+   Datos y alcance del modelo: docs/farming.md.
    ==================================================================== */
 const FM = { data: null, prices: {}, kind: 'plant', sortKey: 'daily', sortDir: -1, expanded: null, loadedOnce: false, loading: false };
 const FM_NAME = id => { const r = CATALOG?.find(c => c[0] === id); return r ? r[1] : id; };
@@ -2918,7 +2986,7 @@ async function fmLoad() {
     if (!FM.data) FM.data = await fetchJSON('data/farm_data.json');
     const ids = new Set();
     for (const f of FM.data) {
-      ids.add(f.id.replace('_SEED', '_SEED')); // semillas y crías se comercian
+      ids.add(f.id); // semillas, crías y productores se comercian
       if (f.product) ids.add(f.product);
       if (f.grown) ids.add(f.grown);
     }
@@ -2936,55 +3004,73 @@ function fmPrice(id, kind) {
   const p = FM.prices[id]?.[city];
   return { value: p?.sell || 0, manual: false, date: p?.sellDate };
 }
-function fmRows() {
-  const premium = document.getElementById('fmPremium').checked;
-  const focus = document.getElementById('fmFocus').checked;
+// La ciudad de la isla es independiente de la ciudad usada para cotizar.
+function fmIslandCity() { return document.getElementById('fmIslandCity').value; }
+function fmLocalBonus(f, city) {
+  const produces = f.kind === 'plant' || (!f.grown && f.product && f.prodTime);
+  return produces && CITIES.includes(city) && f.bonusCities?.includes(city) ? 0.10 : 0;
+}
+function fmSavePrefs() {
+  try {
+    localStorage.setItem('farmPrefs', JSON.stringify({ island: fmIslandCity(), market: document.getElementById('fmCity').value }));
+  } catch (e) {}
+}
+function fmRestorePrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem('farmPrefs') || 'null');
+    if (CITIES.includes(p?.island)) document.getElementById('fmIslandCity').value = p.island;
+    if (CITIES.includes(p?.market)) document.getElementById('fmCity').value = p.market;
+  } catch (e) {}
+}
+function fmRenderBonus() {
+  const city = fmIslandCity();
+  const products = FM.data.filter(f => f.kind === FM.kind && fmLocalBonus(f, city)).map(f => FM_NAME(f.product));
+  document.getElementById('fmBonusInfo').textContent = products.length
+    ? `Isla en ${city}: +10% de producción en ${products.join(', ')}.`
+    : `Isla en ${city}: sin bono de ${FM.kind === 'plant' ? 'cultivos o hierbas' : 'huevos o leche'}.`;
+}
+// Modelo de rendimientos medios; el juego entrega cantidades enteras aleatorias.
+// Ni el bono local ni Premium multiplican las semillas devueltas o las crías.
+function fmCalc(f, { premium, focus, islandCity }, cost, prod) {
   const tax = premium ? 0.04 : 0.08;
-  const yieldBase = premium ? 13.5 : 9; // 9 por parcela, +50% con premium
+  const cityBonus = fmLocalBonus(f, islandCity);
+  let cropPer, seedBack, offspring, cycleDays, keeper = false, unit;
+  if (f.kind === 'plant') {
+    cropPer = (f.yieldBase ?? 4.5) * (premium ? 2 : 1) * (1 + cityBonus);
+    seedBack = (f.seedBack || 0) + (focus ? f.focusBonus || 0 : 0);
+    unit = prod * cropPer * (1 - tax) - cost * (1 - seedBack);
+    cycleDays = f.grow / 86400;
+  } else if (f.grown) {
+    cropPer = 1;
+    offspring = (f.offspring || 0) + (focus ? (f.focusBonus || 0) * (f.focusCycles || 0) : 0);
+    unit = prod * (1 - tax) + cost * offspring - cost;
+    cycleDays = f.grow / (premium ? 2 : 1) / 86400;
+  } else {
+    keeper = true;
+    cropPer = (f.yieldBase ?? 9) * (premium ? 2 : 1) * (1 + cityBonus);
+    unit = prod * cropPer * (1 - tax); // productor reutilizable; alimento no incluido
+    cycleDays = f.prodTime / 86400;
+  }
+  return { cropPer, seedBack, offspring, cycleDays, keeper, cityBonus, unit, daily: unit * 9 / cycleDays };
+}
+function fmRows() {
+  const opts = {
+    premium: document.getElementById('fmPremium').checked,
+    focus: document.getElementById('fmFocus').checked,
+    islandCity: fmIslandCity(),
+  };
   const out = [];
   for (const f of FM.data) {
-    if (FM.kind === 'plant' && f.kind !== 'plant') continue;
-    if (FM.kind === 'animal' && f.kind !== 'animal') continue;
-    if (f.kind === 'plant') {
-      if (!f.product) continue;
-      const seed = fmPrice(f.id, 'buy');
-      const crop = fmPrice(f.product, 'sell');
-      if (!seed.value && !f.vendor) continue;
-      const seedCost = seed.value || f.vendor || 0;
-      // rendimiento por semilla: cosecha (con foco: + focusBonus)
-      const cropPer = (yieldBase / 9) * (1 + (focus ? f.focusBonus : 0));
-      const seedBack = f.seedBack || 0;
-      const gross = crop.value * cropPer * (1 - tax);
-      const unit = gross - seedCost * (1 - seedBack);
-      const cycleDays = f.grow / 86400;
-      const daily = unit * 9 / cycleDays; // 9 unidades por parcela
-      out.push({ f, name: FM_NAME(f.product), inId: f.id, outId: f.product,
-                 cost: seedCost, prod: crop.value, cropPer, unit, daily, cycleDays, seedBack });
-    } else {
-      // animales: cría → adulto (venta) o adulto productor (huevos/leche)
-      if (f.grown) {
-        const baby = fmPrice(f.id, 'buy');
-        const grown = fmPrice(f.grown, 'sell');
-        if (!baby.value && !grown.value) continue;
-        const offspring = focus ? (f.offspring || 0) * 2 : (f.offspring || 0);
-        const gross = grown.value * (1 - tax) + baby.value * offspring;
-        const unit = gross - baby.value;
-        const cycleDays = f.grow / 86400;
-        const daily = unit * 9 / cycleDays;
-        out.push({ f, name: FM_NAME(f.grown), inId: f.id, outId: f.grown,
-                   cost: baby.value, prod: grown.value, cropPer: 1, unit, daily, cycleDays, offspring });
-      } else if (f.product && f.prodTime) {
-        const animal = fmPrice(f.id, 'buy');
-        const prod = fmPrice(f.product, 'sell');
-        if (!prod.value) continue;
-        const perCycle = (premium ? 1.5 : 1) * (1 + (focus ? f.focusBonus : 0));
-        const unit = prod.value * perCycle * (1 - tax); // el animal no se consume
-        const cycleDays = f.prodTime / 86400;
-        const daily = unit * 9 / cycleDays;
-        out.push({ f, name: FM_NAME(f.product) + ' (' + FM_NAME(f.id) + ')', inId: f.id, outId: f.product,
-                   cost: animal.value, prod: prod.value, cropPer: perCycle, unit, daily, cycleDays, keeper: true });
-      }
-    }
+    if (f.kind !== FM.kind) continue;
+    const outId = f.grown || f.product;
+    if (!outId || (f.kind === 'animal' && !f.grown && !f.prodTime)) continue;
+    const buy = fmPrice(f.id, 'buy'), sell = fmPrice(outId, 'sell');
+    const cost = buy.value || f.vendor || 0;
+    // Un precio desconocido no es una venta a cero ni una cría gratuita.
+    if (!cost || !sell.value) continue;
+    const c = fmCalc(f, opts, cost, sell.value);
+    out.push({ f, name: FM_NAME(outId) + (c.keeper ? ' (' + FM_NAME(f.id) + ')' : ''),
+      inId: f.id, outId, cost, prod: sell.value, ...c });
   }
   const k = FM.sortKey, d = FM.sortDir;
   out.sort((a, b) => {
@@ -2996,12 +3082,13 @@ function fmRows() {
 }
 function fmRender() {
   if (!FM.data || !CATALOG) return;
-  const plots = Math.max(1, parseInt(document.getElementById('fmPlots').value) || 9);
+  fmRenderBonus();
+  const plots = Math.max(1, Math.min(45, parseInt(document.getElementById('fmPlots').value) || 9));
   const rows = fmRows();
   const winners = rows.filter(r => r.daily > 0);
   const best = rows.length ? rows.reduce((a, b) => (b.daily > a.daily ? b : a)) : null;
   document.getElementById('fmStats').innerHTML = `
-    <div class="stat"><div class="k">Rentables</div><div class="v ${winners.length ? 'pos' : ''}">${winners.length} / ${rows.length}</div><div class="s">con precios actuales</div></div>
+    <div class="stat"><div class="k">Margen positivo</div><div class="v ${winners.length ? 'pos' : ''}">${winners.length} / ${rows.length}</div><div class="s">${FM.kind === 'animal' ? 'antes de alimento' : 'con precios actuales'}</div></div>
     <div class="stat"><div class="k">Mejor opción</div><div class="v ${best && best.daily > 0 ? 'pos' : 'neg'}">${best ? fmt(best.daily * plots) : '—'}</div><div class="s">${best ? best.name + ' · por día con ' + plots + ' parcelas' : 'sin datos'}</div></div>
     <div class="stat"><div class="k">Parcelas</div><div class="v">${plots}</div><div class="s">9 unidades por parcela</div></div>`;
   const body = document.getElementById('fmBody');
@@ -3017,10 +3104,10 @@ function fmRender() {
       <td><div class="item-cell">
         <span class="expander">${exp ? '▾' : '▸'}</span>
         ${iconImg(r.inId, 'item-icon sm')}<span class="muted">→</span>${iconImg(r.outId, 'item-icon sm')}
-        <div><div class="item-name">${r.name}</div><div class="item-meta">T${r.f.tier}${r.keeper ? ' · productor (no se consume)' : ''}</div></div>
+        <div><div class="item-name">${r.name}</div><div class="item-meta">T${r.f.tier}${r.keeper ? ' · productor (no se consume)' : ''}${r.cityBonus ? ` · <span class="badge gold">+10% isla</span>` : ''}</div></div>
       </div></td>
       <td class="num">${fmt(r.cost || null)}</td>
-      <td class="num">${fmt(r.prod || null)}${r.cropPer !== 1 ? ` <span class="price-sub">×${r.cropPer.toFixed(2)}</span>` : ''}</td>
+      <td class="num">${fmt(r.prod || null)}${r.cropPer !== 1 ? ` <span class="price-sub">×${r.cropPer.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>` : ''}</td>
       <td class="num">${r.cycleDays < 1.05 ? Math.round(r.cycleDays * 24) + ' h' : r.cycleDays.toFixed(1) + ' días'}</td>
       <td class="num ${r.unit > 0 ? 'pos' : 'neg'}">${fmt(r.unit)}</td>
       <td class="num ${r.daily > 0 ? 'pos' : 'neg'}">${fmt(r.daily)}</td>
@@ -3043,10 +3130,12 @@ function fmRender() {
             <input type="number" class="price-edit ${sp.manual ? 'manual' : ''}" value="${sp.value || ''}" placeholder="—" data-pid="${r.outId}" data-city="${city}" data-kind="sell">
             ${sp.manual ? `<button class="reset-price" data-pid="${r.outId}" data-city="${city}" data-kind="sell">↺</button>` : ''}
           </span></div>
-        ${r.seedBack ? `<div class="cd-line"><span>Semilla devuelta</span><span>${pct(r.seedBack)}</span></div>` : ''}
+        <div class="cd-line"><span>Bono local de isla (${fmIslandCity()})</span><span>${pct(r.cityBonus)}${r.f.grown ? ' · no aplica a la cría' : ''}</span></div>
+        <div class="cd-line"><span>Producción media por ${r.f.kind === 'plant' ? 'semilla' : 'animal'} y ciclo</span><span>${r.cropPer.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span></div>
+        ${r.seedBack != null ? `<div class="cd-line"><span>Semillas devueltas (incluye riego)</span><span>${pct(r.seedBack)}</span></div>` : ''}
         ${r.offspring ? `<div class="cd-line"><span>Crías extra por ciclo</span><span>${r.offspring.toFixed(2)}</span></div>` : ''}
         <div class="cd-line"><span>Ciclo</span><span>${r.cycleDays < 1.05 ? Math.round(r.cycleDays * 24) + ' h' : r.cycleDays.toFixed(1) + ' días'}</span></div>
-        <div class="cd-line total"><span>Ganancia por unidad</span><span class="${r.unit > 0 ? 'pos' : 'neg'}">${fmt(r.unit)}</span></div>
+        <div class="cd-line total"><span>${r.f.kind === 'animal' ? 'Margen antes de alimento' : 'Ganancia por unidad'}</span><span class="${r.unit > 0 ? 'pos' : 'neg'}">${fmt(r.unit)}</span></div>
         <div class="cd-actions">
           ${bp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.inId}','buy',${bp.value},'${city}')" title="Anotar la compra de ${r.keeper ? 'animales' : (r.f.kind === 'plant' ? 'semillas' : 'crías')} en el Registro">✎ Registrar compra</button>` : ''}
           ${sp.value ? `<button class="btn micro-btn" onclick="llPrefill('${r.outId}','sell',${sp.value},'${city}')" title="Anotar la venta del producto en el Registro">✎ Registrar venta</button>` : ''}
@@ -3057,10 +3146,12 @@ function fmRender() {
   }).join('');
 }
 (function initFM() {
-  document.getElementById('fmCity').innerHTML = CITIES.map(c => `<option${c === 'Caerleon' ? ' selected' : ''}>${c}</option>`).join('');
+  for (const id of ['fmCity', 'fmIslandCity'])
+    document.getElementById(id).innerHTML = CITIES.map(c => `<option${c === 'Caerleon' ? ' selected' : ''}>${c}</option>`).join('');
+  fmRestorePrefs();
   document.getElementById('fmRefresh').addEventListener('click', fmLoad);
-  for (const id of ['fmCity', 'fmPremium', 'fmFocus', 'fmPlots'])
-    document.getElementById(id).addEventListener('change', fmRender);
+  for (const id of ['fmIslandCity', 'fmCity', 'fmPremium', 'fmFocus', 'fmPlots'])
+    document.getElementById(id).addEventListener('change', () => { fmSavePrefs(); fmRender(); });
   document.getElementById('fmKindChips').addEventListener('click', e => {
     const chip = e.target.closest('.chip'); if (!chip) return;
     FM.kind = chip.dataset.k;
@@ -3558,18 +3649,12 @@ function waValue(a, src) {
   const d = map[a.id];
   if (!d) return { value: null };
   if (a.metric === 'flip') {
-    let lo = null, hi = null;
-    for (const city of CITIES) {
-      const p = d[city];
-      if (!p || !p.sell) continue;
-      if (!lo || p.sell < lo.v) lo = { v: p.sell, city };
-      if (!hi || p.sell > hi.v) hi = { v: p.sell, city };
-    }
-    if (!lo || !hi || lo.city === hi.city) return { value: null };
-    const tax = (document.getElementById('flipPremium').checked ? 0.04 : 0.08)
-              + (document.getElementById('flipSetup').checked ? 0.025 : 0);
-    return { value: (hi.v * (1 - tax) - lo.v) / lo.v * 100, from: lo.city, to: hi.city };
+    const f = marketRoute(d, '', '', document.getElementById('flipPremium').checked,
+      document.getElementById('flipSetup').checked);
+    return isNaN(f.margin) ? { value: null }
+      : { value: f.margin * 100, from: f.bestBuy.city, to: f.bestSell.city };
   }
+  if (a.city === BLACK_MARKET && a.metric !== 'buy') return { value: null };
   const p = d[a.city];
   if (!p) return { value: null };
   const v = a.metric === 'sell' ? p.sell : p.buy;
@@ -3605,7 +3690,7 @@ async function waCheck() {
   waStatus();
   try {
     const ids = [...new Set(act.map(a => a.id))];
-    WA.prices = await fetchPrices(ids, CITIES);
+    WA.prices = await fetchPrices(ids, SELL_CITIES);
     WA.fails = 0;
     WA.lastError = null;
     WA.lastCheck = Date.now();
@@ -3752,6 +3837,10 @@ setInterval(() => {
 /* ---- formulario ---- */
 function waUpdateForm() {
   const m = document.getElementById('waMetric').value;
+  const city = document.getElementById('waCity');
+  const previous = city.value;
+  city.replaceChildren(...(m === 'buy' ? SELL_CITIES : CITIES).map(c => new Option(c, c)));
+  city.value = [...city.options].some(o => o.value === previous) ? previous : 'Caerleon';
   document.getElementById('waCityWrap').style.display = m === 'flip' ? 'none' : '';
   document.getElementById('waThLabel').textContent = m === 'flip' ? 'Ganancia mínima (%)' : 'Precio (plata)';
   document.getElementById('waThreshold').placeholder = m === 'flip' ? 'ej: 15' : 'ej: 1500';
@@ -3759,6 +3848,7 @@ function waUpdateForm() {
 function waAddAlert() {
   if (!WA.formItem) { alert('Elegí un ítem del buscador primero.'); return; }
   const metric = document.getElementById('waMetric').value;
+  waUpdateForm();
   const th = parseFloat(document.getElementById('waThreshold').value);
   if (!(th > 0)) { alert('Cargá un umbral mayor que 0' + (metric === 'flip' ? ' (porcentaje: 15 = 15%).' : '.')); return; }
   if (WA.list.length >= 30) { alert('Máximo 30 alertas para no saturar la API de precios.'); return; }
@@ -4050,16 +4140,17 @@ document.addEventListener('resume', kaRunDue); // Page Lifecycle: descongela →
 kaStart();
 
 /* ====================================================================
-   🔐 ACCESO DE MIEMBROS SG — login con Discord + Sala de miembros.
+   🔐 ACCESO DE MIEMBROS SG — login con Discord + Salón de miembros.
    ...
    Flujo: «Ingresar con Discord» → /discord/login del Worker (Cloudflare)
    → Discord pide autorización (identidad + servidores) → el Worker
    canjea el código, verifica si el usuario pertenece al servidor de
    Discord de SG y devuelve una sesión firmada (HMAC) válida 30 días.
-   La app la guarda en localStorage y desbloquea la Sala de miembros.
+   La app la guarda en localStorage y desbloquea el Salón de miembros.
    El secreto de Discord vive solo en el Worker; la app nunca lo ve.
    ==================================================================== */
 const SG = {
+  tab: 'guild',      // la información pública se muestra primero
   session: null,      // {u:{i,n,a}, m, t, e} decodificado del token
   configured: false,  // ¿el Worker tiene las variables de Discord?
   loginUrl: '',
@@ -4067,10 +4158,41 @@ const SG = {
 };
 const SG_KEYS = { sess: 'aaDiscordSession', char: 'aaSGChar', guild: 'aaSGGuild' };
 const SG_GUILD_NAME = 'Spetsnaz Grail';
-const SG_SESS_DAYS = 30;
 const SG_DC_INVITE = 'https://discord.gg/TCNWUUA7UY';
 /* logo de Discord como ícono: lo usan todos los CTA de ingreso */
 const SG_DC_LOGO = '<svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>';
+
+/* ---- subpestañas: información pública y herramientas de miembros ---- */
+function sgSelectTab(key) {
+  if (!['guild', 'members'].includes(key)) return;
+  SG.tab = key;
+  document.querySelectorAll('[data-sg-tab]').forEach(button => {
+    const active = button.dataset.sgTab === key;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+    document.getElementById(button.getAttribute('aria-controls')).hidden = !active;
+  });
+  if (key === 'guild') twCheckAll();
+  else sgRoomRender();
+}
+
+const sgTabs = document.querySelector('.sg-subtabs');
+sgTabs.addEventListener('click', e => {
+  const button = e.target.closest('[data-sg-tab]');
+  if (button) sgSelectTab(button.dataset.sgTab);
+});
+sgTabs.addEventListener('keydown', e => {
+  const button = e.target.closest('[data-sg-tab]');
+  if (!button || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const buttons = [...sgTabs.querySelectorAll('[data-sg-tab]')];
+  const index = buttons.indexOf(button);
+  const next = e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1
+    : (index + (e.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+  sgSelectTab(buttons[next].dataset.sgTab);
+  buttons[next].focus();
+});
 
 function sgEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4174,7 +4296,7 @@ function sgPaintMenu() {
     </div>
     ${hasta ? `<div class="sg-menu-meta micro muted">Sesión verificada hasta el ${hasta}</div>` : ''}
     <div class="sg-menu-actions">
-      ${s.m ? `<button class="btn" data-sg-goto-room><svg class="btn-ico"><use href="#i-lock"/></svg> Sala de miembros</button>` : ''}
+      ${s.m ? `<button class="btn" data-sg-goto-room><svg class="btn-ico"><use href="#i-lock"/></svg> Salón de miembros</button>` : ''}
       <button class="btn" data-sg-verify><svg class="btn-ico"><use href="#i-refresh"/></svg> Volver a verificar</button>
       <button class="btn" data-sg-logout>Cerrar sesión</button>
     </div>`;
@@ -4191,7 +4313,7 @@ function sgLockCard(msg) {
   return `
   <div class="sg-lock-card">
     <span class="sg-lock-ico"><svg><use href="#i-lock"/></svg></span>
-    <h3>Sala exclusiva de miembros</h3>
+    <h3>Herramientas exclusivas para miembros</h3>
     <p class="muted">${msg}</p>
     <ul>
       <li><svg class="title-ico"><use href="#i-trophy"/></svg> Ranking completo del gremio: fama de kills, muertes y ratio de cada miembro</li>
@@ -4202,8 +4324,7 @@ function sgLockCard(msg) {
     ${SG.configured ? `
     <button class="btn btn-discord" data-sg-login>
       ${SG_DC_LOGO} Ingresar con Discord
-    </button>
-    <div class="micro muted">Se abre Discord, autorizás «Ayudante Albion» y volvés acá solo. La sesión dura ${SG_SESS_DAYS} días en este navegador y no guardamos ningún dato tuyo.</div>`
+    </button>`
     : `<div class="micro muted"><svg class="title-ico"><use href="#i-tools"/></svg> El ingreso con Discord se está configurando — disponible en breve.</div>`}
   </div>`;
 }
@@ -4218,20 +4339,16 @@ function sgLockNote(msg) {
       <div class="micro muted">${msg}</div>
     </div>
     ${SG.configured ? `<button class="btn btn-discord" data-sg-login>${SG_DC_LOGO}Ingresar con Discord</button>`
-      : `<button class="btn" data-sg-goto-room>Ver la Sala de miembros</button>`}
+      : `<button class="btn" data-sg-goto-room>Ver el Salón de miembros</button>`}
   </div>`;
 }
 
-/* ---- Sala de miembros ---- */
+/* ---- Salón de miembros ---- */
 function sgRoomRender() {
   const body = document.getElementById('sgRoomBody');
-  if (!body) return;
-  if (!SG.configured && !SG.session) {
-    body.innerHTML = `<div class="loading-cell"><svg class="title-ico"><use href="#i-tools"/></svg> El acceso con Discord se está configurando — la Sala de miembros llega en breve.</div>`;
-    return;
-  }
+  if (!body || document.getElementById('sgPanelMembers').hidden) return;
   if (!SG.session) {
-    body.innerHTML = sgLockCard('Ingresá con tu cuenta de Discord: verificamos solos si sos de Spetsnaz Grail y desbloqueamos la Sala.');
+    body.innerHTML = sgLockCard('Ingresá con tu cuenta de Discord: verificamos solos si sos de Spetsnaz Grail y desbloqueamos el Salón.');
     return;
   }
   if (!sgIsMember()) {
@@ -4255,7 +4372,7 @@ function sgRoomRender() {
     <div class="sg-welcome">
       <div class="sg-welcome-txt">
         <div class="sg-welcome-name">Hola, <b>${sgEsc(SG.session.u.n)}</b> 👋</div>
-        <div class="micro muted">Cargando la Sala de miembros…</div>
+        <div class="micro muted">Cargando el Salón de miembros…</div>
       </div>
       <div class="sg-welcome-actions">
         <button class="btn" data-sg-verify><svg class="btn-ico"><use href="#i-refresh"/></svg> Re-verificar</button>
@@ -4530,7 +4647,7 @@ document.addEventListener('click', e => {
   if (t.closest('[data-sg-login]')) { sgToggleMenu(false); sgLogin(); return; }
   if (t.closest('[data-sg-verify]')) { sgToggleMenu(false); sgLogin(); return; }
   if (t.closest('[data-sg-logout]')) { sgLogout(); return; }
-  if (t.closest('[data-sg-goto-room]')) { sgToggleMenu(false); gotoTab('sg'); return; }
+  if (t.closest('[data-sg-goto-room]')) { sgToggleMenu(false); gotoTab('sg', 'members'); return; }
   if (t.closest('[data-sg-refresh]')) { SG.room.loadedOnce = false; sgRoomRender(); return; }
   if (t.closest('[data-sg-csv]')) { sgDownloadCSV(); return; }
   if (t.closest('#sgCharBtn')) { sgSaveChar(); return; }
@@ -4566,11 +4683,11 @@ function sgInit() {
     if (sgSaveSession(raw)) {
       const s = SG.session;
       waToast(s.m ? '🔐 ¡Ingreso correcto!' : '🔐 Ingresaste con Discord',
-        s.m ? `Hola ${s.u.n}: Sala de miembros desbloqueada.` : `Hola ${s.u.n}: no vimos Spetsnaz Grail entre tus servidores.`, s.m ? '' : 'err');
-      gotoTab('sg'); // aterrizar en la Sala: desbloqueada o con la tarjeta para unirse
+        s.m ? `Hola ${s.u.n}: Salón de miembros desbloqueado.` : `Hola ${s.u.n}: no vimos Spetsnaz Grail entre tus servidores.`, s.m ? '' : 'err');
     } else {
       waToast('🔐 Ingreso con Discord', 'La sesión que llegó está vencida o es inválida. Probá de nuevo.', 'err');
     }
+    gotoTab('sg', 'members');
     history.replaceState(null, '', location.pathname + location.search);
   } else if (h.includes('#aa_error=')) {
     const code = (h.split('#aa_error=')[1] || '').trim();
@@ -4580,6 +4697,7 @@ function sgInit() {
       gremio: 'No pudimos consultar tu membresía en el servidor SG. Probá en un rato.',
     };
     waToast('🔐 Ingreso con Discord', msgs[code] || 'No se pudo completar el ingreso.', 'err');
+    gotoTab('sg', 'members');
     history.replaceState(null, '', location.pathname + location.search);
   }
 
