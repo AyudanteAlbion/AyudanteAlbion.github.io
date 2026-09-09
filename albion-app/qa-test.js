@@ -823,6 +823,19 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
         'Inicio: acceso rápido a ' + button.dataset.goto, 'Inicio: acceso rápido roto a ' + button.dataset.goto);
       window.eval(`gotoTab('home')`);
     }
+    // CTA de la comunidad: lleva al Discord de la app (no al del gremio) y se apila bajo el crédito.
+    const community = window.document.querySelector('.home-community');
+    const credit = window.document.querySelector('.sg-credit');
+    const heroLinks = window.document.querySelector('.home-hero-links');
+    check(!!community && community.href === 'https://discord.gg/FH3RzqMPA4'
+      && community.target === '_blank' && community.rel.includes('noopener')
+      && community.textContent.includes('Únete a nuestra') && !!community.querySelector('.discord-logo'),
+      'Inicio: la pastilla de Discord apunta al server de Ayudante Albion',
+      'Inicio: falta la pastilla de Discord o apunta a otro server');
+    check(!!community && community.parentElement === heroLinks && credit.parentElement === heroLinks
+      && credit !== community && (credit.compareDocumentPosition(community) & 4) === 4,
+      'Inicio: la pastilla queda debajo del crédito del gremio',
+      'Inicio: la pastilla de Discord no está apilada bajo el crédito del gremio');
     $('homeCraftTab').click();
   } catch (e) { errors.push('Inicio slides: ' + e.message); }
 
