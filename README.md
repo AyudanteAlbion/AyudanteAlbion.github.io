@@ -78,7 +78,7 @@ La pestaña **SG** tiene dos subpestañas: **Spetsnaz Grail**, pública y selecc
 
 Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudflare, que hace el intercambio OAuth2 (el secreto nunca llega al navegador), verifica si el usuario pertenece al servidor de Discord de SG y devuelve una sesión firmada válida 30 días. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros.
 
-**Alcance del acceso actual:** el Worker verifica la membresía al ingresar, pero el sitio estático utiliza la sesión como control de interfaz y los datos del killboard son públicos. No es una barrera de seguridad para información privada; cualquier futura herramienta con datos sensibles necesitará validar la sesión y los permisos en el servidor.
+**Alcance del acceso actual:** el Worker verifica la membresía al ingresar y firma la sesión con HMAC. La app **no confía en ninguna sesión** (ni la que vuelve de Discord ni la guardada en el navegador) hasta que `GET /discord/verify` del Worker confirma firma y vigencia; una sesión forjada o alterada se descarta. Los datos que hoy muestra el Salón siguen siendo públicos (killboard); cualquier futura herramienta con datos privados debe servirlos desde el Worker validando la sesión, nunca desde el sitio estático.
 
 ### Puesta en marcha (una sola vez)
 
@@ -90,7 +90,7 @@ Cómo funciona: el botón «Ingresar con Discord» pasa por el Worker de Cloudfl
    - `DISCORD_CLIENT_ID` (texto) — el Client ID
    - `SG_DISCORD_GUILD_ID` (texto) — el ID del servidor
    - `DISCORD_CLIENT_SECRET` (**secreto**) — el Client Secret
-   - `AA_SESSION_KEY` (secreto, opcional) — clave para firmar sesiones; si no se define, se usa el Client Secret
+   - `AA_SESSION_KEY` (**secreto, obligatorio**) — clave para firmar sesiones: al menos 32 caracteres aleatorios y distinta del Client Secret (por ejemplo `openssl rand -hex 32`). Sin ella el acceso SG queda desactivado.
 5. **Deployar**: el Worker se construye solo desde este repo al pushear a `main`.
 
 Hasta que las variables existan, la app funciona normal: el Salón muestra las herramientas disponibles y un aviso de configuración pendiente, sin ofrecer un botón de ingreso que no funciona. El botón de Discord de la barra permanece oculto (`GET /discord/config` responde `configured: false`).
@@ -98,7 +98,7 @@ Hasta que las variables existan, la app funciona normal: el Salón muestra las h
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs     # 33 chequeos del OAuth con Discord simulado
+node worker/selftest.mjs     # 52 chequeos del OAuth y la verificación de sesión con Discord simulado
 cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
 ```
 
@@ -114,6 +114,15 @@ python3 server.py     # http://localhost:3000
 ```
 
 El server local incluye un simulador del consentimiento de Discord (`/discord/login`): permite probar el ingreso de miembros SG, la Sala y el caso no-miembro sin necesidad de configurar Cloudflare.
+
+## Seguridad
+
+- **CSP** en `index.html`: solo se ejecuta `app.js` (sin scripts inline ni de terceros) y la red queda acotada a las APIs que usa la app. Si se agrega un servicio nuevo hay que sumarlo a la política o el navegador lo bloquea. Por eso los botones se enganchan con `data-*` y delegación de eventos, nunca con `onclick` inline.
+- Todo dato que llega de fuera (Discord, killboard) se escapa antes de pintarse; los toasts usan texto plano.
+- La sesión de Discord solo se acepta después de que el Worker confirme su firma (`/discord/verify`).
+- El proxy del Worker reenvía únicamente las rutas del killboard que usa la app y solo a los orígenes de la app (GitHub Pages y localhost).
+- Los CSV neutralizan celdas que empiezan como fórmula; el respaldo solo exporta/importa claves de datos conocidas (nunca la sesión ni la configuración del proxy).
+- `server.py` escucha solo en `127.0.0.1`.
 
 ## Precios
 
