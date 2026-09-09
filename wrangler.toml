@@ -3,3 +3,17 @@
 name = "ayudantealbion"
 main = "worker/index.js"
 compatibility_date = "2026-09-01"
+
+# IMPORTANTE: las variables cargadas en el dashboard (Settings → Variables and
+# Secrets) no viajan con el repo. Sin `keep_vars`, cada deploy de Workers Builds
+# (`npx wrangler deploy`) BORRA las variables de tipo Text que no figuren en este
+# archivo; los Secrets sobreviven siempre. Por eso /discord/config volvía a
+# `configured:false` después de cada merge aunque se hubieran cargado.
+keep_vars = true
+
+# Datos públicos del acceso SG. El ID del servidor de Discord no es secreto
+# (se ve en cualquier invitación), así que vive acá y no depende del dashboard.
+# Lo que sí es secreto (DISCORD_CLIENT_SECRET, AA_SESSION_KEY) y el Client ID
+# se cargan una sola vez en el dashboard como Secret.
+[vars]
+SG_DISCORD_GUILD_ID = "998772435048472628"

@@ -134,7 +134,9 @@ async function handle(request, env, net) {
   /* ---------------- acceso de miembros SG (Discord OAuth2) ---------------- */
   if (path === '/discord/config') {
     const dc = discordConfig(env);
-    return json({ configured: dc.ok, loginUrl: dc.ok ? url.origin + '/discord/login' : null });
+    /* `missing` nombra las variables que faltan (nunca sus valores): sirve
+       para saber desde la app o con curl qué quedó sin cargar en Cloudflare */
+    return json({ configured: dc.ok, loginUrl: dc.ok ? url.origin + '/discord/login' : null, missing: dc.ok ? [] : dc.missing });
   }
 
   if (path === '/discord/login') return discordLogin(request, url, env);
@@ -155,7 +157,13 @@ function discordConfig(env) {
      alguna vez se filtra la firma, no cae también el OAuth (y viceversa) */
   const keyOk = sessionKey.length >= 32 && sessionKey !== secret;
   const ok = !!(clientId && secret && guildId && keyOk);
-  return { ok, clientId, secret, guildId, sessionKey, keyOk };
+  const missing = [];
+  if (!clientId) missing.push('DISCORD_CLIENT_ID');
+  if (!secret) missing.push('DISCORD_CLIENT_SECRET');
+  if (!guildId) missing.push('SG_DISCORD_GUILD_ID');
+  if (!sessionKey) missing.push('AA_SESSION_KEY');
+  else if (!keyOk) missing.push(sessionKey.length < 32 ? 'AA_SESSION_KEY (menos de 32 caracteres)' : 'AA_SESSION_KEY (igual al Client Secret)');
+  return { ok, clientId, secret, guildId, sessionKey, keyOk, missing };
 }
 
 /* redirect permitido: http(s) + host de la lista (cualquier puerto/camino).
@@ -200,7 +208,8 @@ async function discordCallback(request, url, env, net) {
   /* validar state (firma + frescura) y recuperar el destino de la app */
   let redirect = null;
   let stOk = false;
-  if (state.includes('.')) {
+  /* sin clave no hay firma que comprobar (y HMAC con clave vacía lanza) */
+  if (dc.sessionKey && state.includes('.')) {
     const [st, sig] = state.split('.');
     if (sig === (await hmac(dc.sessionKey, st))) {
       try {
@@ -219,6 +228,8 @@ async function discordCallback(request, url, env, net) {
   }
 
   if (!dc.ok) return backWith(redirect, 'config');
+  /* el usuario tocó «Cancelar» en la pantalla de Discord */
+  if (url.searchParams.get('error') === 'access_denied') return backWith(redirect, 'cancelado');
   if (!code) return backWith(redirect, 'discord');
 
   /* 1 · canjear el código por un token de usuario */
