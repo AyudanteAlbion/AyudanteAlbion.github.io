@@ -5189,12 +5189,17 @@ function bdOpenPicker(slotKey) {
 }
 
 /* ====================================================================
-   🗺️ MAPA DE GUERRA DE SG
+   🗺️ MAPA DE GUERRA DE SG + TRACKER DE ENEMIGOS POR MAPA REAL
    Herramienta exclusiva para miembros de Spetsnaz Grail.
    El killboard oficial NO expone /guilds/:id/territories. Los territorios
    se reconstruyen a partir de los GvG (guildmatches past/next) y de los
    eventos PvP del gremio: el último ganador de un territorio es su dueño.
-   También muestra próximos ataques, rivales recientes y kills del gremio.
+   NUEVO: Tracker de enemigos por mapa real de Albion.
+   Fuente del grafo de mapas: broderickhyman/ao-bin-dumps cluster/world.xml
+   (815 zonas, 1356 conexiones) parseado a data/albion_map_connections.json
+   Estructura: byName {Mapa: [vecinos]} + maps[].
+   El usuario elige un mapa real y se rastrean asesinatos (battles) en
+   mapa elegido + todas las conexiones fronterizas.
    ==================================================================== */
 const WM = {
   territories: [],
@@ -5207,7 +5212,23 @@ const WM = {
   lastUpdate: null,
   error: null,
   filter: 'all', // all | owned | threatened | upcoming
+  // Nuevo tracker por mapa real
+  mapGraph: null, // byName {name: [neighbors]}
+  mapList: [], // [{mapID, mapName, mapType, tier}]
+  mapGraphById: null,
+  selectedMap: null, // display name
+  selectedNeighbors: [],
+  selectedMapID: null,
+  tracker: { loading:false, battles:[], filtered:[], guilds:[], lastUpdate:null, error:null, expandedBattle:null },
+  mapSearchQuery: '',
+  mapSearchResults: [],
+  mapLoading: false,
 };
+
+try { WM.selectedMap = localStorage.getItem('wmSelectedMap') || null; } catch(e){}
+function wmSaveSelected(){
+  try { if (WM.selectedMap) localStorage.setItem('wmSelectedMap', WM.selectedMap); } catch(e){}
+}
 
 /* ---- helpers de parseo de guildmatches / events ---- */
 function wmGuildIdOf(g) {
@@ -5225,8 +5246,6 @@ function wmIsSG(g, gid) {
   return wmGuildNameOf(g).toLowerCase() === SG_GUILD_NAME.toLowerCase();
 }
 function wmMatchTeams(m) {
-  /* La API de GvG ha usado distintas formas a lo largo del tiempo:
-     attacker/defender, team1/team2, guilds[], AllianceA/B. Se normaliza. */
   let a = m.attacker || m.Attacker || m.team1 || m.Team1 || m.Team1Guild || m.team1Guild
     || m.guild1 || m.Guild1 || m.AllianceA || m.allianceA
     || (Array.isArray(m.guilds) ? m.guilds[0] : null)
@@ -5235,7 +5254,6 @@ function wmMatchTeams(m) {
     || m.guild2 || m.Guild2 || m.AllianceB || m.allianceB
     || (Array.isArray(m.guilds) ? m.guilds[1] : null)
     || (Array.isArray(m.Guilds) ? m.Guilds[1] : null) || null;
-  /* a veces vienen solo IDs/nombres planos */
   if (!a && (m.attackerId || m.AttackerId || m.attackerName || m.AttackerName)) {
     a = { Id: m.attackerId || m.AttackerId, Name: m.attackerName || m.AttackerName };
   }
@@ -5248,7 +5266,6 @@ function wmMatchWinner(m) {
   const direct = m.winner || m.Winner || m.winningGuild || m.WinningGuild
     || m.TerritoryChangedOwner || m.territoryChangedOwner || null;
   if (direct) return direct;
-  /* Winner numérico (1/2) o booleano attackerWins */
   const { a, b } = wmMatchTeams(m);
   const w = m.winnerTeam || m.WinnerTeam || m.winnerSide || m.WinnerSide;
   if (w === 1 || w === '1' || w === 'team1' || w === 'attacker') return a;
@@ -5296,8 +5313,6 @@ function wmOpponentOf(m, gid) {
   return a || b || null;
 }
 
-/* Reconstruye el dueño actual de cada territorio a partir del historial GvG.
-   Orden: partidos más recientes primero; el primer ganador visto se queda. */
 function wmBuildTerritories(past, upcoming, gid) {
   const byName = new Map();
   const sorted = [...past].sort((x, y) => {
@@ -5341,8 +5356,6 @@ function wmBuildTerritories(past, upcoming, gid) {
       t.nextOpponent = opp;
       t.nextMatch = m;
     } else {
-      /* Solo aparece en la cola: si defendemos es nuestro; si atacamos está
-         en disputa (no lo marcamos como «perdido»). */
       const { a, b } = wmMatchTeams(m);
       const defending = wmIsSG(b, gid);
       const attacking = wmIsSG(a, gid);
@@ -5398,26 +5411,335 @@ function wmProcessEnemies(events, past, gid) {
   });
 }
 
+/* ---- NUEVO: grafo de mapas reales ---- */
+async function wmLoadMapGraph(){
+  if (WM.mapGraph) return WM.mapGraph;
+  if (WM.mapLoading) return null;
+  WM.mapLoading = true;
+  try {
+    const data = await fetchJSON('data/albion_map_connections.json');
+    WM.mapGraph = data.byName || data;
+    WM.mapGraphById = data.byId || {};
+    WM.mapList = data.maps || [];
+    // Si había selección guardada, recalcular vecinos
+    if (WM.selectedMap && WM.mapGraph[WM.selectedMap]) {
+      WM.selectedNeighbors = WM.mapGraph[WM.selectedMap];
+      // buscar mapID
+      const found = WM.mapList.find(m=>m.mapName===WM.selectedMap);
+      if (found) WM.selectedMapID = found.mapID;
+    }
+    WM.mapLoading = false;
+    return WM.mapGraph;
+  } catch(e){
+    WM.mapLoading = false;
+    console.warn('No se pudo cargar grafo de mapas', e);
+    WM.mapGraph = {};
+    WM.mapGraphById = {};
+    return null;
+  }
+}
+
+function wmSelectMap(name){
+  if (!name) return;
+  WM.selectedMap = name;
+  WM.selectedNeighbors = (WM.mapGraph && WM.mapGraph[name]) ? WM.mapGraph[name] : [];
+  const found = WM.mapList.find(m=>m.mapName===name);
+  WM.selectedMapID = found ? found.mapID : null;
+  wmSaveSelected();
+  wmRenderContent();
+  // auto cargar tracker
+  wmLoadTracker(true);
+}
+
+function wmMapSearch(q){
+  WM.mapSearchQuery = q;
+  if (!q || q.length < 2 || !WM.mapList.length){
+    WM.mapSearchResults = [];
+    return [];
+  }
+  const low = q.toLowerCase();
+  const hits = WM.mapList.filter(m=>{
+    return m.mapName.toLowerCase().includes(low) || (m.mapID && m.mapID.toLowerCase().includes(low));
+  }).slice(0, 30);
+  WM.mapSearchResults = hits;
+  return hits;
+}
+
+/* ---- NUEVO: tracker de enemigos por zona real ---- */
+async function wmLoadTracker(force){
+  if (!WM.selectedMap) return;
+  if (WM.tracker.loading) return;
+  if (!force && WM.tracker.lastUpdate && WM.tracker.filtered && WM.tracker.filtered.length) { wmRenderTracker(); return; }
+  WM.tracker.loading = true;
+  WM.tracker.error = null;
+  const box = document.getElementById('wmTrackerContent');
+  if (box) box.innerHTML = '<div class="loading-cell">Rastreando asesinatos en ' + sgEsc(WM.selectedMap) + ' + conexiones…</div>';
+  const btn = document.getElementById('wmTrackerBtn');
+  if (btn) btn.disabled = true;
+  const zones = [WM.selectedMap, ...WM.selectedNeighbors];
+  const zoneSet = new Set(zones.map(z=>String(z).toLowerCase()));
+  // también incluir variaciones con market/bank? No, battles usan nombres exactos sin market
+  try {
+    // battles recientes (oficial) - límite 100 para cubrir más zonas
+    const battlesRaw = await pfFetchRetry('/battles?limit=100&offset=0&sort=recent').catch(()=>pfFetchRetry('/battles?limit=50&offset=0'));
+    const battles = pfAsArray(battlesRaw);
+    // Filtrar por clusterName en zonas objetivo
+    const filtered = battles.filter(b=>{
+      const cn = (b.clusterName || b.ClusterName || b.location || '').toString();
+      if (!cn) return false;
+      return zoneSet.has(cn.toLowerCase());
+    });
+    // Enriquecer con guilds participantes
+    const guildStats = {};
+    let totalFame = 0, totalKills = 0;
+    for (const b of filtered){
+      totalFame += b.totalFame || b.TotalFame || 0;
+      totalKills += b.totalKills || b.TotalKills || b.kills || 0;
+      // top guilds o guilds
+      const gs = b.guilds || b.Guilds || {};
+      // guilds puede ser objeto {guildId: {name, kills, deaths, ...}} o array
+      if (Array.isArray(gs)){
+        for (const g of gs){
+          const gname = g.name || g.Name || g.guildName || '—';
+          if (!guildStats[gname]) guildStats[gname] = { name:gname, battles:0, kills:0, deaths:0, fame:0, lastAt:null };
+          guildStats[gname].battles++;
+          guildStats[gname].kills += g.kills||g.Kills||0;
+          guildStats[gname].deaths += g.deaths||g.Deaths||0;
+          const t = b.startTime ? new Date(b.startTime) : null;
+          if (t && (!guildStats[gname].lastAt || t>guildStats[gname].lastAt)) guildStats[gname].lastAt = t;
+        }
+      } else if (typeof gs === 'object'){
+        for (const gid of Object.keys(gs)){
+          const g = gs[gid];
+          const gname = g.name || g.Name || gid;
+          if (!guildStats[gname]) guildStats[gname] = { name:gname, battles:0, kills:0, deaths:0, fame:0, lastAt:null };
+          guildStats[gname].battles++;
+          guildStats[gname].kills += g.kills||g.Kills||0;
+          guildStats[gname].deaths += g.deaths||g.Deaths||0;
+        }
+      }
+      // players por si no hay guilds
+      if (!Object.keys(gs).length){
+        const pls = b.players || b.Players || [];
+        // no hacer mucho
+      }
+    }
+    const guildsSorted = Object.values(guildStats).sort((a,b)=>b.kills - a.kills || b.battles - a.battles);
+
+    // También intentar cargar events recientes y filtrar por si el proxy agrega location? 
+    // events no tienen zona, pero mostramos los últimos events de los gremios enemigos detectados
+    let events = [];
+    try {
+      const evRaw = await pfFetchRetry('/events?limit=51&offset=0').catch(()=>null);
+      const evs = pfAsArray(evRaw);
+      // filtrar events donde killer o victim guild está en guildsSorted (top 10)
+      const topGuildNames = new Set(guildsSorted.slice(0,15).map(g=>g.name.toLowerCase()));
+      if (topGuildNames.size){
+        events = evs.filter(ev=>{
+          const kg = (ev.Killer?.GuildName||'').toLowerCase();
+          const vg = (ev.Victim?.GuildName||'').toLowerCase();
+          return topGuildNames.has(kg) || topGuildNames.has(vg);
+        }).slice(0,20);
+      }
+    } catch(e){}
+
+    WM.tracker.battles = battles; // todos
+    WM.tracker.filtered = filtered;
+    WM.tracker.guilds = guildsSorted;
+    WM.tracker.events = events;
+    WM.tracker.zones = zones;
+    WM.tracker.totalFame = totalFame;
+    WM.tracker.totalKills = totalKills;
+    WM.tracker.lastUpdate = Date.now();
+    WM.tracker.loading = false;
+    if (btn) btn.disabled = false;
+    wmRenderTracker();
+  } catch(err){
+    WM.tracker.loading = false;
+    WM.tracker.error = err && err.message ? err.message : String(err);
+    if (btn) btn.disabled = false;
+    if (box){
+      box.innerHTML = '<div class="loading-cell sg-err">No se pudo rastrear: ' + sgEsc(WM.tracker.error) + '</div>';
+    }
+  }
+}
+
+function wmRenderTracker(){
+  const box = document.getElementById('wmTrackerContent');
+  if (!box) return;
+  if (!WM.selectedMap){
+    box.innerHTML = '<div class="loading-cell">Elegí un mapa arriba para ver actividad PvP.</div>';
+    return;
+  }
+  const t = WM.tracker;
+  if (t.loading){
+    box.innerHTML = '<div class="loading-cell">Cargando…</div>';
+    return;
+  }
+  if (t.error){
+    box.innerHTML = '<div class="loading-cell sg-err">Error: ' + sgEsc(t.error) + ' <button class="btn micro-btn" id="wmTrackerRetry">Reintentar</button></div>';
+    const r = box.querySelector('#wmTrackerRetry');
+    if (r) r.onclick = ()=>wmLoadTracker(true);
+    return;
+  }
+  const zones = t.zones || [WM.selectedMap, ...WM.selectedNeighbors];
+  const filtered = t.filtered || [];
+  const guilds = t.guilds || [];
+  const updated = t.lastUpdate ? new Date(t.lastUpdate).toLocaleTimeString('es-AR') : '—';
+  const totalFame = t.totalFame || 0;
+  const totalKills = t.totalKills || 0;
+
+  box.innerHTML = `
+    <div class="stats wm-stats">
+      <div class="stat"><div class="k">Zonas vigiladas</div><div class="v">${zones.length}</div><div class="s">${sgEsc(WM.selectedMap)} + ${WM.selectedNeighbors.length} conexiones</div></div>
+      <div class="stat"><div class="k">Batallas recientes</div><div class="v pos">${filtered.length}</div><div class="s">de ${t.battles?.length||0} últimas en servidor</div></div>
+      <div class="stat"><div class="k">Kills</div><div class="v">${fmt(totalKills)}</div><div class="s">fama total ${fmt(totalFame)}</div></div>
+      <div class="stat"><div class="k">Actualizado</div><div class="v" style="font-size:1rem">${updated}</div><div class="s"><button class="btn micro-btn" id="wmTrackerBtnInner">↻ Actualizar</button></div></div>
+    </div>
+
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Zonas objetivo</div>
+      <div class="chip-group" style="padding:4px 0 8px">
+        ${zones.map(z=>`<span class="chip ${z===WM.selectedMap?'active':''}" data-wm-zone="${sgEsc(z)}">${sgEsc(z)}${z===WM.selectedMap?' <b>(sel)</b>':''}</span>`).join('')}
+      </div>
+      <div class="micro muted">Conexiones según world.xml oficial (ao-bin-dumps). ${WM.selectedNeighbors.length ? 'Mapas fronterizos: ' + WM.selectedNeighbors.map(n=>sgEsc(n)).join(', ') : 'Este mapa no tiene conexiones registradas o es aislado.'}</div>
+    </div>
+
+    ${filtered.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Batallas en la zona (${filtered.length})</div>
+      <div class="table-wrap"><table class="ledger">
+        <thead><tr><th>Fecha</th><th>Mapa</th><th class="num">Kills</th><th class="num">Fama</th><th>Gremios</th></tr></thead>
+        <tbody>${filtered.slice(0,25).map(b=>wmBattleRow(b)).join('')}</tbody>
+      </table></div>
+    </div>` : '<div class="wm-section"><div class="loading-cell">Sin batallas recientes en estas zonas (últimas 100 del servidor). Probá otro mapa o tocá Actualizar.</div></div>'}
+
+    ${guilds.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Gremios activos en la zona (${guilds.length})</div>
+      <div class="wm-enemy-list">${guilds.slice(0,15).map(g=>wmEnemyCard({name:g.name, kills:g.kills, gvg:g.battles, lastAt:g.lastAt})).join('')}</div>
+      <div class="micro muted">Top por kills en las batallas filtradas. Usalo como tracker de enemigos en tu zona de farmeo/roaming.</div>
+    </div>` : ''}
+
+    ${t.events && t.events.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Kills recientes de esos gremios (${t.events.length})</div>
+      <div class="wm-events-list">${t.events.map(e=>wmEventRow(e)).join('')}</div>
+    </div>` : ''}
+
+    <div class="micro muted pad">Fuente: killboard oficial /battles (clusterName). Zonas objetivo = mapa seleccionado + vecinos según grafo de conexiones. Si un mapa tiene muchas conexiones (ciudad), verás más batallas.</div>
+  `;
+  const innerBtn = box.querySelector('#wmTrackerBtnInner');
+  if (innerBtn) innerBtn.onclick = ()=>wmLoadTracker(true);
+  // click en chip de zona para cambiar mapa rápido
+  box.querySelectorAll('[data-wm-zone]').forEach(ch=>{
+    ch.style.cursor='pointer';
+    ch.onclick = ()=>{
+      wmSelectMap(ch.dataset.wmZone);
+    };
+  });
+}
+
+function wmBattleRow(b){
+  const when = b.startTime ? new Date(b.startTime) : (b.StartTime ? new Date(b.StartTime) : null);
+  const cluster = b.clusterName || b.ClusterName || b.location || '—';
+  const kills = b.totalKills || b.TotalKills || b.kills || 0;
+  const fame = b.totalFame || b.TotalFame || b.fame || 0;
+  const guilds = b.guilds || b.Guilds || {};
+  let guildList = '';
+  if (Array.isArray(guilds)){
+    guildList = guilds.slice(0,4).map(g=>sgEsc(g.name||g.Name)).join(', ');
+  } else if (typeof guilds === 'object'){
+    guildList = Object.values(guilds).slice(0,4).map(g=>sgEsc(g.name||g.Name||'')).join(', ');
+  }
+  const bid = b.id || b.Id || b.BattleId;
+  const isExpanded = WM.tracker.expandedBattle === String(bid);
+  return `<tr class="clickable ${isExpanded?'expanded':''}" data-wm-battle="${bid}">
+    <td class="muted micro">${when ? when.toLocaleString('es-AR') : '—'}</td>
+    <td><b>${sgEsc(cluster)}</b></td>
+    <td class="num">${fmt(kills)}</td>
+    <td class="num pos">${fmt(fame)}</td>
+    <td class="muted micro">${guildList||'—'}</td>
+  </tr>` + (isExpanded ? `<tr><td colspan="5"><div class="micro muted" style="padding:6px">ID batalla: ${sgEsc(bid)} — <a href="https://albiononline.com/killboard/battles/${bid}" target="_blank" rel="noopener">Ver en killboard oficial</a></div></td></tr>` : '');
+}
+
 function wmRender() {
   const mount = document.getElementById('wmMount');
   if (!mount) return;
   mount.innerHTML = `
     <div class="panel wm-panel">
       <div class="cd-title wm-head">
-        <span><svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG</span>
+        <span><svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG + Tracker por Zona Real</span>
         <button class="btn" id="wmRefreshBtn" title="Volver a pedir GvG y eventos al killboard">
-          <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar
+          <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar SG
         </button>
       </div>
       <div class="micro muted wm-intro">
-        Territorios reconstruidos desde el historial GvG del killboard (no hay endpoint oficial de dueños).
-        Próximos ataques, rivales recientes y kills del gremio en la misma vista.
+        Territorios SG reconstruidos desde GvG. NUEVO: elegí cualquier mapa real de Albion y rastrea asesinatos en esa zona + conexiones fronterizas (grafo oficial world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas).
       </div>
+
+      <div class="panel" style="margin:12px 0; padding:12px; border:1px solid var(--border, #2a2f3a)">
+        <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Tracker de enemigos por mapa real</div>
+        <div class="micro muted" style="margin:4px 0 8px">Aunque no tengamos info de mapas de SG, podés vigilar cualquier zona real. El tracker filtra /battles por clusterName ∈ [mapa + vecinos].</div>
+        <div class="search-wrap" style="position:relative; max-width:420px">
+          <input type="search" id="wmMapSearch" class="search big" placeholder="Buscar mapa… Ej: Martlock, Caerleon, Eldon Hill, Swamp Cross" value="${sgEsc(WM.selectedMap||'')}" autocomplete="off">
+          <div id="wmMapResults" class="sr-results"></div>
+        </div>
+        ${WM.selectedMap ? `<div class="micro muted" style="margin-top:6px">Mapa seleccionado: <b>${sgEsc(WM.selectedMap)}</b> ${WM.selectedMapID ? '('+sgEsc(WM.selectedMapID)+')' : ''} — ${WM.selectedNeighbors.length} conexiones — <button class="btn micro-btn" id="wmClearMap">Quitar</button> <button class="btn micro-btn primary" id="wmTrackerBtn">🎯 Rastrear asesinatos</button></div>` : '<div class="micro muted" style="margin-top:6px">Tip: probá con Martlock (conexiones: Blackthorn Quarry, Eldon Hill, Haytor, Mase Knoll) o Thetford, Lymhurst, etc.</div>'}
+        <div id="wmTrackerContent" style="margin-top:10px"></div>
+      </div>
+
       <div id="wmContent">
-        <div class="loading-cell">Cargando territorios y eventos…</div>
+        <div class="loading-cell">Cargando territorios y eventos de SG…</div>
       </div>
     </div>`;
   document.getElementById('wmRefreshBtn').onclick = () => wmLoad(true);
+  // mapa
+  const mapInput = document.getElementById('wmMapSearch');
+  const mapResults = document.getElementById('wmMapResults');
+  const clearBtn = document.getElementById('wmClearMap');
+  const trackBtn = document.getElementById('wmTrackerBtn');
+  if (clearBtn) clearBtn.onclick = ()=>{ WM.selectedMap=null; WM.selectedNeighbors=[]; WM.selectedMapID=null; try{localStorage.removeItem('wmSelectedMap');}catch(e){} wmRenderContent(); wmRenderTracker(); mapInput.value=''; };
+  if (trackBtn) trackBtn.onclick = ()=>wmLoadTracker(true);
+
+  let searchTimer=null;
+  if (mapInput){
+    mapInput.addEventListener('input', ()=>{
+      clearTimeout(searchTimer);
+      const q = mapInput.value.trim();
+      searchTimer=setTimeout(async ()=>{
+        if (!WM.mapGraph) await wmLoadMapGraph();
+        const hits = wmMapSearch(q);
+        if (!hits.length){ mapResults.classList.remove('open'); mapResults.innerHTML=''; return; }
+        mapResults.innerHTML = hits.map(m=>`<div class="sr-item" data-wm-map="${sgEsc(m.mapName)}"><div><div class="n">${sgEsc(m.mapName)}</div><div class="m">${sgEsc(m.mapID)} · ${sgEsc(m.mapType)} T${m.tier||'?'} · ${(WM.mapGraph && WM.mapGraph[m.mapName] ? WM.mapGraph[m.mapName].length : '?')} conexiones</div></div></div>`).join('');
+        mapResults.classList.add('open');
+      }, 250);
+    });
+    mapInput.addEventListener('focus', ()=>{
+      if (WM.mapSearchResults.length){ mapResults.classList.add('open'); }
+    });
+  }
+  if (mapResults){
+    mapResults.addEventListener('click', e=>{
+      const it = e.target.closest('[data-wm-map]'); if (!it) return;
+      mapResults.classList.remove('open');
+      wmSelectMap(it.dataset.wmMap);
+      mapInput.value = it.dataset.wmMap;
+    });
+  }
+  document.addEventListener('click', e=>{
+    if (!e.target.closest('#wmMapSearch') && !e.target.closest('#wmMapResults')){
+      const r = document.getElementById('wmMapResults');
+      if (r) r.classList.remove('open');
+    }
+  });
+
+  // cargar grafo de mapas en segundo plano
+  wmLoadMapGraph().then(()=>{
+    if (WM.selectedMap) wmLoadTracker(false);
+    wmRenderTracker();
+  });
+
   if (WM.loadedOnce && !WM.loading) wmRenderContent();
   else wmLoad(false);
 }
@@ -5556,16 +5878,18 @@ function wmRenderContent() {
 
   const enemyHTML = WM.enemies.length ? `
     <div class="wm-section">
-      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Rivales recientes (${WM.enemies.length})</div>
+      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Rivales recientes SG (${WM.enemies.length})</div>
       <div class="wm-enemy-list">${WM.enemies.slice(0, 12).map(e => wmEnemyCard(e)).join('')}</div>
-    </div>` : '<div class="wm-section"><div class="loading-cell">Sin rivales recientes en la ventana cargada.</div></div>';
+    </div>` : '<div class="wm-section"><div class="loading-cell">Sin rivales recientes SG en la ventana cargada.</div></div>';
 
   const eventsHTML = WM.events.length ? `
     <div class="wm-section">
-      <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Kills del gremio (${WM.events.length})</div>
+      <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Kills del gremio SG (${WM.events.length})</div>
       <div class="wm-events-list">${WM.events.slice(0, 25).map(e => wmEventRow(e)).join('')}</div>
     </div>` : '';
 
+  // Si ya hay tracker renderizado, no lo pisar; wmContent es separado de tracker
+  // Pero wmRenderContent pinta todo el contenido de wmContent, tracker está fuera, así que ok
   content.innerHTML = stats + chips + mainHTML + upcomingPreview + pastPreview + enemyHTML + eventsHTML;
 
   const chipsEl = document.getElementById('wmFilterChips');
@@ -5576,6 +5900,11 @@ function wmRenderContent() {
       wmRenderContent();
     };
   }
+  // delegar click en batallas del tracker si están dentro de wmContent? No, están en trackerContent
+  // Pero también necesitamos click para battles del SG? No.
+
+  // asegurar tracker pintado
+  wmRenderTracker();
 }
 
 function wmTerritoryCard(t) {
@@ -5694,7 +6023,21 @@ function wmTimeAgo(date) {
   return `hace ${days} día${days === 1 ? '' : 's'}`;
 }
 
+
 /* ---- arranque: hash de vuelta de Discord + config del Worker ---- */
+
+/* delegación para expandir batallas del tracker */
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-wm-battle]');
+  if (!b) return;
+  const id = b.dataset.wmBattle;
+  if (!id) return;
+  WM.tracker.expandedBattle = WM.tracker.expandedBattle === String(id) ? null : String(id);
+  wmRenderTracker();
+});
+
+
+
 function sgInit() {
   /* ¿volvimos del OAuth con una sesión o un error? (fragmento: no viaja al servidor) */
   const h = location.hash || '';
