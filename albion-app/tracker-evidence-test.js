@@ -1,0 +1,41 @@
+/* Regresión sin red ni dependencias: node albion-app/tracker-evidence-test.js */
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8');
+const scoring = source.slice(source.indexOf('const WM_DANGER_UNKNOWN'), source.indexOf('/* ---- ranking de actividad por zona'));
+const context = vm.createContext({ WM: { battles: [], kills: [], zoneDanger: {} } });
+vm.runInContext(scoring, context);
+const now = Date.now();
+const iso = age => new Date(now - age).toISOString();
+const level = zone => context.wmZoneDangerLevel(zone, now).key;
+context.wmBuildZoneDanger();
+assert.equal(level('Astolat'), 'unknown', 'Sin eventos no significa seguro');
+assert.match(context.wmDangerBadge('Astolat'), /No hay datus suficientes/);
+assert.doesNotMatch(context.wmDangerBadge('Astolat'), /🟢|tranquilo/);
+context.WM.kills = [{ zone: 'Astolat', ts: iso(60_000), f: 0 }];
+context.wmBuildZoneDanger();
+assert.equal(level('Astolat'), 'unknown', 'Un score bajo no acredita seguridad');
+context.WM.kills = [{ zone: 'Astolat', ts: iso(60_000), f: 200_000 }];
+context.wmBuildZoneDanger();
+assert.equal(level('Astolat'), 'warm', 'Se conserva la actividad reciente localizada');
+assert.equal(level('Vecino'), 'unknown', 'No se transfiere evidencia a vecinos');
+context.WM.kills = [{ zone: 'Astolat', ts: iso(3 * 36e5), f: 20_000_000 }];
+context.wmBuildZoneDanger();
+assert.equal(level('Astolat'), 'unknown', 'Actividad vieja no evalúa seguridad actual');
+for (const ts of ['invalida', null, iso(-60_000)]) {
+  context.WM.kills = [{ zone: 'Astolat', ts, f: 20_000_000 }];
+  context.WM.battles = [{ clusterName: 'Astolat', startTime: ts, totalKills: 100 }];
+  context.wmBuildZoneDanger();
+  assert.equal(level('Astolat'), 'unknown', 'Fecha inválida o futura no es evidencia');
+}
+context.WM.kills = [{ zone: '', ts: iso(60_000), f: 20_000_000 }];
+context.WM.battles = [];
+context.wmBuildZoneDanger();
+assert.equal(level('Astolat'), 'unknown', 'Kill sin ubicación no localiza actividad');
+context.WM.battles = [{ clusterName: 'Astolat', startTime: iso(60_000), totalKills: 100, totalFame: 0 }];
+context.wmBuildZoneDanger();
+assert.equal(level('Astolat'), 'hot', 'Se conserva actividad alta');
+assert.equal(context.wmRouteDangerLevel(['Astolat', 'Vecino']).key, 'unknown', 'Ruta con huecos no se clasifica como segura');
+assert.equal(context.wmDangerLevel(NaN).key, 'unknown');
+console.log('OK: evidencia insuficiente, baja, vieja, inválida, futura, sin zona, vecinos, rutas y actividad reciente.');

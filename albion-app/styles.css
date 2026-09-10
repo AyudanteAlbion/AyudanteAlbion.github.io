@@ -1034,6 +1034,21 @@ img { max-width: 100%; }
 }
 .sg-room-tab .tab-ico { width: 16px; height: 16px; }
 .sg-room-panel { padding: 0 14px 14px; }
+.sg-development-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border: 1px solid #b58a35;
+  border-radius: 10px;
+  background: rgba(181,138,53,.12);
+  color: var(--fg);
+}
+.sg-development-notice p { flex: 1 1 240px; margin: 0; line-height: 1.5; }
+.sg-development-notice .btn { flex-shrink: 0; }
+
 @media (max-width: 720px) {
   /* cuatro herramientas: que los botones se repartan la fila sin cortarse */
   .sg-room-tab { flex: 1 1 auto; justify-content: center; padding: 8px 10px; font-size: .84rem; white-space: nowrap; }
