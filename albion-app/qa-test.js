@@ -101,6 +101,10 @@ window.fetch = (url) => {
           Attacker: other, Defender: sg, Winner: sg },
         { MatchId: 'mx', StartTime: '2026-09-04T09:00:00Z', Territory: 'Unrelated',
           Attacker: rival, Defender: other, Winner: rival },
+        /* territorio propio en una zona REAL y posicionada (mapa de guerra:
+           distancia en saltos + marca en el minimapa) */
+        { MatchId: 'm4', StartTime: '2026-09-06T15:00:00Z', Territory: 'Kindlegrass Steppe',
+          Attacker: rival, Defender: sg, Winner: sg },
       ];
     } else if (u.includes('/gameinfo/guildmatches/next')) {
       const sg = { Id: 'sgg9', Name: 'Spetsnaz Grail' };
@@ -124,6 +128,28 @@ window.fetch = (url) => {
         { EventId: 203, TimeStamp: '2026-09-08T18:30:00Z', TotalVictimKillFame: 1000,
           Killer: { Name: 'X', GuildName: 'Ajenos' },
           Victim: { Name: 'Y', GuildName: 'Ajenos' } },
+      ];
+    } else if (u.includes('/gameinfo/battles/')) {
+      /* detalle de batalla: participantes con IP, gremio y arma (tracker por zona) */
+      data = {
+        id: 'qb1', clusterName: 'Astolat',
+        players: {
+          p1: { Name: 'ScoutUno', GuildName: 'Rival GvG', AverageItemPower: 1511.6, Kills: 3, Deaths: 0, KillFame: 45000, Equipment: { MainHand: { Type: 'T8_MAIN_SWORD' } } },
+          p2: { Name: 'ScoutDos', GuildName: 'Otros', AverageItemPower: 1384.2, Kills: 1, Deaths: 2, KillFame: 8000, Equipment: { MainHand: { Type: 'T4_2H_BOW' } } },
+        },
+      };
+    } else if (u.includes('/gameinfo/battles')) {
+      /* últimas batallas del servidor (tracker por zona: clusterName ∈ mapa + vecinos) */
+      data = [
+        { id: 'qb1', startTime: new Date(Date.now() - 10 * 60e3).toISOString(), clusterName: 'Astolat',
+          totalKills: 7, totalFame: 30000, totalPlayers: 12,
+          guilds: { r1: { name: 'Rival GvG', kills: 6, deaths: 1, fame: 25000 }, o1: { name: 'Otros', kills: 1, deaths: 6, fame: 5000 } } },
+        { id: 'qb2', startTime: new Date(Date.now() - 90 * 60e3).toISOString(), clusterName: 'Kindlegrass Steppe',
+          totalKills: 2, totalFame: 6000, totalPlayers: 4,
+          guilds: { r1: { name: 'Rival GvG', kills: 2, deaths: 0, fame: 6000 } } },
+        { id: 'qb3', startTime: new Date(Date.now() - 5 * 60e3).toISOString(), clusterName: 'Thetford',
+          totalKills: 40, totalFame: 2000000, totalPlayers: 120,
+          guilds: { z1: { name: 'ZvZ Ajena', kills: 40, deaths: 40, fame: 2000000 } } },
       ];
     }
   } catch (e) { /* vacío */ }
@@ -734,12 +760,12 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
           ownedChip.click(); await sleep(120);
           const cards = [...window.document.querySelectorAll('#wmContent .wm-terr-card')]
             .map(c => c.textContent);
-          check(cards.length === 1 && cards[0].includes('Astolot') && !cards[0].includes('Dewleaf'),
-            'WM: filtro «Nuestros» deja solo la tarjeta de Astolot',
+          check(cards.length === 2 && cards.some(c => c.includes('Astolot')) && cards.some(c => c.includes('Kindlegrass')) && !cards.some(c => c.includes('Dewleaf')),
+            'WM: filtro «Nuestros» deja solo las tarjetas propias (Astolot + Kindlegrass)',
             'WM: filtro owned incorrecto → ' + cards.join(' | ').slice(0, 160));
           const ownedStat = window.document.querySelector('#wmContent .wm-stats .stat .v.pos');
-          check(ownedStat && ownedStat.textContent.trim() === '1',
-            'WM: stats cuentan 1 territorio propio (Astolot)',
+          check(ownedStat && ownedStat.textContent.trim() === '2',
+            'WM: stats cuentan 2 territorios propios (Astolot + Kindlegrass)',
             'WM: conteo de propios incorrecto → ' + (ownedStat ? ownedStat.textContent : 'sin stat'));
         } else errors.push('WM: faltan chips de filtro');
         // filtro próximos
@@ -751,6 +777,86 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
             'WM: filtro «Próximos GvG» lista partidas pendientes',
             'WM: filtro upcoming vacío → ' + up.slice(0, 120));
         }
+        // ── TRACKER POR ZONA: minimapa, peligro, rutas, vigilancia, detalle ──
+        try {
+          const allChip = window.document.querySelector('[data-wm-filter="all"]');
+          if (allChip) { allChip.click(); await sleep(120); }
+          check(!!$('wmSheet') && !!$('wmMinimapWrap') && !!$('wmRouteFrom') && !!$('wmWatchBox'),
+            'WM: panel del tracker con minimapa, rutas y zonas vigiladas',
+            'WM: falta estructura del tracker por zona');
+          await sleep(600); // grafo de mapas
+          const svg = $('wmMinimap');
+          check(!!svg && svg.querySelectorAll('circle[data-wm-node]').length > 300,
+            `WM: minimapa SVG con ${svg ? svg.querySelectorAll('circle[data-wm-node]').length : 0} zonas (worldmapposition)`,
+            'WM: minimapa sin nodos');
+          check(!!window.document.querySelector('[data-wm-type="outlands78"]'),
+            'WM: chips de filtro por tipo de mapa (Outlands T7/T8, Avalon…)',
+            'WM: faltan chips de tipo de mapa');
+          // seleccionar Astolat vía el buscador
+          $('wmMapSearch').value = 'astolat';
+          $('wmMapSearch').dispatchEvent(new window.Event('input', { bubbles: true }));
+          await sleep(500);
+          const pick = window.document.querySelector('#wmMapResults [data-wm-pick]');
+          check(!!pick && pick.dataset.wmPick === 'Astolat',
+            'WM: buscador de mapas encuentra Astolat', 'WM: buscador sin resultados → ' + bodyOf('wmMapResults').slice(0, 80));
+          if (pick) { pick.click(); await sleep(900); }
+          const sel = bodyOf('wmSelInfo');
+          check(sel.includes('Astolat') && sel.includes('Kindlegrass Steppe') && sel.includes('salto'),
+            'WM: info de la zona + territorio SG más cercano en saltos',
+            'WM: selInfo sin territorio cercano → ' + sel.slice(0, 140));
+          const svg2 = $('wmMinimap'); // el minimapa se repinta al cargar batallas
+          check(!!svg2 && svg2.querySelectorAll('.wm-mm-battle').length >= 2,
+            'WM: puntos rojos de batallas recientes en el minimapa',
+            'WM: sin puntos de batalla en el minimapa');
+
+          const trk = bodyOf('wmTrackerContent');
+          check(trk.includes('Batallas en la zona') && trk.includes('Astolat'),
+            'WM: tracker lista batallas de la zona seleccionada',
+            'WM: tracker vacío → ' + trk.slice(0, 120));
+          check(!!$('wmTrackerContent').querySelector('[data-wm-battle]'),
+            'WM: filas de batalla expandibles (participantes)', 'WM: sin filas de batalla');
+          check(!!$('wmCsvBtn'), 'WM: exportación CSV de batallas filtradas', 'WM: falta botón CSV');
+          check(trk.includes('K/D'), 'WM: gremios activos con ratio K/D', 'WM: sin K/D en gremios activos');
+          // detalle de batalla: /battles/:id con players[]
+          const brow = $('wmTrackerContent').querySelector('[data-wm-battle]');
+          if (brow) { brow.click(); await sleep(800); }
+          const detail = window.document.querySelector('.wm-battle-detail');
+          check(!!detail && detail.textContent.includes('ScoutUno') && detail.textContent.includes('Rival GvG'),
+            'WM: participantes de la batalla con gremio',
+            'WM: detalle de batalla sin participantes → ' + (detail ? detail.textContent.slice(0, 80) : 'sin tabla'));
+          check(!!detail && (detail.textContent.includes('1512') || detail.textContent.includes('1.512')),
+            'WM: IP de equipo en la tabla de participantes', 'WM: sin IP en el detalle');
+          // rutas: Astolat → Martlock
+          $('wmRouteFrom').value = 'Astolat';
+          $('wmRouteTo').value = 'Martlock';
+          $('wmRouteGo').click();
+          await sleep(700);
+          const route = bodyOf('wmRouteResult');
+          check(route.includes('salto') && route.includes('Astolat') && route.includes('Martlock'),
+            'WM: ruta calculada con origen y destino',
+            'WM: ruta sin calcular → ' + route.slice(0, 120));
+          // vigilancia de zona (motor de alertas)
+          const watchBtn = $('wmWatchToggle');
+          check(!!watchBtn, 'WM: botón «Vigilar» la zona seleccionada', 'WM: falta botón Vigilar');
+          if (watchBtn) { watchBtn.click(); await sleep(300); }
+          const watch = bodyOf('wmWatchBox');
+          check(watch.includes('Astolat') && !!$('wzStatus') && !!$('wzInterval'),
+            'WM: zona vigilada con estado y configuración del motor',
+            'WM: zona no quedó vigilada → ' + watch.slice(0, 120));
+          check(JSON.parse(window.localStorage.getItem('wmZoneAlerts') || 'null').zones.includes('Astolat'),
+            'WM: vigilancia persistida en localStorage', 'WM: wmZoneAlerts no se guardó');
+          // quitar la vigilancia para no dejar el motor encendido en la suite
+          const wzDel = window.document.querySelector('[data-wz-del]');
+          if (wzDel) { wzDel.click(); await sleep(200); }
+          check(!JSON.parse(window.localStorage.getItem('wmZoneAlerts') || '{"zones":[]}').zones.length,
+            'WM: limpieza de la vigilancia de prueba', 'WM: quedó una zona vigilada del test');
+          // el minimapa marca la selección y a los vecinos
+          const svg3 = $('wmMinimap');
+          check(!!svg3 && !!svg3.querySelector('.wm-mm-sel') && svg3.querySelector('.wm-mm-sel').dataset.wmNode === 'Astolat',
+            'WM: nodo seleccionado en verde', 'WM: sin nodo seleccionado en el minimapa');
+          check(!!svg3 && svg3.querySelectorAll('.wm-mm-nb').length >= 2,
+            'WM: vecinos en amarillo', 'WM: sin vecinos marcados');
+        } catch (e) { errors.push('WM tracker por zona: ' + e.message); }
         // volver a Resumen para no romper el resto de la suite
         const sumTab = window.document.querySelector('[data-room-tab="summary"]');
         if (sumTab) { sumTab.click(); await sleep(200); }
@@ -924,7 +1030,7 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     const heroLinks = window.document.querySelector('.home-hero-links');
     check(!!community && community.href === 'https://discord.gg/FH3RzqMPA4'
       && community.target === '_blank' && community.rel.includes('noopener')
-      && community.textContent.includes('Únete a nuestra') && !!community.querySelector('.discord-logo'),
+      && community.textContent.includes('Comunidad de') && !!community.querySelector('.discord-logo'),
       'Inicio: la pastilla de Discord apunta al server de Ayudante Albion',
       'Inicio: falta la pastilla de Discord o apunta a otro server');
     check(!!community && community.parentElement === heroLinks && credit.parentElement === heroLinks

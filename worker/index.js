@@ -64,11 +64,13 @@ const GAMEINFO_ROUTES = [
   /^\/players\/[A-Za-z0-9_-]{1,64}\/(kills|deaths|topkills|solokills)$/,
   /^\/guilds\/[A-Za-z0-9_-]{1,64}$/,
   /^\/guilds\/[A-Za-z0-9_-]{1,64}\/(members|top)$/,
-  /* Mapa de Guerra: kills del gremio + GvG (no existe /guilds/:id/territories) */
+  /* Mapa de Guerra: kills del gremio + GvG (no existe /guilds/:id/territories)
+     + detalle de batalla con participantes (tracker por zona) */
   /^\/events$/,
   /^\/guildmatches\/(next|past|top)$/,
   /^\/guildmatches\/[A-Za-z0-9_-]{1,64}$/,
   /^\/battles$/,
+  /^\/battles\/[A-Za-z0-9_-]{1,64}$/,
 ];
 const GAMEINFO_PARAMS = new Set(['q', 'range', 'limit', 'offset', 'sort', 'guildId']);
 
