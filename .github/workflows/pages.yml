@@ -2,6 +2,8 @@
 # Solo copia lo que la web necesita: la carpeta de datos, los íconos y
 # los tres archivos de la app. server.py, los tests y las herramientas de
 # desarrollo quedan afuera a propósito.
+# Las actions van pineadas por SHA de commit (con su versión en un comentario):
+# si un tag se moviera en upstream, acá seguimos ejecutando el código auditado.
 name: Publicar en la web
 on:
   push:
@@ -32,16 +34,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Preparar sitio
         run: |
           mkdir _site
           cp albion-app/index.html albion-app/app.js albion-app/styles.css _site/
           cp -r albion-app/data albion-app/icons albion-app/img _site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: _site
       - name: Desplegar
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

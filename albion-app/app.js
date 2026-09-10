@@ -71,7 +71,10 @@ window.imgRetry = function (img) {
 function iconImg(id, cls, title) {
   const local = ICON_LOCAL(id);
   const src = local || ICON(id);
-  return `<img class="${cls}" loading="lazy" src="${src}" data-local="${local ? 1 : 0}" data-base="${ICON(id)}" data-img-retry alt=""${title ? ` title="${title}"` : ''}>`;
+  /* sgEsc en todo lo que cae en un atributo (id, clase, título y URLs):
+     los datos pueden venir de localStorage (p. ej. un respaldo importado).
+     Para los ids reales del catálogo sgEsc no cambia nada. */
+  return `<img class="${sgEsc(cls)}" loading="lazy" src="${sgEsc(src)}" data-local="${local ? 1 : 0}" data-base="${sgEsc(ICON(id))}" data-img-retry alt=""${title ? ` title="${sgEsc(title)}"` : ''}>`;
 }
 const CITIES = ['Bridgewatch','Caerleon','Fort Sterling','Lymhurst','Martlock','Thetford','Brecilien'];
 // El Black Market compra equipo al jugador; nunca es origen de compra.
@@ -266,19 +269,25 @@ function favSave() { localStorage.setItem('favorites', JSON.stringify(FAV.list))
 function favHas(tab, id) { return FAV.list.some(f => f.tab === tab && f.id === id); }
 function favBtnHtml(tab, id, name) {
   const on = favHas(tab, id);
-  return `<button class="btn micro-btn fav-btn ${on ? 'on' : ''}" data-fav-tab="${tab}" data-fav-id="${id}" data-fav-name="${String(name || id).replace(/"/g, '&quot;')}" title="${on ? 'Quitar de favoritos' : 'Guardar en favoritos (aparece en Inicio)'}">${on ? '★ Favorito' : '☆ Favorito'}</button>`;
+  /* sgEsc en cada dato: con un respaldo importado podrían traer HTML */
+  return `<button class="btn micro-btn fav-btn ${on ? 'on' : ''}" data-fav-tab="${sgEsc(tab)}" data-fav-id="${sgEsc(id)}" data-fav-name="${sgEsc(String(name || id))}" title="${on ? 'Quitar de favoritos' : 'Guardar en favoritos (aparece en Inicio)'}">${on ? '★ Favorito' : '☆ Favorito'}</button>`;
 }
 function favRenderHome() {
   const box = document.getElementById('homeFavs');
   if (!box) return;
   if (!FAV.list.length) { box.style.display = 'none'; return; }
   box.style.display = '';
-  document.getElementById('homeFavList').innerHTML = FAV.list.map(f => `
-    <div class="fav-row" data-fav-goto="${f.tab}" title="Ir a ${FAV_TABS[f.tab] || f.tab}">
+  /* Datos que pueden venir de un respaldo importado: siempre sgEsc (anti inyección HTML) */
+  document.getElementById('homeFavList').innerHTML = FAV.list.map(f => {
+    const tab = sgEsc(f.tab), id = sgEsc(f.id), name = sgEsc(f.name);
+    const label = sgEsc(FAV_TABS[f.tab] || f.tab);
+    return `
+    <div class="fav-row" data-fav-goto="${tab}" title="Ir a ${label}">
       ${iconImg(f.id, 'item-icon sm')}
-      <div class="fav-info"><div class="n">${f.name}</div><div class="m">${FAV_TABS[f.tab] || f.tab}</div></div>
-      <button class="fav-del" data-fav-del="${f.tab}|${f.id}" title="Quitar de favoritos">✕</button>
-    </div>`).join('');
+      <div class="fav-info"><div class="n">${name}</div><div class="m">${label}</div></div>
+      <button class="fav-del" data-fav-del="${tab}|${id}" title="Quitar de favoritos">✕</button>
+    </div>`;
+  }).join('');
 }
 document.addEventListener('click', e => {
   const star = e.target.closest('.fav-btn');
@@ -2749,7 +2758,7 @@ function llRender() {
       const p = g.earned - g.spent;
       const perU = g.sellQ > 0 ? p / g.sellQ : null;
       return `<tr>
-        <td><div class="item-cell">${iconImg(g.id, 'item-icon sm')}<span>${g.name || catalogName(g.id)}</span></div></td>
+        <td><div class="item-cell">${iconImg(g.id, 'item-icon sm')}<span>${sgEsc(g.name || catalogName(g.id))}</span></div></td>
         <td class="num">${g.buyQ ? fmt(g.buyQ) : '—'}</td>
         <td class="num">${g.craftQ ? fmt(g.craftQ) : '—'}</td>
         <td class="num">${g.sellQ ? fmt(g.sellQ) : '—'}</td>
@@ -2777,14 +2786,14 @@ function llRender() {
     const fecha = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
     return `<tr>
       <td class="muted">${fecha}</td>
-      <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}<span>${name}</span></div></td>
+      <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}<span>${sgEsc(name)}</span></div></td>
       <td><span class="badge ${r.type === 'sell' ? 'gold' : ''}">${LL_TYPE_ES[r.type]}</span></td>
       <td class="num">${fmt(r.qty)}</td>
       <td class="num">${fmt(r.price)}</td>
       <td class="num ${r.type === 'sell' ? 'pos' : ''}">${r.type === 'sell' ? '+' : '−'}${fmt(r.qty * r.price)}</td>
-      <td>${r.city || '—'}</td>
-      <td class="muted micro">${r.note || ''}</td>
-      <td class="num"><button class="reset-price" data-del="${r.ts}" title="Eliminar">✕</button></td>
+      <td>${sgEsc(r.city || '—')}</td>
+      <td class="muted micro">${sgEsc(r.note || '')}</td>
+      <td class="num"><button class="reset-price" data-del="${sgEsc(r.ts)}" title="Eliminar">✕</button></td>
     </tr>`;
   }).join('');
 }
@@ -3465,7 +3474,7 @@ async function pfLoadPlayer(id, name) {
   if (PF.loading) return;
   PF.loading = true;
   const box = document.getElementById('pfResult');
-  box.innerHTML = `<div class="panel"><div class="loading-cell">Cargando perfil de ${name}… (el killboard oficial puede tardar)</div></div>`;
+  box.innerHTML = `<div class="panel"><div class="loading-cell">Cargando perfil de ${sgEsc(name)}… (el killboard oficial puede tardar)</div></div>`;
   document.getElementById('pfRefresh').style.display = '';
   try {
     const detail = await pfFetchRetry(`/players/${id}`);
@@ -4342,7 +4351,7 @@ kaStart();
    Flujo: «Ingresar con Discord» → /discord/login del Worker (Cloudflare)
    → Discord pide autorización (identidad + servidores) → el Worker
    canjea el código, verifica si el usuario pertenece al servidor de
-   Discord de SG y devuelve una sesión firmada (HMAC) válida 30 días.
+   Discord de SG y devuelve una sesión firmada (HMAC) válida 7 días.
    La app la guarda en localStorage y desbloquea el Salón de miembros.
    El secreto de Discord vive solo en el Worker; la app nunca lo ve.
    ==================================================================== */
