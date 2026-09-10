@@ -715,20 +715,9 @@
     <div class="flip-head">
       <div class="search-wrap">
         <div class="flip-search-row">
-          <input type="search" id="flipSearch" placeholder="Buscar cualquier ítem… (ej: bolsa, capa, montura, espada)" class="search big">
-          <select id="flipBranch" class="mini-select" aria-label="Rama de ítems">
-            <option value="">Todas las ramas</option>
-          </select>
-          <select id="flipEnch" class="mini-select" aria-label="Encantamiento">
-            <option value="all">Todos los encantamientos</option>
-            <option value="0">Sin encantar (.0)</option>
-            <option value="1">Encantamiento .1</option>
-            <option value="2">Encantamiento .2</option>
-            <option value="3">Encantamiento .3</option>
-            <option value="4">Encantamiento .4</option>
-          </select>
+          <input type="search" id="flipSearch" placeholder="Buscar cualquier ítem para agregarlo al monitoreo… (ej: bolsa, capa, montura, espada)" class="search big">
         </div>
-        <div class="micro muted">Podés buscar por texto, rama y encantamiento, o combinar los filtros.</div>
+        <div class="micro muted">Escribí y tocá un resultado: el ítem pasa a la lista monitoreada de abajo.</div>
         <div class="search-results" id="flipResults"></div>
       </div>
       <div class="toggles inline">
@@ -743,8 +732,31 @@
         <button class="btn primary" id="refreshFlip">↻ Actualizar</button>
       </div>
     </div>
+    <div class="control-grid secondary">
+      <div class="control">
+        <label>Filtrar monitoreo por rama</label>
+        <select id="flipBranch" aria-label="Filtrar ítems monitoreados por rama">
+          <option value="">Todas las ramas</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Encantamiento</label>
+        <select id="flipEnch" aria-label="Filtrar ítems monitoreados por encantamiento">
+          <option value="all">Todos los encantamientos</option>
+          <option value="0">Sin encantar (.0)</option>
+          <option value="1">Encantamiento .1</option>
+          <option value="2">Encantamiento .2</option>
+          <option value="3">Encantamiento .3</option>
+          <option value="4">Encantamiento .4</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button type="button" class="btn" id="flipFilterReset">✕ Quitar filtro</button>
+      </div>
+    </div>
     <div class="micro muted">
-
+      Estos filtros no alcanzan al buscador: se aplican sobre los <b>ítems monitoreados</b> de la tabla. Ej.: Armas + Encantamiento .1 → el monitoreo muestra solo armas .1.
     </div>
   </div>
 
