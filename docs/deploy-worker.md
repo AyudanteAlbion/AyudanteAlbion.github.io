@@ -1,148 +1,201 @@
-# Re-deploy del Worker de Cloudflare
+# Cloudflare Worker — configuración y re-deploy
 
-El Worker `ayudantealbion` está conectado al repo (Workers Builds): cada push a
-`main` que toque `worker/` o `wrangler.toml` lo reconstruye y publica solo. Lo que
-**no** viaja con el código son las variables/secretos; esas se cargan una vez en el
-dashboard.
+El Worker `ayudantealbion` (`https://ayudantealbion.josemesina21.workers.dev`) es el
+proxy de la app: killboard (gameinfo), badges de Twitch y OAuth de Discord del
+Salón de miembros. Está conectado al repo por **Workers Builds**: cada push a
+`main` que toque `worker/` o `wrangler.toml` lo reconstruye y publica solo.
 
-## Estado
+Lo que **no** viaja con el código son las variables/secretos; esas se cargan una
+vez en el dashboard.
 
-**Activo desde el 2026-09-09.** `GET /discord/config` responde `configured:true, missing:[]`
-y `/discord/login` redirige a `discord.com/oauth2/authorize` con el Client ID correcto.
+## Estado actual
 
-## Diagnóstico de lo que pasó (2026-09-09)
+| Pieza | Estado |
+|---|---|
+| Worker en producción | `ayudantealbion.josemesina21.workers.dev` |
+| Acceso Discord (Salón) | **Activo** desde 2026-09-09 (`/discord/config` → `configured:true`) |
+| Mapa de Guerra (GvG) | Requiere re-deploy del código con rutas `guildmatches/*` y `events` |
+| Web (GitHub Pages) | Se publica al mergear a `main` (workflow «Publicar en la web») |
 
-`GET /discord/config` en producción respondía `{"configured":false}` y `/discord/login`
-decía que faltaban `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` o `SG_DISCORD_GUILD_ID`.
-El código del Worker y de la app estaban completos: el problema era de configuración.
+## Checklist rápido (lo que tenés que tener en Cloudflare)
 
-Causa confirmada: faltaba `DISCORD_CLIENT_ID`. Workers Builds despliega con
-`npx wrangler deploy`, y **sin `keep_vars` en `wrangler.toml` cada deploy borra las
-variables de tipo Text del dashboard** (los Secrets no se tocan). El Client ID estaba
-como Text y desapareció con un merge a `main`. Se volvió a cargar como **Secret** y el
-acceso quedó activo al instante. Ahora `wrangler.toml` lleva `keep_vars = true` y declara
-`SG_DISCORD_GUILD_ID` (es público), así que no debería repetirse.
+### A · Variables and Secrets
 
-Desde ahora `/discord/config` devuelve además `missing: [...]` con los nombres de lo
-que falta, para no tener que adivinar.
+Dashboard → **Workers & Pages** → `ayudantealbion` → **Settings** →
+**Variables and Secrets**.
 
-## Orden correcto (importante)
-
-1. Configurar `AA_SESSION_KEY` en el Worker **antes** de mergear.
-2. Mergear la rama a `main` → se despliegan Worker (Workers Builds) y web (GitHub Pages)
-   a la vez.
-3. Verificar.
-
-Si se mergea sin la clave, la web sigue funcionando pero `GET /discord/config` responde
-`configured: false`, el botón de Discord se oculta y quien ya tenía sesión la ve
-como "no pudimos confirmar" hasta que la clave exista. No se rompe nada, pero el
-Salón queda cerrado mientras tanto.
-
-## 1 · Crear la clave de sesión
-
-Generar 32 bytes aleatorios (64 caracteres hex). Cualquiera de estos sirve:
-
-```bash
-openssl rand -hex 32
-# o, sin openssl:
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# o en PowerShell:
--join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Max 16) })
-```
-
-Guardarla en el Worker:
-
-Cloudflare Dashboard → **Workers & Pages** → `ayudantealbion` → **Settings** →
-**Variables and Secrets** → **Add** →
-
-- Type: **Secret**
-- Variable name: `AA_SESSION_KEY`
-- Value: la cadena generada
-
-→ **Deploy** (Cloudflare aplica la variable con un redeploy del código actual; es normal).
-
-Requisitos que el Worker comprueba: al menos 32 caracteres y **distinta** del
-`DISCORD_CLIENT_SECRET`. Si no se cumplen, `/discord/login` responde 503 con un
-mensaje que lo explica.
-
-Mientras estás ahí, confirmar que existen las demás. Cargarlas todas como **Secret**
-(así ningún deploy las borra):
+Cargarlas **todas como Secret** (así ningún deploy las borra):
 
 | Variable | Tipo | De dónde sale |
 |---|---|---|
-| `DISCORD_CLIENT_ID` | Secret | Developer Portal → app → OAuth2 → Client ID |
-| `DISCORD_CLIENT_SECRET` | Secret | Developer Portal → app → OAuth2 → Client Secret (Reset si no lo tenés) |
-| `AA_SESSION_KEY` | Secret | `openssl rand -hex 32` |
-| `SG_DISCORD_GUILD_ID` | (ya está en `wrangler.toml`) | `998772435048472628` |
+| `DISCORD_CLIENT_ID` | **Secret** | [Discord Developer Portal](https://discord.com/developers/applications) → tu app → OAuth2 → Client ID |
+| `DISCORD_CLIENT_SECRET` | **Secret** | Misma pantalla → Client Secret (Reset si no lo tenés) |
+| `AA_SESSION_KEY` | **Secret** | `openssl rand -hex 32` (≥32 chars, **distinta** del Client Secret) |
+| `SG_DISCORD_GUILD_ID` | ya en `wrangler.toml` | `998772435048472628` (público; no hace falta en el dashboard) |
 
-Y en el Developer Portal de Discord, OAuth2 → Redirects debe tener exactamente:
-`https://ayudantealbion.josemesina21.workers.dev/discord/callback`
-
-> Efecto colateral esperado: al cambiar la clave de firma, las sesiones que la gente
-> tenía guardadas dejan de validar. La app las descarta sola y muestra el botón de
-> ingreso; con un clic en «Ingresar con Discord» vuelven a entrar. No hay que avisar
-> nada especial, pero conviene saberlo.
-
-## 2 · Mergear
+Generar la clave de sesión:
 
 ```bash
-gh pr create --base main --head arena/01a08770-ayudantealbion-github-io \
-  --title "Seguridad: XSS, verificación de sesión, CSP y proxy acotado" \
-  --body-file docs/deploy-worker.md
+openssl rand -hex 32
+# o:
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-o desde GitHub. Al mergear:
+Tras agregar/editar un Secret, Cloudflare hace un redeploy del código actual
+(es normal). Al **cambiar** `AA_SESSION_KEY`, las sesiones guardadas dejan de
+validar: la gente vuelve a tocar «Ingresar con Discord» y listo.
 
-- **Workers Builds** detecta el cambio en `worker/index.js` y publica. Se sigue en
-  Dashboard → `ayudantealbion` → **Deployments** (tarda ~1 min).
-- **GitHub Pages** publica la web por el workflow «Publicar en la web»
-  (Actions del repo).
+### B · Discord Developer Portal
 
-## 3 · Verificar
+En la app de Discord → **OAuth2** → **Redirects**, exactamente:
 
-Desde cualquier terminal con internet (reemplazar `W` por la URL del Worker):
+```
+https://ayudantealbion.josemesina21.workers.dev/discord/callback
+```
+
+No hace falta bot ni scopes extra: la app usa `identify` + `guilds`.
+
+### C · Workers Builds (conexión al repo)
+
+Dashboard → **Workers & Pages** → `ayudantealbion` → **Settings** → **Build**:
+
+- Repo: `AyudanteAlbion/AyudanteAlbion.github.io`
+- Branch de producción: `main`
+- Build command: el que Cloudflare/Workers Builds usa por defecto con `wrangler.toml`
+  en la raíz (`npx wrangler deploy`)
+- `wrangler.toml` en la raíz declara `name`, `main = "worker/index.js"`,
+  `keep_vars = true` y `SG_DISCORD_GUILD_ID`
+
+`keep_vars = true` evita que cada deploy borre variables de tipo Text del
+dashboard. Aun así, **preferí Secrets** para Client ID / Secret / Session Key.
+
+### D · Redeploy del Mapa de Guerra (este cambio)
+
+El Mapa de Guerra necesita que el Worker permita:
+
+| Ruta | Para qué |
+|---|---|
+| `GET /gameinfo/guildmatches/past` | Historial GvG → dueños de territorios |
+| `GET /gameinfo/guildmatches/next` | Ataques / defensas próximos |
+| `GET /gameinfo/guildmatches/top` | GvG destacados |
+| `GET /gameinfo/events?guildId=…` | Kills del gremio y rivales |
+| `GET /gameinfo/battles` | Batallas (opcional) |
+
+`/guilds/:id/territories` **no existe** en el killboard y el Worker sigue
+respondiendo 404 a propósito.
+
+**Cómo publicarlo:**
+
+1. Mergear a `main` la rama con los cambios de `worker/index.js` (y la app).
+2. Esperar ~1 min: **Workers Builds** publica solo (Deployments en el dashboard).
+3. GitHub Pages publica la web en paralelo.
+4. Verificar con el bloque de curls de abajo.
+
+Si Workers Builds no está conectado o falló, deploy manual desde tu máquina
+(con sesión de Cloudflare ya hecha una vez con `npx wrangler login`):
+
+```bash
+# desde la raíz del repo, en main con los cambios mergeados
+npx wrangler deploy
+```
+
+No hace falta tocar variables: solo se actualiza el código del proxy.
+
+## Orden correcto al sumar features del Worker
+
+1. Confirmar Secrets en el dashboard (A).
+2. Mergear a `main` → Workers Builds + GitHub Pages.
+3. Verificar (sección siguiente).
+
+Si se mergea sin Secrets, la web sigue y el Salón muestra «configuración
+pendiente»; no se rompe nada.
+
+## Verificar
+
+Desde cualquier terminal con internet:
 
 ```bash
 W=https://ayudantealbion.josemesina21.workers.dev
 
-# a) el worker nuevo está arriba y configurado
-curl -s $W/health                    # → ok
-curl -s $W/discord/config            # → {"configured":true,"loginUrl":"...","missing":[]}
-                                     #   si dice configured:false, `missing` nombra lo que falta
+# 1 · vivo y Discord OK
+curl -s $W/health
+# → ok
 
-# b) la ruta nueva existe y rechaza basura
-curl -s "$W/discord/verify?s=abc.def"    # → {"valid":false}
+curl -s $W/discord/config
+# → {"configured":true,"loginUrl":"...","missing":[]}
+#    si configured:false, "missing" nombra lo que falta (nunca valores)
 
-# c) el proxy quedó acotado
-curl -s -o /dev/null -w "%{http_code}\n" "$W/gameinfo/battles"          # → 404
-curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://evil.example" \
-  "$W/gameinfo/search?q=x"                                              # → 403
+# 2 · sesión basura rechazada
+curl -s "$W/discord/verify?s=abc.def"
+# → {"valid":false}
+
+# 3 · Mapa de Guerra: rutas nuevas abiertas
 curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://ayudantealbion.github.io" \
-  "$W/gameinfo/search?q=x"                                              # → 200
+  "$W/gameinfo/guildmatches/past?limit=1&offset=0"
+# → 200 (o 502 si el killboard de Albion está caído; no 404)
+
+curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://ayudantealbion.github.io" \
+  "$W/gameinfo/guildmatches/next?limit=1"
+# → 200 (o 502)
+
+curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://ayudantealbion.github.io" \
+  "$W/gameinfo/events?limit=1&offset=0"
+# → 200 (o 502)
+
+# 4 · endpoint inexistente sigue bloqueado
+curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://ayudantealbion.github.io" \
+  "$W/gameinfo/guilds/x/territories"
+# → 404
+
+# 5 · anti proxy abierto
+curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://evil.example" \
+  "$W/gameinfo/search?q=x"
+# → 403
+
+curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://ayudantealbion.github.io" \
+  "$W/gameinfo/search?q=x"
+# → 200 (o 502 del killboard)
 ```
 
-En el navegador, en https://ayudantealbion.github.io (Ctrl+F5 para saltar caché):
+En el navegador (https://ayudantealbion.github.io, Ctrl+F5):
 
-1. Abrir DevTools → Console: **no** debe haber errores `Refused to ... Content Security Policy`.
-   Si aparece uno, dice qué recurso bloqueó; se agrega ese origen a la `<meta>` CSP de `index.html`.
-2. SG → Salón de miembros → «Ingresar con Discord» → autorizar → debe volver con el
-   toast «Ingreso correcto» y el ranking cargado.
-3. Recargar la página: la sesión debe seguir activa (se revalida contra `/discord/verify`).
-4. Perfil: buscar un jugador; los íconos de equipo cargan (retry sin `onerror` inline).
-5. Registro → Exportar CSV y Exportar respaldo: descargan normal.
+1. DevTools → Console: sin errores de Content Security Policy.
+2. **SG → Salón de miembros** → Ingresar con Discord → ranking OK.
+3. Dentro del Salón → pestaña **Mapa de Guerra** → «Actualizar»:
+   - Si hay GvG recientes de SG, aparecen territorios / próximos / rivales.
+   - Si el Worker viejo sigue arriba, las peticiones a `guildmatches` fallan y
+     el mapa queda vacío o con error: mirar la pestaña Network.
+4. Recargar: la sesión Discord sigue activa (`/discord/verify`).
 
 ## Si algo sale mal
 
-- **`configured:false` después del deploy** → mirar `missing` en `/discord/config`.
-  Si nombra `AA_SESSION_KEY` con aclaración, es más corta que 32 o igual al Client Secret.
-  Si las variables «desaparecen» tras un merge: estaban como Text y el deploy las borró;
-  recargarlas como Secret (con `keep_vars = true` ya no debería pasar).
-- **Vuelve con `#aa_error=discord`** → el Redirect URI no coincide exactamente con el
-  registrado en el Developer Portal, o el Client Secret está vencido/reseteado.
-- **Vuelve con `#aa_error=cancelado`** → el usuario tocó «Cancelar» en Discord; no es error.
-- **Botón de Discord no aparece** → mismo caso, o la web vieja está cacheada (Ctrl+F5).
-- **«No pudimos confirmar la sesión»** → el Worker todavía no tiene `/discord/verify`
-  (deploy en curso o fallido). Mirar Deployments en Cloudflare.
-- **Ícono/imagen bloqueada por CSP** → agregar el host a `img-src` en `index.html`.
-- **Volver atrás rápido** → Cloudflare Dashboard → `ayudantealbion` → Deployments →
-  «Rollback» al deployment anterior. La web se revierte con `git revert` en `main`.
+| Síntoma | Qué mirar |
+|---|---|
+| `configured:false` | `missing` en `/discord/config`. Secrets faltantes o `AA_SESSION_KEY` &lt; 32 / igual al Client Secret. Variables Text borradas por un deploy viejo → recargarlas como **Secret**. |
+| `#aa_error=discord` | Redirect URI no coincide exactamente, o Client Secret reseteado. |
+| `#aa_error=cancelado` | El usuario tocó Cancelar en Discord (no es fallo). |
+| `#aa_error=gremio` | Discord no respondió la lista de servidores; reintentar. |
+| Botón Discord no aparece | Config inactiva o caché (Ctrl+F5). |
+| «No pudimos confirmar la sesión» | Deploy en curso o `/discord/verify` caído → Deployments. |
+| Mapa de Guerra vacío / 404 en Network a `guildmatches` | Worker **sin** el código nuevo. Merge a `main` o `npx wrangler deploy`. |
+| Mapa con error del killboard (502) | Albion/gameinfo saturado; «Actualizar» en unos segundos. |
+| Rollback | Dashboard → `ayudantealbion` → **Deployments** → Rollback. Web: `git revert` en `main`. |
+
+## Diagnóstico histórico (2026-09-09)
+
+`GET /discord/config` respondía `configured:false` porque faltaba
+`DISCORD_CLIENT_ID`: estaba como Text y un `wrangler deploy` de Workers Builds
+lo borró. Se recargó como **Secret** y se agregó `keep_vars = true` +
+`SG_DISCORD_GUILD_ID` en `wrangler.toml`.
+
+## Pruebas locales (sin tocar Cloudflare)
+
+```bash
+node worker/selftest.mjs           # OAuth + verify + allowlist del proxy (sin red)
+cd albion-app && python3 server.py # http://127.0.0.1:3000 — proxy gameinfo abierto + Discord simulado
+cd albion-app && node qa-test.js   # QA completa (requiere jsdom)
+```
+
+`server.py` no usa la allowlist del Worker: en local el Mapa de Guerra ya habla
+directo con el killboard. Cloudflare solo hace falta para la web pública y el
+ejecutable cuando no hay server local.
