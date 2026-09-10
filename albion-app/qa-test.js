@@ -308,6 +308,66 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
     $('flipTo').value = ''; $('flipTo').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
   } catch (e) { errors.push('Flipping destino-fijo: ' + e.message); }
 
+  // ── FLIPPING: filtros de rama/encantamiento sobre los ítems monitoreados (no el buscador) ──
+  try {
+    window.eval(`gotoTab('flip')`); await sleep(200);
+    const rows = () => [...$('flipBody').querySelectorAll('tr[data-id]')].map(tr => tr.dataset.id);
+    // catalogRow queda global (function declaration) y cierra sobre CATALOG
+    const catOf = id => { const r = window.eval(`catalogRow('${id.split('@')[0]}')`); return r ? r[5] : undefined; };
+    const fullCount = rows().length;
+    // rama: la tabla queda solo con armas
+    $('flipBranch').value = 'weapons';
+    $('flipBranch').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
+    let ids = rows();
+    check(ids.length > 0 && ids.every(id => catOf(id) === 'weapons'),
+      `Flipping: filtro Armas deja solo armas en el monitoreo (${ids.length} filas)`,
+      'Flipping: el filtro de rama dejó pasar otras ramas → ' + ids.filter(id => catOf(id) !== 'weapons').slice(0, 3).join(', '));
+    // rama + encantamiento: solo armas .1
+    $('flipEnch').value = '1';
+    $('flipEnch').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
+    ids = rows();
+    check(ids.length > 0 && ids.length < fullCount && ids.every(id => id.endsWith('@1') && catOf(id) === 'weapons'),
+      `Flipping: filtro Armas + .1 muestra solo armas .1 (${ids.length} de ${fullCount})`,
+      'Flipping: el filtro de encantamiento no acota la tabla → ' + ids.slice(0, 3).join(', '));
+    check($('flipStats').textContent.includes('filtro'),
+      'Flipping: las stats reflejan el filtro activo',
+      'Flipping: stats sin mención del filtro → ' + $('flipStats').textContent.slice(0, 80));
+    const prefs = JSON.parse(window.localStorage.getItem('flipPrefs') || 'null');
+    check(prefs && prefs.branch === 'weapons' && prefs.ench === '1',
+      'Flipping: el filtro persiste en localStorage',
+      'Flipping: flipPrefs no guarda el filtro → ' + JSON.stringify(prefs));
+    // el buscador NO se filtra: con Armas + .1 activo, «bolsa» igual aparece
+    $('flipSearch').value = 'bolsa';
+    $('flipSearch').dispatchEvent(new window.Event('input', { bubbles: true })); await sleep(150);
+    const srBag = $('flipResults').querySelector('.sr-item[data-id="T4_BAG"]');
+    check(!!srBag, 'Flipping: el buscador ignora el filtro (encuentra Bolsa con Armas + .1 activo)',
+      'Flipping: el buscador quedó atado al filtro de rama/encantamiento');
+    // agregar un ítem que el filtro oculta → toast con atajo para quitarlo
+    if (srBag) {
+      srBag.click(); await sleep(150);
+      const toast = $('waToasts') && $('waToasts').lastElementChild;
+      check(!!toast && toast.textContent.includes('filtro'),
+        'Flipping: aviso cuando el filtro oculta el ítem recién agregado',
+        'Flipping: sin aviso de ítem oculto por el filtro');
+      if (toast) { toast.click(); await sleep(150); }
+    }
+    check($('flipBranch').value === '' && $('flipEnch').value === 'all' && rows().includes('T4_BAG'),
+      'Flipping: quitar el filtro restaura la tabla y muestra el ítem agregado',
+      'Flipping: el filtro no se quitó o el ítem agregado no aparece');
+    // rama sin ítems monitoreados → mensaje claro en vez de tabla muda
+    $('flipBranch').value = 'furniture';
+    $('flipBranch').dispatchEvent(new window.Event('change', { bubbles: true })); await sleep(150);
+    check($('flipBody').textContent.includes('Ningún ítem monitoreado coincide'),
+      'Flipping: mensaje claro cuando el filtro no coincide con nada',
+      'Flipping: filtro sin resultados no avisa → ' + bodyOf('flipBody').slice(0, 80));
+    // botón «Quitar filtro» (el de la fila de aviso) restaura la vista completa
+    const clearBtn = $('flipBody').querySelector('[data-clear-filter]');
+    (clearBtn || $('flipFilterReset')).click(); await sleep(150);
+    check($('flipBranch').value === '' && $('flipEnch').value === 'all' && rows().length > 0,
+      'Flipping: quitar el filtro desde la tabla restaura la vista completa',
+      'Flipping: el botón de quitar filtro no restaura la tabla');
+  } catch (e) { errors.push('Flipping filtros: ' + e.message); }
+
   // ── ALERTAS DE PRECIO: alta, disparo, re-arma ──
   try {
     window.eval(`gotoTab('alerts')`); await sleep(200);
