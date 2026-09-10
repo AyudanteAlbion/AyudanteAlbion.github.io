@@ -88,14 +88,17 @@ function saleQuote(p, city) {
 function saleTax(city, premium, setup) {
   return (premium ? 0.04 : 0.08) + (city !== BLACK_MARKET && setup ? 0.025 : 0);
 }
-const fmt = n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-AR');
-const pct = n => n == null || isNaN(n) ? '—' : (n * 100).toFixed(1).replace('.', ',') + '%';
+/* Durante la migración, las pruebas aisladas pueden evaluar app.js sin
+   cargar index.html. El fallback mantiene ese contrato temporalmente. */
+const fmt = window.AAFormat ? AAFormat.fmt : (n => n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-AR'));
+const pct = window.AAFormat ? AAFormat.pct : (n => n == null || isNaN(n) ? '—' : (n * 100).toFixed(1).replace('.', ',') + '%');
 
 let CATALOG = null; // [[id, es, en, tier, maxEnch, cat], ...]
 
 /* ---------- helpers ---------- */
 // timeout: si la API queda colgada, el botón de actualizar no queda inutilizado para siempre
-async function fetchJSON(url, timeoutMs = 25000) {
+/* Fallback temporal para los tests que evalúan app.js sin index.html. */
+const fetchJSON = window.AAApi ? AAApi.fetchJSON : async function (url, timeoutMs = 25000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -108,10 +111,13 @@ async function fetchJSON(url, timeoutMs = 25000) {
   } finally {
     clearTimeout(t);
   }
-}
+};
 
-// Pedir precios en bloques (límite de longitud de URL + rate limit)
-async function fetchPrices(itemIds, locations) {
+// Pedir precios en bloques. La implementación vive en core/api.js; el fallback
+// conserva el contrato de los tests que evalúan app.js sin cargar index.html.
+const fetchPrices = window.AAApi ? ((itemIds, locations) => AAApi.fetchPrices(itemIds, locations, {
+  api: API, blackMarket: BLACK_MARKET
+})) : async function (itemIds, locations) {
   const out = {};
   const chunks = [];
   let cur = [];
@@ -134,7 +140,8 @@ async function fetchPrices(itemIds, locations) {
     }
   }
   return out;
-}
+};
+window.fetchPrices = fetchPrices;
 
 /* ---------- fórmulas ---------- */
 // RRR = bono / (1 + bono)
@@ -145,18 +152,20 @@ function focusCost(baseFocus, mastery, spec) {
   return baseFocus * Math.pow(0.5, fce / 10000);
 }
 
-function ageBadge(dateStr) {
+const ageBadge = window.AAFormat ? AAFormat.ageBadge : function (dateStr) {
   if (!dateStr || dateStr.startsWith('0001')) return '';
   const h = (Date.now() - new Date(dateStr + 'Z').getTime()) / 3.6e6;
   if (h < 1) return `<span class="price-sub">hace ${Math.max(1, Math.round(h * 60))} min</span>`;
   if (h < 48) return `<span class="price-sub">hace ${Math.round(h)} h</span>`;
   return `<span class="price-sub">hace ${Math.round(h / 24)} días</span>`;
-}
+};
 
 /* ---------- precios manuales (compartidos entre pestañas) ---------- */
-let manualPrices = {};
-try { manualPrices = JSON.parse(localStorage.getItem('manualPrices') || '{}'); } catch (e) {}
-function saveManual() { localStorage.setItem('manualPrices', JSON.stringify(manualPrices)); }
+let manualPrices = (window.AAStorage ? AAStorage.readJSON('manualPrices', {}) : {});
+function saveManual() {
+  if (window.AAStorage) AAStorage.writeJSON('manualPrices', manualPrices);
+  else localStorage.setItem('manualPrices', JSON.stringify(manualPrices));
+}
 function mpKey(id, city, kind) { return `${id}|${city}|${kind}`; }
 
 /* ---------- pestañas ---------- */
@@ -166,9 +175,12 @@ const DD_GROUPS = [
   { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute', 'meld', 'alerts'] },
 ];
 function gotoTab(key, sgTab) {
-  document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
-  document.querySelectorAll('.dd-item').forEach(i => i.classList.toggle('active', i.dataset.tab === key));
-  document.querySelectorAll('.top-action').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
+  if (window.AANavigation) AANavigation.activateTab(key);
+  else {
+    document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
+    document.querySelectorAll('.dd-item').forEach(i => i.classList.toggle('active', i.dataset.tab === key));
+    document.querySelectorAll('.top-action').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
+  }
   for (const g of DD_GROUPS) {
     document.getElementById(g.btn).classList.toggle('active', g.keys.includes(key));
   }
@@ -262,10 +274,13 @@ document.getElementById('homeSlideNext').addEventListener('click', () => homeSho
 /* ====================================================================
    FAVORITOS — marcá recetas/ítems con ★ y velos juntos en Inicio
    ==================================================================== */
-const FAV = { list: [] };
-try { FAV.list = JSON.parse(localStorage.getItem('favorites') || '[]'); } catch (e) {}
+const FAV = { list: window.AAStorage ? AAStorage.readJSON('favorites', []) : [] };
 const FAV_TABS = { food: 'Cocina', alch: 'Alquimia', refine: 'Refinamiento', gear: 'Crafteo', enchant: 'Encantar Item', farm: 'Granja', flip: 'Flipping', transmute: 'Transmutación' };
-function favSave() { localStorage.setItem('favorites', JSON.stringify(FAV.list)); favRenderHome(); }
+function favSave() {
+  if (window.AAStorage) AAStorage.writeJSON('favorites', FAV.list);
+  else localStorage.setItem('favorites', JSON.stringify(FAV.list));
+  favRenderHome();
+}
 function favHas(tab, id) { return FAV.list.some(f => f.tab === tab && f.id === id); }
 function favBtnHtml(tab, id, name) {
   const on = favHas(tab, id);
@@ -1215,10 +1230,12 @@ const GEAR = {
   DATA: null, prices: {}, bm: {}, byId: {},
   family: null, tierF: 'all', enchF: 'all',
   sortKey: 'profit', sortDir: -1, expanded: null,
-  plan: [], loadedOnce: false,
+  plan: [], inventory: {}, loadedOnce: false,
 };
 try { GEAR.plan = JSON.parse(localStorage.getItem('gearPlan') || '[]'); } catch (e) {}
+try { GEAR.inventory = JSON.parse(localStorage.getItem('gearInventory') || '{}'); } catch (e) {}
 function saveGearPlan() { localStorage.setItem('gearPlan', JSON.stringify(GEAR.plan)); }
+function saveGearInventory() { localStorage.setItem('gearInventory', JSON.stringify(GEAR.inventory)); }
 
 const G = id => document.getElementById('gear' + id);
 
@@ -1568,12 +1585,26 @@ function renderPlanner() {
     else anyMissing = true;
     totFocus += c.realFocus * p.qty;
     const rRrr = o.rrrFor ? o.rrrFor(r) : o.rrr;
-    for (const res of r.resources) {
-      const cur = matAgg.get(res.id) || { count: 0, eff: 0, ret: res.ret };
-      cur.count += res.count * p.qty;
-      cur.eff += res.count * p.qty * (res.ret ? (1 - rRrr) : 1);
-      matAgg.set(res.id, cur);
-    }
+    /* Desglosa materiales intermedios cuando también existe su receta en el
+       catálogo. Mantiene como compra los materiales sin receta y evita ciclos
+       accidentales en datos importados. */
+    const addMaterials = (recipe, amount, trail) => {
+      const path = trail || new Set();
+      if (path.has(recipe.id)) return;
+      const next = new Set(path); next.add(recipe.id);
+      for (const res of recipe.resources) {
+        const nested = GEAR.byId[res.id];
+        if (nested) addMaterials(nested, amount * res.count, next);
+        else {
+          const count = amount * res.count;
+          const cur = matAgg.get(res.id) || { count: 0, eff: 0, ret: res.ret };
+          cur.count += count;
+          cur.eff += count * (res.ret ? (1 - rRrr) : 1);
+          matAgg.set(res.id, cur);
+        }
+      }
+    };
+    addMaterials(r, p.qty, new Set());
     const cls = c.profit > 0 ? 'pos' : (isNaN(c.profit) ? '' : 'neg');
     return `<tr>
       <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}
@@ -1586,8 +1617,16 @@ function renderPlanner() {
   }).join('');
 
   const matsHtml = [...matAgg.entries()].map(([mid, m]) => {
-    const eff = m.ret ? Math.ceil(m.eff) : m.count;
-    return `<span class="ing plan-mat" title="${GEAR.DATA.ingredients[mid]?.name_es || mid} — brutos: ${fmt(m.count)}${m.ret ? ' · netos con retorno: ' + fmt(eff) : ''}">${iconImg(mid, 'item-icon sm')}<span class="qty">${fmt(eff)}</span></span>`;
+    const eff = m.ret ? Math.ceil(m.eff) : Math.ceil(m.count);
+    const have = Math.max(0, parseInt(GEAR.inventory[mid]) || 0);
+    const buy = Math.max(0, eff - have);
+    const label = GEAR.DATA.ingredients[mid]?.name_es || mid;
+    return `<div class="plan-material-row">
+      <span class="item-cell">${iconImg(mid, 'item-icon sm', label)}<span>${label}</span></span>
+      <span title="Cantidad neta requerida">${fmt(eff)}</span>
+      <label class="micro muted">En inventario <input class="qty-edit plan-inv" type="number" min="0" step="1" value="${have}" data-iid="${mid}" aria-label="${label} en inventario"></label>
+      <strong>${fmt(buy)} para comprar</strong>
+    </div>`;
   }).join('');
 
   panel.innerHTML = `
@@ -1597,20 +1636,32 @@ function renderPlanner() {
       <tbody>${rowsHtml}</tbody>
     </table></div>
     <div class="plan-summary">
-      <div class="cd-title">Materiales totales <span class="muted micro">(cantidades netas esperadas${o.craftCity ? ' · crafteando en ' + o.craftCity : ' con retorno ' + pct(o.rrr)})</span></div>
-      <div class="ing-row" style="margin:6px 0 12px">${matsHtml}</div>
+      <div class="cd-title">Lista de compras <span class="muted micro">(cantidades netas esperadas${o.craftCity ? ' · crafteando en ' + o.craftCity : ' con retorno ' + pct(o.rrr)})</span></div>
+      <div class="planner-material-table" style="margin:6px 0 12px">${matsHtml}</div>
       <div class="cd-line muted"><span>Costo total (materiales + estación + diarios)</span><span>− ${fmt(totCost)}</span></div>
       <div class="cd-line muted"><span>Ingreso total estimado</span><span>+ ${fmt(totRevenue)}</span></div>
       ${o.useFocus ? `<div class="cd-line muted"><span>Focus total requerido</span><span>${fmt(totFocus)}</span></div>` : ''}
       <div class="cd-line total ${totProfit > 0 ? 'pos' : 'neg'}"><span>Ganancia total de la sesión${anyMissing ? ' (hay ítems sin precio)' : ''}</span><span>${(totProfit > 0 ? '+' : '') + fmt(totProfit)}</span></div>
       <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn" id="gearPlanLoad">↻ Cargar precios del plan</button>
+        <button class="btn" id="gearPlanExport">Exportar lista CSV</button>
         <button class="btn" id="gearPlanClear">Vaciar plan</button>
       </div>
     </div>`;
 
   panel.querySelector('#gearPlanClear').addEventListener('click', () => {
     GEAR.plan = []; saveGearPlan(); renderPlanner();
+  });
+  panel.querySelector('#gearPlanExport').addEventListener('click', () => {
+    const lines = ['item,id,requerido,en_inventario,para_comprar'];
+    for (const [mid, m] of matAgg.entries()) {
+      const required = m.ret ? Math.ceil(m.eff) : Math.ceil(m.count);
+      const have = Math.max(0, parseInt(GEAR.inventory[mid]) || 0);
+      const csv = v => '"' + String(v).replace(/"/g, '""') + '"';
+      lines.push([csv(GEAR.DATA.ingredients[mid]?.name_es || mid), csv(mid), required, have, Math.max(0, required - have)].join(','));
+    }
+    const blob = new Blob(['\\ufeff' + lines.join('\\n')], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'lista-compras-ayudante-albion.csv'; a.click();
   });
   panel.querySelector('#gearPlanLoad').addEventListener('click', () => {
     const list = GEAR.plan.map(p => GEAR.byId[p.id]).filter(Boolean);
@@ -1834,6 +1885,13 @@ function buildGearUI() {
 
   // planeador: cantidades y quitar
   G('PlannerPanel').addEventListener('change', e => {
+    const inv = e.target.closest('.plan-inv');
+    if (inv) {
+      const value = Math.max(0, parseInt(inv.value) || 0);
+      if (value) GEAR.inventory[inv.dataset.iid] = value;
+      else delete GEAR.inventory[inv.dataset.iid];
+      saveGearInventory(); renderPlanner(); return;
+    }
     const q = e.target.closest('.qty-edit'); if (!q) return;
     const p = GEAR.plan.find(x => x.id === q.dataset.qid);
     if (p) { p.qty = Math.max(1, parseInt(q.value) || 1); saveGearPlan(); renderPlanner(); }
@@ -2572,8 +2630,17 @@ document.querySelectorAll('.top-action[data-tab]').forEach(btn =>
    BUSCADOR GLOBAL DE PRECIOS
    Venta más barata y mejor orden de compra por ciudad × calidad.
    ==================================================================== */
-const PS = { item: null, ench: 0, data: null, history: [] };
+const PS = { item: null, ench: 0, data: null, history: [], marketHistory: [] };
 try { PS.history = JSON.parse(localStorage.getItem('psHistory') || '[]'); } catch (e) {}
+try { PS.marketHistory = JSON.parse(localStorage.getItem('marketHistory') || '[]'); } catch (e) {}
+function psSaveMarketSnapshot(id, data) {
+  if (window.AAMarketHistory) PS.marketHistory = AAMarketHistory.saveSnapshot(PS.marketHistory, id, data, Date.now());
+  else return;
+  try { localStorage.setItem('marketHistory', JSON.stringify(PS.marketHistory)); } catch (e) {}
+}
+function psTrend(id, quality) {
+  return window.AAMarketHistory ? AAMarketHistory.trend(PS.marketHistory, id, quality, BLACK_MARKET) : null;
+}
 
 const QUALITY_ES = { 1: 'Normal', 2: 'Buena', 3: 'Notable', 4: 'Excelente', 5: 'Obra maestra' };
 const PS_CITIES = SELL_CITIES;
@@ -2596,6 +2663,7 @@ async function psLoad() {
     // sin filtro de calidad → devuelve todas
     const data = await fetchJSON(`${API}/prices/${id}.json?locations=${PS_CITIES.map(c => c.replace(' ', '%20')).join(',')}`);
     PS.data = data;
+    psSaveMarketSnapshot(id, data);
     psRender(id);
   } catch (e) {
     box.innerHTML = `<div class="panel"><div class="loading-cell">Error: ${e.message}</div></div>`;
@@ -2625,6 +2693,11 @@ function psRender(id) {
     if (v.sell > 0 && v.sell < bestSell) bestSell = v.sell;
     if (v.buy > bestBuy) bestBuy = v.buy;
   }
+  const opportunities = window.AAMarketHistory
+    ? AAMarketHistory.opportunities(grid, cities, BLACK_MARKET) : [];
+  const trend = psTrend(id, 1);
+  const opportunityHtml = opportunities.length ? `<div class="panel market-opportunities"><h3>Oportunidades de flipping — calidad Normal</h3><div class="table-wrap"><table class="ledger"><thead><tr><th>Comprar</th><th>Vender</th><th class="num">Capital</th><th class="num">Ganancia neta</th><th class="num">Margen</th></tr></thead><tbody>${opportunities.slice(0, 8).map(o => `<tr><td>${o.from}</td><td>${o.to}</td><td class="num">${fmt(o.buy)}</td><td class="num pos">+${fmt(o.profit)}</td><td class="num pos">${pct(o.margin)}</td></tr>`).join('')}</tbody></table></div><div class="micro muted pad">Impuestos estimados: Premium y orden de venta en ciudades; Black Market usa 4% sin publicación. No incluye transporte.</div></div>` : '';
+  const trendHtml = trend ? `<div class="market-trend"><b>Tendencia observada</b> <span class="${trend.change >= 0 ? 'pos' : 'neg'}">${trend.change >= 0 ? '+' : ''}${pct(trend.change)}</span> · ${trend.points.length} registros · promedio actual ${fmt(trend.last)}</div>` : '<div class="market-trend muted">Historial: se necesitan al menos dos capturas para mostrar tendencia.</div>';
   box.innerHTML = `
   <div class="panel table-wrap">
     <div class="flip-head" style="padding:14px 14px 4px">
@@ -2633,6 +2706,8 @@ function psRender(id) {
         <div class="item-meta">${id} · venta más barata: <b class="pos">${fmt(bestSell === Infinity ? null : bestSell)}</b> · mejor orden de compra: <b>${fmt(bestBuy || null)}</b></div>
       </div></div>
     </div>
+    ${trendHtml}
+    ${opportunityHtml}
     <table class="ledger">
       <thead><tr><th>Ciudad</th><th>Calidad</th><th class="num">Venta (más barato)</th><th class="num">Orden de compra (mejor)</th></tr></thead>
       <tbody>${cities.map(c => {
@@ -2889,8 +2964,8 @@ function llUpdateCities() {
   });
   /* claves que viajan en el respaldo: datos del usuario, nunca la sesión de
      Discord (se obtiene ingresando) ni la URL del proxy (config de desarrollo) */
-  const BK_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'kaOn', 'manualPrices',
-    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild'];
+  const BK_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory', 'kaOn', 'manualPrices',
+    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild'];
   const BK_MAX_BYTES = 5 * 1024 * 1024;
   const bkKeyOk = k => typeof k === 'string' && (BK_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
   document.getElementById('bkImport').addEventListener('click', () => document.getElementById('bkFile').click());
