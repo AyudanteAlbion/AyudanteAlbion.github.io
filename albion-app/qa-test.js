@@ -903,6 +903,64 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       }
     } catch (e) { errors.push('WM mapa de guerra: ' + e.message); }
 
+    // ── COMPOSITOR DE BUILDS: ítems planos y encantados .1–.4 ──
+    try {
+      const bdTab = window.document.querySelector('[data-room-tab="builds"]');
+      check(!!bdTab, 'BD: existe la subpestaña Builds en el Salón', 'BD: falta data-room-tab=builds');
+      if (bdTab) {
+        bdTab.click(); await sleep(150);
+        check(!!$('bdMount'), 'BD: panel de builds montado', 'BD: falta #bdMount');
+        $('bdNewBtn').click(); await sleep(120);
+        check(!!$('bdNameInput') && !!window.document.querySelector('[data-bd-pick="mainHand"]'),
+          'BD: el editor abre con los 8 slots', 'BD: editor sin slots');
+        // selector del arma: debe ofrecer plano y .1 a .4
+        window.document.querySelector('[data-bd-pick="mainHand"]').click(); await sleep(120);
+        const ms = $('bdModalSearch');
+        check(!!ms && !!$('bdModalList'), 'BD: modal del selector de ítems', 'BD: no abre el modal del selector');
+        if (ms) {
+          ms.value = 'T6_MAIN_SWORD';
+          ms.dispatchEvent(new window.Event('input', { bubbles: true })); await sleep(120);
+          const opts = [...window.document.querySelectorAll('#bdModalList [data-bd-select]')].map(el => el.dataset.bdSelect);
+          check(opts.includes('T6_MAIN_SWORD') && opts.includes('T6_MAIN_SWORD@1')
+              && opts.includes('T6_MAIN_SWORD@2') && opts.includes('T6_MAIN_SWORD@3')
+              && opts.includes('T6_MAIN_SWORD@4'),
+            'BD: el selector ofrece el ítem plano y .1–.4',
+            'BD: faltan variantes de encantamiento → ' + opts.slice(0, 8).join(', '));
+          check(bodyOf('bdModalList').includes('.2') && bodyOf('bdModalList').includes('T6.2'),
+            'BD: las variantes muestran sufijo .N y tier T6.N', 'BD: meta de variantes sin .N');
+          // elegir la .2 → el slot debe mostrar nombre e id encantados
+          const opt2 = window.document.querySelector('#bdModalList [data-bd-select="T6_MAIN_SWORD@2"]');
+          check(!!opt2, 'BD: se puede elegir la variante .2', 'BD: no existe la opción .2');
+          if (opt2) { opt2.click(); await sleep(120); }
+          const editor = bodyOf('bdMount');
+          check(editor.includes('Espada ancha del maestro .2') && editor.includes('T6_MAIN_SWORD@2'),
+            'BD: el slot muestra el ítem encantado (nombre .2 + id @2)',
+            'BD: slot sin encantamiento → ' + editor.slice(0, 160));
+          // el costo consulta la variante exacta y la alerta vigila ese id
+          $('bdCalcBtn').click(); await sleep(700);
+          const cost = bodyOf('bdCostBox');
+          check(cost.includes('Espada ancha del maestro .2') && /1[.,]000/.test(cost),
+            'BD: el costo total se calcula sobre la variante encantada',
+            'BD: costo sin calcular → ' + cost.slice(0, 140));
+          const ab = $('bdAlertBtn');
+          check(!!ab, 'BD: botón de alerta de precio de la build', 'BD: falta el botón de alerta');
+          if (ab) {
+            ab.click(); await sleep(120);
+            // WA es léxico al eval de app.js: el estado se lee del localStorage (como la sección de Alertas)
+            const saved = JSON.parse(window.localStorage.getItem('priceAlerts') || '[]');
+            check(saved.some(a => a.id === 'T6_MAIN_SWORD@2'),
+              'BD: la alerta vigila el id encantado @2', 'BD: la alerta no quedó sobre el id @2 → ' + JSON.stringify(saved.map(a => a.id)));
+            // limpieza para no dejar la alerta de la build en la suite
+            window.localStorage.setItem('priceAlerts',
+              JSON.stringify(saved.filter(a => !String(a.id).startsWith('T6_MAIN_SWORD'))));
+          }
+        }
+        // volver a Resumen para no romper el resto de la suite
+        const sumTab2 = window.document.querySelector('[data-room-tab="summary"]');
+        if (sumTab2) { sumTab2.click(); await sleep(150); }
+      }
+    } catch (e) { errors.push('BD builds encantadas: ' + e.message); }
+
     // filtro por nombre
     const rs = $('sgRankSearch');
     if (rs) {
