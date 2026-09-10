@@ -78,7 +78,7 @@
           </button>
           <button class="dd-item" data-tab="enchant" role="menuitem">
             <span class="chip-ico dd-chip"><svg><use href="#i-spark"/></svg></span>
-            <span><span class="dd-name">Encantado</span></span>
+            <span><span class="dd-name">Encantar Item</span></span>
           </button>
           <button class="dd-item" data-tab="farm" role="menuitem">
             <span class="chip-ico dd-chip"><svg><use href="#i-sprout"/></svg></span>
@@ -252,7 +252,7 @@
           </button>
           <button type="button" class="home-tool" data-goto="enchant">
             <span class="chip-ico"><svg aria-hidden="true"><use href="#i-spark"/></svg></span>
-            <span class="home-tool-copy"><span class="home-tool-name">Encantado</span><span class="home-tool-desc">Compará comprar encantado o usar fragmentos.</span></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Encantar Item</span><span class="home-tool-desc">Compará comprar encantado o usar fragmentos.</span></span>
             <span class="home-tool-go" aria-hidden="true">↗</span>
           </button>
           <button type="button" class="home-tool" data-goto="farm">
@@ -403,13 +403,13 @@
       </thead>
       <tbody id="transBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
     </table>
-    <div class="micro muted pad">Ganancia = venta neta de impuestos − compra del origen − costo de transmutación. Precios editables: hacé clic en una fila para ver el desglose.</div>
+    <div class="micro muted pad"></div>
   </div>
 
   <div class="panel controls">
     <h2 class="section-title">Planificador de ruta</h2>
     <div class="micro muted" style="margin-bottom:12px">
-      Elegí el recurso que necesitás y compará: comprarlo directo vs. comprar uno inferior y transmutarlo. Las rutas usan la cadena más barata posible.
+
     </div>
     <div class="control-grid">
       <div class="control">
@@ -501,7 +501,7 @@
       </thead>
       <tbody id="meldBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
     </table>
-    <div class="micro muted pad">Valor esperado = promedio de la venta neta de todos los artefactos del pool (equiprobables). Tiradas ganadoras = % de resultados que cubren el costo. Hacé clic en una fila para ver el pool completo con precios editables.</div>
+    <div class="micro muted pad"></div>
   </div>
 
   <div class="panel controls">
@@ -645,10 +645,11 @@
           <select id="enSellCity"></select>
         </div>
         <label class="check"><input type="checkbox" id="enPremium" checked> Premium (impuesto 4%)</label>
+        <label class="check"><input type="checkbox" id="enSetup" checked> Orden de venta (+2,5%)</label>
         <button class="btn primary" id="enRefresh">↻ Actualizar</button>
       </div>
     </div>
-    <div class="micro muted">Compará cada nivel: ¿comprar el ítem ya encantado, o comprar el nivel anterior y encantarlo con fragmentos en el Transmutador? Runas (0→1), almas (1→2), reliquias (2→3). Las cantidades son las oficiales de cada ítem.</div>
+    <div class="micro muted">Compará cada nivel: ¿comprar el ítem ya encantado, o comprar el nivel anterior y encantarlo con fragmentos en el Transmutador? </div>
   </div>
   <div id="enResult"><div class="panel"><div class="loading-cell">Buscá una pieza de equipo para empezar.</div></div></div>
 </section>
@@ -704,7 +705,7 @@
       </thead>
       <tbody id="fmBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
     </table>
-    <div class="micro muted pad">Estimación con rendimientos medios y bono local nominal; las cosechas reales varían por azar y redondeo. Los márgenes de animales no descuentan alimento ni la inversión inicial del productor. El bono de carnicería no se aplica a la venta de animales vivos.</div>
+    <div class="micro muted pad"></div>
   </div>
 </section>
 
@@ -713,7 +714,21 @@
   <div class="panel controls">
     <div class="flip-head">
       <div class="search-wrap">
-        <input type="search" id="flipSearch" placeholder="Buscar cualquier ítem… (ej: bolsa, capa, montura, espada)" class="search big">
+        <div class="flip-search-row">
+          <input type="search" id="flipSearch" placeholder="Buscar cualquier ítem… (ej: bolsa, capa, montura, espada)" class="search big">
+          <select id="flipBranch" class="mini-select" aria-label="Rama de ítems">
+            <option value="">Todas las ramas</option>
+          </select>
+          <select id="flipEnch" class="mini-select" aria-label="Encantamiento">
+            <option value="all">Todos los encantamientos</option>
+            <option value="0">Sin encantar (.0)</option>
+            <option value="1">Encantamiento .1</option>
+            <option value="2">Encantamiento .2</option>
+            <option value="3">Encantamiento .3</option>
+            <option value="4">Encantamiento .4</option>
+          </select>
+        </div>
+        <div class="micro muted">Podés buscar por texto, rama y encantamiento, o combinar los filtros.</div>
         <div class="search-results" id="flipResults"></div>
       </div>
       <div class="toggles inline">
@@ -729,11 +744,7 @@
       </div>
     </div>
     <div class="micro muted">
-      Flipping: comprá al precio de venta más bajo en una ciudad y vendé en otra donde el precio sea mayor.
-      La ganancia ya descuenta impuestos. Con «Mejor ciudad» se elige automáticamente la ruta más rentable;
-      fijá origen y/o destino para planear tu propia ruta (se recuerda entre sesiones).
-      Black Market solo permite vender: usa su orden de compra, sin tasa de publicación. Precios de calidad Normal.
-      Con 🔔 en cada fila creás una alerta de precio.
+
     </div>
   </div>
 
@@ -755,7 +766,7 @@
       </thead>
       <tbody id="flipBody"></tbody>
     </table>
-    <div class="micro muted pad">* Flip rápido: vender de inmediato a la mejor orden de compra existente (sin esperar, sin tasa de publicación).</div>
+    <div class="micro muted pad"></div>
   </div>
 
   <div class="panel" id="flipDetail" style="display:none"></div>
@@ -767,8 +778,7 @@
   <div class="panel controls">
     <h2 class="section-title">Nueva alerta</h2>
     <div class="micro muted" style="margin-bottom:12px">
-      La app revisa los precios cada pocos minutos <b>mientras esté abierta</b> y te avisa cuando se cumple la condición:
-      comprá cuando la venta cae, vendé cuando la orden de compra sube, o esperá a que aparezca un flip rentable.
+      <strong>Configurá una alerta y verificá los precios cuando quieras.</strong> La app te avisará cuando se cumpla la condición.
     </div>
     <div class="control-grid">
       <div class="control search-wrap">
@@ -822,8 +832,7 @@
       </div>
     </div>
     <div class="micro muted" style="margin-top:8px">
-      Los navegadores frenan los temporizadores en pestañas de fondo: la verificación pendiente corre al volver.
-      Los precios vienen de la API comunitaria y pueden llegar con demora. Máximo 30 alertas por turno de verificación.
+
     </div>
   </div>
 
@@ -835,8 +844,7 @@
       </tr></thead>
       <tbody id="waBody"><tr><td colspan="8" class="loading-cell">Sin alertas todavía.</td></tr></tbody>
     </table>
-    <div class="micro muted pad">«Falta»: distancia del precio actual al umbral (en % de plata, o puntos porcentuales para el flip).
-      ⏸ pausa la alerta; ▶ la reactiva y la re-arma para volver a avisar.</div>
+    <div class="micro muted pad"></div>
   </div>
 </section>
 
@@ -844,7 +852,7 @@
 <section id="tab-formulas" class="tab-panel">
   <div class="panel doc">
     <h2>Fórmulas utilizadas</h2>
-    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos; la 10 y la 11, Encantado y Granja; la 12, el costo de Foco según tu Perfil.</p>
+    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos; la 10 y la 11, Encantar Item y Granja; la 12, el costo de Foco según tu Perfil.</p>
 
     <h3>1 · Tasa de retorno de recursos (RRR)</h3>
     <p>Los bonos son aditivos y luego se convierten a tasa de retorno:</p>
@@ -903,7 +911,7 @@ ganancia_esperada = EV − costo_tirada
 incertidumbre de una sesión = desviación_estándar × √tiradas</pre>
     <p>El resultado es <b>uniforme</b> entre los artefactos posibles del pool (mismo tier y tipo de fragmento). Los no comerciables cuentan como valor 0. El EV es un promedio: la mediana indica el resultado típico y el % de tiradas ganadoras cuántos resultados cubren el costo. Con pocas tiradas domina la suerte; con muchas, el resultado converge al EV.</p>
 
-    <h3>10 · Encantado con fragmentos</h3>
+    <h3>10 · Encantar Item con fragmentos</h3>
     <pre>costo_encantar = precio_ítem_nivel_anterior + N × precio_fragmento
 ahorro = precio_ítem_encantado − costo_encantar   [conviene encantar si ahorro > 0]</pre>
     <p>Cada pieza usa una <b>cantidad fija N de fragmentos del mismo tier</b>, extraída de los datos oficiales del juego: runas para .0→.1, almas para .1→.2 y reliquias para .2→.3. La cantidad depende del tipo de pieza (por ejemplo: arma a dos manos 384, armadura/bolsa/capa 192, casco/zapatos 96). El salto .3→.4 no usa fragmentos —se craftea con materiales encantados—, por eso la herramienta cubre hasta .3. Encantar no tiene costo de plata ni de Foco: solo el ítem base y los fragmentos.</p>
