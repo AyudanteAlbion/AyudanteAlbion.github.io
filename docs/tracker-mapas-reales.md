@@ -122,11 +122,28 @@ Persistencia y performance:
   «Tu territorio más cercano: X a N saltos» + rival más cercano. Marcados en el minimapa.
 
 ## 8 · UX y share
-- `?map=Nombre` abre directo el Mapa de Guerra con esa zona (validada contra el grafo; si no
+- `?map=Nombre` abre directo el **Tracker por Zona** con esa zona (validada contra el grafo; si no
   hay sesión, queda preseleccionada para después del ingreso). Botón 🔗 copia el link.
 - Export CSV de batallas filtradas (separador `;`, BOM, neutralización de fórmulas).
 - Caché de /battles en localStorage (`wmBattlesCache`, 5 min, versión aligerada de cada batalla).
-- Móvil: el tracker se abre como hoja inferior con botón flotante 🎯.
+
+## 9 · Separación en dos botones (2026-09-10)
+Antes el tracker vivía *adentro* del Mapa de Guerra (panel + hoja inferior en móvil), y las dos
+herramientas se pisaban. Ahora son dos botones independientes del Salón:
+
+| Botón | `data-room-tab` | mount | render | contenido |
+|---|---|---|---|---|
+| Mapa de Guerra | `war` | `#wmMount` | `wmRender()` | territorios SG reconstruidos, próximos GvG, rivales, kills del gremio |
+| Tracker por Zona | `tracker` | `#wmTrackerMount` | `wmTrackerRender()` | buscador de mapas, minimapa, rutas seguras, zonas vigiladas, batallas y CSV |
+
+- Cada panel se monta al activar su tab (`SG_ROOM_TABS`); los `wmRender*` propios son no-ops si el
+  otro mount todavía no existe, así que se pueden refrescar cruzados sin orden.
+- Puentes, no mezclas: el territorio de SG ofrece 🎯 Rastrear (`wmTrackZone()` → selecciona la zona
+  y saltea al tracker), y el tracker sigue mostrando el territorio propio/rival más cercano en saltos.
+- Los toasts del motor de alertas, del CSV y del link copiado apuntan a `wmOpenTrackerTab()`; los del
+  GvG/territorios siguen con `wmOpenWarTab()`.
+- Móvil: se eliminó la hoja inferior y el botón flotante 🎯 (`wm-sheet` / `wm-fab`); la pestaña propia
+  ya resuelve el problema y los cuatro botones se reparten la fila.
 
 ## QA
 - `qa-test.js`: stubs de `/battles` y `/battles/:id`, territorio propio en zona real
