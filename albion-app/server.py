@@ -29,6 +29,23 @@ BROWSER_HEADERS = {
     'Referer': 'https://gameinfo.albiononline.com/game-info-players/',
 }
 
+# Mismas rutas y parámetros que el Worker de Cloudflare (GAMEINFO_ROUTES /
+# GAMEINFO_PARAMS): el proxy local tampoco sirve de relay genérico hacia
+# gameinfo. Si la app usa una ruta nueva, sumarla acá, al Worker y al exe.
+GAMEINFO_ROUTES = [
+    re.compile(r'^/search$'),
+    re.compile(r'^/players/[A-Za-z0-9_-]{1,64}$'),
+    re.compile(r'^/players/[A-Za-z0-9_-]{1,64}/(kills|deaths|topkills|solokills)$'),
+    re.compile(r'^/guilds/[A-Za-z0-9_-]{1,64}$'),
+    re.compile(r'^/guilds/[A-Za-z0-9_-]{1,64}/(members|top)$'),
+    re.compile(r'^/events$'),
+    re.compile(r'^/guildmatches/(next|past|top)$'),
+    re.compile(r'^/guildmatches/[A-Za-z0-9_-]{1,64}$'),
+    re.compile(r'^/battles$'),
+    re.compile(r'^/battles/[A-Za-z0-9_-]{1,64}$'),
+]
+GAMEINFO_PARAMS = {'q', 'range', 'limit', 'offset', 'sort', 'guildId'}
+
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/gameinfo/'):
@@ -53,14 +70,18 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     # probar el ingreso, la Sala de miembros y los no-miembros sin claves.
 
     def _discord_redirect_ok(self, redirect):
-        """Solo acepta volver al propio origen (o localhost): anti redirector abierto."""
+        """Allowlist fija (solo localhost, cualquier puerto): anti redirector
+        abierto. El header Host no se usa: el cliente manda el Host que quiere,
+        y con DNS rebinding un sitio remoto puede terminar apuntando acá.
+        Devuelve el destino normalizado (sin query ni fragmento) o None."""
         if not redirect:
-            return False
-        host = self.headers.get('Host', '')
-        if host and any(redirect.startswith(scheme + '://' + host + '/')
-                        for scheme in ('http', 'https')):
-            return True
-        return bool(re.match(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?/', redirect))
+            return None
+        u = urllib.parse.urlparse(redirect)
+        if u.scheme not in ('http', 'https'):
+            return None
+        if u.hostname not in ('localhost', '127.0.0.1'):
+            return None
+        return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path, '', ''))
 
     def discord_config(self):
         body = json.dumps({'configured': True, 'loginUrl': '/discord/login'}).encode()
@@ -73,8 +94,8 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def discord_login(self):
         """Pantalla de autorización simulada (dos roles: miembro y no miembro)."""
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        redirect = (q.get('redirect') or [''])[0]
-        if not self._discord_redirect_ok(redirect):
+        redirect = self._discord_redirect_ok((q.get('redirect') or [''])[0])
+        if not redirect:
             return self.send_error(400, 'redirect no permitido')
         safe = urllib.parse.quote(redirect, safe='')
         html = """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
@@ -122,9 +143,9 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
 
     def discord_callback(self):
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        redirect = (q.get('redirect') or [''])[0]
         member = (q.get('member') or ['1'])[0] == '1'
-        if not self._discord_redirect_ok(redirect):
+        redirect = self._discord_redirect_ok((q.get('redirect') or [''])[0])
+        if not redirect:
             return self.send_error(400, 'redirect no permitido')
         now = int(time.time() * 1000)
         payload = {
@@ -182,7 +203,14 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(502)
 
     def proxy_gameinfo(self):
-        url = GAMEINFO + self.path[len('/gameinfo'):]
+        sub = self.path[len('/gameinfo'):]
+        path, _, query = sub.partition('?')
+        # allowlist de rutas y parámetros, igual que el Worker
+        if not any(rx.match(path) for rx in GAMEINFO_ROUTES):
+            return self.send_error(404)
+        params = [(k, v) for k, v in urllib.parse.parse_qsl(query, keep_blank_values=True)
+                  if k in GAMEINFO_PARAMS and len(v) <= 100]
+        url = GAMEINFO + path + ('?' + urllib.parse.urlencode(params) if params else '')
         try:
             req = urllib.request.Request(url, headers=BROWSER_HEADERS)
             with urllib.request.urlopen(req, timeout=15) as r:

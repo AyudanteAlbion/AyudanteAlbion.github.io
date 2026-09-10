@@ -14,16 +14,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Enviar notificación a Discord
+        # Seguridad (anti inyección de shell): los datos del evento (tag, cuerpo
+        # del release, URLs) entran por variables de entorno — nunca por
+        # interpolación ${{ }} dentro del script — y el JSON se arma con jq,
+        # que escapa comillas y saltos de línea de forma segura.
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
         run: |
-          if [ "${{ github.event_name }}" == "release" ]; then
-            MESSAGE="🚀 **¡Nueva Versión: ${{ github.event.release.tag_name }}!**\n\n${{ github.event.release.body }}\n\n🔗 Link: ${{ github.event.release.html_url }}"
+          if [ "$EVENT_NAME" = "release" ]; then
+            MESSAGE=$(printf '🚀 **¡Nueva Versión: %s!**\n\n%s\n\n🔗 Link: %s' "$RELEASE_TAG" "$RELEASE_BODY" "$RELEASE_URL")
           else
-            MESSAGE=" **El README de Ayudante Albion ha sido actualizado.**\n\n🔗 Ver cambios: ${{ github.event.head_commit.url }}"
+            MESSAGE=$(printf '**El README de Ayudante Albion ha sido actualizado.**\n\n🔗 Ver cambios: %s' "$COMMIT_URL")
           fi
-          
-          curl -H "Content-Type: application/json" \
-               -d "{\"content\": \"$MESSAGE\"}" \
-               ${{ secrets.DISCORD_WEBHOOK_URL }}
+          jq -n --arg content "$MESSAGE" '{"content": $content}' > discord_payload.json
+          curl -fsS -H "Content-Type: application/json" \
+               --data-binary @discord_payload.json \
+               "$WEBHOOK_URL"

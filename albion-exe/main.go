@@ -11,8 +11,10 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -28,15 +30,61 @@ const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 // Momento del último latido, en UnixNano (atómico para acceso concurrente).
 var lastBeat atomic.Int64
 
-func openBrowser(url string) {
+// Mismas rutas que el Worker de Cloudflare (GAMEINFO_ROUTES): el proxy local
+// tampoco sirve de relay genérico hacia gameinfo. Si la app usa una ruta
+// nueva, sumarla acá, al Worker y a server.py.
+var gameinfoRoutes = []*regexp.Regexp{
+	regexp.MustCompile(`^/search$`),
+	regexp.MustCompile(`^/players/[A-Za-z0-9_-]{1,64}$`),
+	regexp.MustCompile(`^/players/[A-Za-z0-9_-]{1,64}/(kills|deaths|topkills|solokills)$`),
+	regexp.MustCompile(`^/guilds/[A-Za-z0-9_-]{1,64}$`),
+	regexp.MustCompile(`^/guilds/[A-Za-z0-9_-]{1,64}/(members|top)$`),
+	regexp.MustCompile(`^/events$`),
+	regexp.MustCompile(`^/guildmatches/(next|past|top)$`),
+	regexp.MustCompile(`^/guildmatches/[A-Za-z0-9_-]{1,64}$`),
+	regexp.MustCompile(`^/battles$`),
+	regexp.MustCompile(`^/battles/[A-Za-z0-9_-]{1,64}$`),
+}
+
+// Mismos parámetros que el Worker (GAMEINFO_PARAMS), valores de hasta 100 caracteres.
+var gameinfoParams = map[string]bool{
+	"q": true, "range": true, "limit": true, "offset": true, "sort": true, "guildId": true,
+}
+
+func gameinfoRouteAllowed(sub string) bool {
+	for _, re := range gameinfoRoutes {
+		if re.MatchString(sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostAllowed valida el header Host: el servidor solo atiende al navegador
+// local. Sin este chequeo, un ataque de DNS rebinding (un dominio público que
+// resuelve a 127.0.0.1) le daría a una página remota el mismo origen que la
+// app: podría leer el localStorage (sesión SG incluida) y usar los proxies.
+func hostAllowed(r *http.Request) bool {
+	if r.Host == "" {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = r.Host // venía sin puerto
+	}
+	host = strings.Trim(host, "[]")
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
+}
+
+func openBrowser(appURL string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", appURL)
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", appURL)
 	default:
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.Command("xdg-open", appURL)
 	}
 	_ = cmd.Start()
 }
@@ -47,22 +95,41 @@ func main() {
 		panic(err)
 	}
 	fileServer := http.FileServer(http.FS(sub))
+	mux := http.NewServeMux()
 
 	// Latido de la página: renueva el contador de vida.
-	http.HandleFunc("/alive", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/alive", func(w http.ResponseWriter, r *http.Request) {
 		lastBeat.Store(time.Now().UnixNano())
 		w.WriteHeader(http.StatusNoContent)
 	})
 
 	// Proxy hacia la API oficial de jugadores (gameinfo no envía CORS,
-	// así que el navegador no puede llamarla directo).
-	http.HandleFunc("/gameinfo/", func(w http.ResponseWriter, r *http.Request) {
+	// así que el navegador no puede llamarla directo). Allowlist de rutas
+	// y parámetros, igual que el Worker de Cloudflare: el proxy local
+	// tampoco es un relay genérico hacia gameinfo.
+	mux.HandleFunc("/gameinfo/", func(w http.ResponseWriter, r *http.Request) {
 		lastBeat.Store(time.Now().UnixNano())
-		url := "https://gameinfo.albiononline.com/api/gameinfo" + strings.TrimPrefix(r.URL.Path, "/gameinfo")
-		if r.URL.RawQuery != "" {
-			url += "?" + r.URL.RawQuery
+		subPath := strings.TrimPrefix(r.URL.Path, "/gameinfo")
+		if !gameinfoRouteAllowed(subPath) {
+			http.Error(w, "ruta no permitida", http.StatusNotFound)
+			return
 		}
-		req, err := http.NewRequest("GET", url, nil)
+		target := "https://gameinfo.albiononline.com/api/gameinfo" + subPath
+		qs := url.Values{}
+		for k, vs := range r.URL.Query() {
+			if !gameinfoParams[k] {
+				continue
+			}
+			for _, v := range vs {
+				if len(v) <= 100 {
+					qs.Add(k, v)
+				}
+			}
+		}
+		if q := qs.Encode(); q != "" {
+			target += "?" + q
+		}
+		req, err := http.NewRequest("GET", target, nil)
 		if err != nil {
 			http.Error(w, "bad request", http.StatusBadGateway)
 			return
@@ -92,21 +159,21 @@ func main() {
 	// Tracker por Zona (el killboard oficial puede atrasarse; Murderledger
 	// sincroniza su propia base cada ~5 min). Allowlist estricta, igual que
 	// el Worker de Cloudflare.
-	http.HandleFunc("/murderledger/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/murderledger/", func(w http.ResponseWriter, r *http.Request) {
 		lastBeat.Store(time.Now().UnixNano())
-		sub := strings.TrimPrefix(r.URL.Path, "/murderledger")
-		if sub == "" {
-			sub = "/home"
+		mlPath := strings.TrimPrefix(r.URL.Path, "/murderledger")
+		if mlPath == "" {
+			mlPath = "/home"
 		}
-		if sub != "/home" && sub != "/vod-events" {
+		if mlPath != "/home" && mlPath != "/vod-events" {
 			http.Error(w, "ruta no permitida", http.StatusNotFound)
 			return
 		}
-		url := "https://murderledger.albiononline2d.com/api" + sub
+		target := "https://murderledger.albiononline2d.com/api" + mlPath
 		if r.URL.RawQuery != "" {
-			url += "?" + r.URL.RawQuery
+			target += "?" + r.URL.RawQuery
 		}
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", target, nil)
 		if err != nil {
 			http.Error(w, "bad request", http.StatusBadGateway)
 			return
@@ -129,13 +196,13 @@ func main() {
 	// Proxy hacia DecAPI: estado EN VIVO/OFFLINE de los canales de Twitch de
 	// los creadores. La app prueba el fetch directo primero; esto cubre los
 	// entornos donde el servicio no manda CORS (mismo truco que /gameinfo).
-	http.HandleFunc("/twitch/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/twitch/", func(w http.ResponseWriter, r *http.Request) {
 		lastBeat.Store(time.Now().UnixNano())
 		// Ojo: en DecAPI el prefijo /twitch es parte de la ruta real
 		// (https://decapi.me/twitch/uptime/<canal>); recortarlo devolvía 404
 		// y el indicador EN VIVO/OFFLINE nunca aparecía en el ejecutable.
-		url := "https://decapi.me" + r.URL.Path
-		req, err := http.NewRequest("GET", url, nil)
+		target := "https://decapi.me" + r.URL.Path
+		req, err := http.NewRequest("GET", target, nil)
 		if err != nil {
 			http.Error(w, "bad request", http.StatusBadGateway)
 			return
@@ -154,7 +221,7 @@ func main() {
 		_, _ = io.Copy(w, resp.Body)
 	})
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Cualquier pedido cuenta como señal de vida (navegación, íconos…)
 		lastBeat.Store(time.Now().UnixNano())
 		// Mismas reglas de caché que server.py: íconos 7 días, resto sin caché
@@ -166,6 +233,17 @@ func main() {
 		fileServer.ServeHTTP(w, r)
 	})
 
+	// Todo pasa por el guardián de Host (anti DNS rebinding); de paso se manda
+	// X-Content-Type-Options para que el navegador no adivine tipos de contenido.
+	guard := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostAllowed(r) {
+			http.Error(w, "host no permitido", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		mux.ServeHTTP(w, r)
+	})
+
 	// Puerto fijo 3000; si está ocupado, uno libre asignado por el sistema
 	ln, err := net.Listen("tcp", "127.0.0.1:3000")
 	if err != nil {
@@ -174,7 +252,7 @@ func main() {
 			panic(err)
 		}
 	}
-	url := fmt.Sprintf("http://%s", ln.Addr().String())
+	appURL := fmt.Sprintf("http://%s", ln.Addr().String())
 
 	// Gracia inicial: 75 s para que el navegador arranque aunque sea lento.
 	lastBeat.Store(time.Now().Add(75 * time.Second).UnixNano())
@@ -196,10 +274,10 @@ func main() {
 
 	go func() {
 		time.Sleep(400 * time.Millisecond)
-		openBrowser(url)
+		openBrowser(appURL)
 	}()
 
-	if err := http.Serve(ln, nil); err != nil {
+	if err := http.Serve(ln, guard); err != nil {
 		panic(err)
 	}
 }
