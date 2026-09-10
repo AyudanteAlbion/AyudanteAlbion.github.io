@@ -67,3 +67,68 @@ Persistencia y performance:
 - Mostrar mapa visual con SVG usando posiciones de exits (si se parsean x,y de world.xml)
 - Alertas por zona: notificar cuando hay batalla en zonas vigiladas
 - Heatmap de actividad por hora
+
+---
+
+# Fase 2 (2026-09): minimapa, alertas por zona, rutas y scoring de peligro
+
+## Coordenadas del mundo
+- world.xml trae `worldmapposition="x y"` en cada `<cluster>` del mapa del mundo: 418 zonas
+  posicionadas (todo el continente Royal + Zona Negra). Bancos, mercados y zonas interiores no
+  tienen posición; los Caminos de Avalon son dinámicos y tampoco.
+- `scripts/build_map_data.py` agrega `x`,`y` a `maps[]` de `albion_map_connections.json`
+  sin tocar byName/byId (los nombres deben seguir casando 1:1 con `clusterName` de /battles).
+  Verifica el join con una lista de zonas obligatorias (ciudades, Blackthorn Quarry, etc.).
+
+## 1 · Minimapa SVG (`wmRenderMinimap`)
+- Nodos = zonas con posición; aristas = conexiones del grafo entre zonas posicionadas (~634).
+- Verde = seleccionado, amarillo = vecinos, rojo pulsante = batallas (radio según score de
+  peligro), rombo dorado = territorios SG, línea dorada = ruta calculada.
+- Tooltip con tipo/tier, score, batallas 2 h, kills y fama. Clic en nodo = seleccionar.
+- Zoom con rueda (centrado en el puntero), paneo arrastrando, botones ＋/−/⤢.
+
+## 2 · Alertas por zona (`WZ`)
+- Mismo patrón que las alertas de precio (`WA`): `wmZoneAlerts` + `wmZoneSeen` en localStorage.
+- Ciclo por defecto cada 3 min (configurable 2–15). `wzTick` usa `wmFetchBattles(45e3)`: el
+  motor de alertas fuerza datos frescos; la caché de 5 min queda para la UI.
+- Primer ciclo = línea de base (no dispara). Después avisa batallas nuevas (<15 min de
+  antigüedad) en zonas vigiladas: toast + `waBeep` + `Notification` opcional. Dedupe por id
+  (tope 1000 vistos), máx 20 zonas, máx 5 avisos por ciclo.
+
+## 3 · Rutas (`wmRouteCalc`)
+- Más corta: BFS por saltos sobre `byName`. Más segura: Dijkstra donde entrar a una zona cuesta
+  `1 + min(12, score/4)` (cada 4 puntos de peligro = un salto extra; aplica a cualquier tipo de
+  zona: si el killboard reporta batallas ahí, no es segura).
+- Checkbox «Evitar Caminos de Avalon». Chips por salto con badge de peligro y batallas 2 h.
+- La ruta segura se dibuja en el minimapa.
+
+## 4 · Scoring de peligro
+- `danger = Σ (kills·1 + fama/1000) · 0.5^(Δt/2h)` por zona (vida media 2 h), sobre las
+  últimas 100 batallas del servidor.
+- Umbrales: 🟢 ≤ 4 tranquilo · 🟡 ≤ 20 activo · 🔴 > 20 muy caliente (heurístico).
+- Badges en chips de zona, filas de batalla, rutas y minimapa. Gremios activos con K/D.
+
+## 5 · Detalle de batalla
+- Clic en fila → `pfFetchRetry('/battles/{id}')` (ruta nueva en el Worker) → tabla de
+  participantes: jugador, gremio, IP promedio, K/D, fama y arma (decodificada vía catálogo).
+- Caché en memoria (`WM.detailCache`), «ver todos» para batallas grandes.
+
+## 6 · Filtros por tipo de mapa
+- Chips: Todos · Ciudades y hubs · Royals · Zona Negra · Negra T7–T8 · Caminos de Avalon.
+- Filtran el buscador y atenúan los nodos del minimapa. Persisten en `wmMapFilter`.
+
+## 7 · Territorios SG
+- BFS desde el mapa seleccionado hasta los territorios reconstruidos por GvG:
+  «Tu territorio más cercano: X a N saltos» + rival más cercano. Marcados en el minimapa.
+
+## 8 · UX y share
+- `?map=Nombre` abre directo el Mapa de Guerra con esa zona (validada contra el grafo; si no
+  hay sesión, queda preseleccionada para después del ingreso). Botón 🔗 copia el link.
+- Export CSV de batallas filtradas (separador `;`, BOM, neutralización de fórmulas).
+- Caché de /battles en localStorage (`wmBattlesCache`, 5 min, versión aligerada de cada batalla).
+- Móvil: el tracker se abre como hoja inferior con botón flotante 🎯.
+
+## QA
+- `qa-test.js`: stubs de `/battles` y `/battles/:id`, territorio propio en zona real
+  (Kindlegrass Steppe, adyacente a Astolat) y ~20 chequeos nuevos del tracker por zona.
+- `worker/selftest.mjs`: `/battles/:id` permitida y traversal bloqueado.

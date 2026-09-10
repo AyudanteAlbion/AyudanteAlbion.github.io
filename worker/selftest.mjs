@@ -240,6 +240,11 @@ check((await gi('/gameinfo/events?limit=51&guildId=sgg9&sort=recent')).status ==
   'events con guildId+sort pasa', 'events filtrado mal → ' + seen.at(-1));
 check((await gi('/gameinfo/battles?range=week&limit=2')).status === 200,
   'battles (Mapa de Guerra) pasa', 'battles bloqueada');
+check((await gi('/gameinfo/battles/123456789')).status === 200
+  && seen.at(-1).endsWith('/battles/123456789'),
+  'battles/:id (detalle con participantes) pasa', 'battles/:id bloqueada → ' + seen.at(-1));
+check((await gi('/gameinfo/battles/123456789/../../admin')).status === 404,
+  'battles/:id path traversal → 404', 'traversal en battles/:id reenviado');
 check((await gi('/gameinfo/guilds/sgg9/territories')).status === 404,
   'guilds/:id/territories (endpoint inexistente) → 404 sin reenviar',
   'territories se reenvió al killboard');

@@ -1277,3 +1277,129 @@ img { max-width: 100%; }
   .wm-match-row { grid-template-columns: 1fr; gap: 4px; }
   .wm-event-row { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* ====================================================================
+   MAPA DE GUERRA — tracker por zona: minimapa, rutas, peligro, alertas
+   ==================================================================== */
+
+/* ---- panel del tracker (escritorio: inline; móvil: hoja inferior) ---- */
+.wm-sheet { margin: 12px 0; }
+.wm-tracker-panel { padding: 12px; border: 1px solid var(--border, #2a2f3a); }
+.wm-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wm-sheet-close { display: none; }
+.wm-type-chips { flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.wm-search { max-width: 420px; }
+
+/* ---- info del mapa seleccionado ---- */
+.wm-sel-info {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-top: 8px; padding: 8px 10px;
+  background: rgba(255,255,255,.02); border: 1px solid var(--border); border-radius: 8px;
+}
+.wm-sel-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.wm-sel-actions .wm-watch-on { border-color: var(--gold); color: var(--gold); }
+.wm-linklike {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--accent); text-decoration: underline; font: inherit;
+}
+.wm-terr-near { margin-top: 4px; color: var(--muted); }
+.wm-terr-near b { color: var(--text); }
+
+/* ---- minimapa ---- */
+.wm-mm-wrap { position: relative; margin-top: 10px; }
+#wmMinimap { display: block; width: 100%; height: 400px; touch-action: none; cursor: grab; }
+#wmMinimap:active { cursor: grabbing; }
+.wm-mm-edge { stroke: rgba(255,255,255,.05); stroke-width: .6; }
+.wm-mm-edge-route { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 3 2; }
+.wm-mm-node { fill: #566074; cursor: pointer; transition: r .1s; }
+.wm-mm-node:hover { fill: var(--text); }
+.wm-mm-dim { opacity: .12; }
+.wm-mm-nb { fill: #eab308; }
+.wm-mm-route { fill: var(--accent); }
+.wm-mm-sel { fill: #22c55e; stroke: rgba(255,255,255,.85); stroke-width: 1; }
+.wm-mm-watch { stroke: var(--gold); stroke-width: 1.1; stroke-dasharray: 2 1.4; }
+.wm-mm-battle {
+  fill: rgba(240,74,94,.5); stroke: var(--red); stroke-width: .7;
+  cursor: pointer; animation: wmPulse 2.4s ease-in-out infinite;
+}
+.wm-mm-battle:hover { fill: rgba(240,74,94,.8); }
+@keyframes wmPulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+.wm-mm-terr { fill: none; stroke: var(--gold); stroke-width: 1.2; cursor: pointer; transform-box: fill-box; transform-origin: center; transform: rotate(45deg); }
+.wm-mm-label { fill: #9aa3b5; font-size: 7px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.wm-mm-label-sel { fill: #d5dae4; font-weight: 700; font-size: 8px; }
+.wm-mm-tip {
+  position: absolute; z-index: 40; max-width: 240px; padding: 8px 10px;
+  background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: 8px;
+  font-size: .78rem; line-height: 1.4; box-shadow: 0 12px 32px -8px rgba(0,0,0,.6);
+  pointer-events: none;
+}
+.wm-mm-zoom { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
+.wm-mm-legend { display: flex; gap: 12px; flex-wrap: wrap; padding: 6px 2px 0; }
+.wm-lg { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.wm-lg-sel { background: #22c55e; }
+.wm-lg-nb { background: #eab308; }
+.wm-lg-battle { background: rgba(240,74,94,.6); border: 1px solid var(--red); }
+.wm-lg-terr { background: none; border: 1.4px solid var(--gold); border-radius: 2px; transform: rotate(45deg); }
+.wm-lg-route { background: none; border-radius: 0; border-top: 2px dashed var(--accent); height: 0; width: 12px; vertical-align: 2px; }
+
+/* ---- rutas ---- */
+.wm-route-box { margin-top: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.wm-route-form { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 6px; }
+.wm-route-form .search { min-width: 140px; flex: 1; }
+.wm-noroads { display: inline-flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.wm-route-res { margin: 8px 0; }
+.wm-route-head { font-size: .88rem; margin-bottom: 6px; }
+.wm-route-chip { cursor: pointer; }
+.wm-route-arrow { color: var(--muted); }
+.wm-route-b2h { color: var(--red); }
+
+/* ---- zonas vigiladas (alertas por zona) ---- */
+.wm-watch { margin-top: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.wm-watch-chips { flex-wrap: wrap; margin-bottom: 8px; }
+.wm-watch-chip .wm-chip-x {
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: .72rem; padding: 0 0 0 2px; line-height: 1;
+}
+.wm-watch-chip .wm-chip-x:hover { color: var(--red); }
+.wz-cfg { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.wz-select {
+  background: var(--panel-3); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 6px; padding: 3px 6px; margin: 0 2px; font-size: .78rem;
+}
+
+/* ---- detalle de batalla ---- */
+.wm-battle-detail { font-size: .82rem; }
+
+/* ---- móvil: el tracker se vuelve una hoja inferior + botón flotante ---- */
+.wm-fab { display: none; }
+@media (max-width: 720px) {
+  .wm-sheet {
+    position: fixed; inset: auto 0 0 0; z-index: 70;
+    max-height: 86vh; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--panel);
+    border-top: 1px solid var(--border-strong);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -18px 48px -12px rgba(0,0,0,.7);
+    transform: translateY(105%);
+    transition: transform .28s ease;
+  }
+  .wm-sheet.open { transform: none; }
+  .wm-sheet::before {
+    content: ''; display: block; width: 44px; height: 4px; margin: 8px auto 0;
+    border-radius: 2px; background: var(--border-strong);
+  }
+  .wm-sheet-close { display: inline-flex; }
+  .wm-tracker-panel { border: none; padding: 4px 10px 16px; }
+  .wm-fab {
+    display: inline-flex; align-items: center; gap: 8px;
+    position: fixed; right: 16px; bottom: 18px; z-index: 69;
+    padding: 12px 18px; border-radius: 999px;
+    background: var(--grad-gold); color: #1a1405; font-weight: 700;
+    border: none; cursor: pointer; box-shadow: 0 10px 28px -6px rgba(0,0,0,.65);
+  }
+  .wm-fab:active { transform: scale(.97); }
+  .wm-sel-info { flex-direction: column; }
+  .wm-sel-actions { width: 100%; }
+  #wmMinimap { height: 300px; }
+  .wm-route-form .search { min-width: 100%; }
+}
