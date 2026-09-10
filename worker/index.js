@@ -64,8 +64,13 @@ const GAMEINFO_ROUTES = [
   /^\/players\/[A-Za-z0-9_-]{1,64}\/(kills|deaths|topkills|solokills)$/,
   /^\/guilds\/[A-Za-z0-9_-]{1,64}$/,
   /^\/guilds\/[A-Za-z0-9_-]{1,64}\/(members|top)$/,
+  /* Mapa de Guerra: kills del gremio + GvG (no existe /guilds/:id/territories) */
+  /^\/events$/,
+  /^\/guildmatches\/(next|past|top)$/,
+  /^\/guildmatches\/[A-Za-z0-9_-]{1,64}$/,
+  /^\/battles$/,
 ];
-const GAMEINFO_PARAMS = new Set(['q', 'range', 'limit', 'offset']);
+const GAMEINFO_PARAMS = new Set(['q', 'range', 'limit', 'offset', 'sort', 'guildId']);
 
 /* Orígenes (páginas) que pueden llamar al proxy desde el navegador. El exe y
    server.py corren en localhost con puerto variable; las peticiones sin

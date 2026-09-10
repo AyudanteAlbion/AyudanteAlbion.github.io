@@ -87,6 +87,44 @@ window.fetch = (url) => {
         Victim: { Name: 'GuildVictim', GuildName: 'Otros' } }];
     } else if (u.includes('/gameinfo/guilds/g9')) {
       data = { Name: 'QA Guild', MemberCount: 42, killFame: 123, DeathFame: 456, FounderName: 'Fundador', Founded: '2024-01-01T00:00:00Z', AllianceName: '' };
+    } else if (u.includes('/gameinfo/guildmatches/past')) {
+      /* GvG históricos: SG defiende y gana Astolot; pierde Dewleaf ante Rival GvG */
+      const sg = { Id: 'sgg9', Name: 'Spetsnaz Grail' };
+      const rival = { Id: 'riv1', Name: 'Rival GvG' };
+      const other = { Id: 'oth1', Name: 'Otros' };
+      data = [
+        { MatchId: 'm1', StartTime: '2026-09-08T18:00:00Z', Territory: 'Astolot',
+          Attacker: rival, Defender: sg, Winner: sg },
+        { MatchId: 'm2', StartTime: '2026-09-07T12:00:00Z', Territory: 'Dewleaf',
+          Attacker: sg, Defender: other, Winner: other },
+        { MatchId: 'm3', StartTime: '2026-09-05T09:00:00Z', Territory: 'Astolot',
+          Attacker: other, Defender: sg, Winner: sg },
+        { MatchId: 'mx', StartTime: '2026-09-04T09:00:00Z', Territory: 'Unrelated',
+          Attacker: rival, Defender: other, Winner: rival },
+      ];
+    } else if (u.includes('/gameinfo/guildmatches/next')) {
+      const sg = { Id: 'sgg9', Name: 'Spetsnaz Grail' };
+      const rival = { Id: 'riv1', Name: 'Rival GvG' };
+      data = [
+        { MatchId: 'n1', StartTime: new Date(Date.now() + 6 * 3600e3).toISOString(),
+          Territory: 'Astolot', Attacker: rival, Defender: sg },
+        { MatchId: 'n2', StartTime: new Date(Date.now() + 30 * 3600e3).toISOString(),
+          Territory: 'Driftwood Hollow', Attacker: sg, Defender: rival },
+      ];
+    } else if (u.includes('/gameinfo/guildmatches/top')) {
+      data = [];
+    } else if (u.includes('/gameinfo/events')) {
+      data = [
+        { EventId: 201, TimeStamp: '2026-09-08T20:00:00Z', TotalVictimKillFame: 44000,
+          Killer: { Name: 'EnemyPvP', GuildName: 'Rival GvG' },
+          Victim: { Name: 'AlphaSG', GuildName: 'Spetsnaz Grail' } },
+        { EventId: 202, TimeStamp: '2026-09-08T19:00:00Z', TotalVictimKillFame: 22000,
+          Killer: { Name: 'BetaSG', GuildName: 'Spetsnaz Grail' },
+          Victim: { Name: 'Foe', GuildName: 'Otros' } },
+        { EventId: 203, TimeStamp: '2026-09-08T18:30:00Z', TotalVictimKillFame: 1000,
+          Killer: { Name: 'X', GuildName: 'Ajenos' },
+          Victim: { Name: 'Y', GuildName: 'Ajenos' } },
+      ];
     }
   } catch (e) { /* vacío */ }
   return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
@@ -661,6 +699,63 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       'SG: stats del gremio (fama)', 'SG: stats del gremio ausentes');
     check(room.includes('EnemigoZvZ'), 'SG: mejores asesinatos de la semana', 'SG: top semanal ausente');
     check(rowsIn('sgRankTable') >= 4, `SG: ${rowsIn('sgRankTable')} filas en el ranking (3 miembros + encabezado)`, 'SG: tabla del ranking sin filas');
+
+    // ── MAPA DE GUERRA ──
+    // Antes pedía /guilds/:id/territories (no existe) y el worker lo bloqueaba:
+    // siempre decía «sin territorios». Ahora reconstruye dueños desde GvG.
+    try {
+      const warTab = window.document.querySelector('[data-room-tab="war"]');
+      check(!!warTab, 'SG: existe la subpestaña Mapa de Guerra', 'SG: falta data-room-tab=war');
+      if (warTab) {
+        warTab.click(); await sleep(900);
+        const wm = bodyOf('wmContent') || bodyOf('wmMount') || '';
+        check(wm.includes('Astolot'),
+          'WM: registra el territorio Astolot (GvG ganado por SG)',
+          'WM: no aparece Astolot → ' + wm.slice(0, 180));
+        check(wm.includes('Dewleaf'),
+          'WM: registra Dewleaf (GvG perdido, visible como rival)',
+          'WM: no aparece Dewleaf → ' + wm.slice(0, 120));
+        check(wm.includes('Driftwood Hollow') || wm.includes('Próxim'),
+          'WM: muestra próximos GvG / territorios amenazados',
+          'WM: sin próximos GvG → ' + wm.slice(0, 120));
+        check(wm.includes('Rival GvG'),
+          'WM: tracker de rivales desde kills/GvG',
+          'WM: sin rivales → ' + wm.slice(0, 120));
+        check(wm.includes('EnemyPvP') || wm.includes('AlphaSG'),
+          'WM: lista kills del gremio',
+          'WM: sin eventos PvP → ' + wm.slice(0, 120));
+        check(!wm.includes('no tiene territorios registrados'),
+          'WM: ya no muestra el falso «sin territorios»',
+          'WM: sigue el mensaje viejo de sin territorios');
+        // filtro «Nuestros»: la grilla de tarjetas solo muestra SG;
+        // el historial GvG debajo puede seguir nombrando rivales/Dewleaf.
+        const ownedChip = window.document.querySelector('[data-wm-filter="owned"]');
+        if (ownedChip) {
+          ownedChip.click(); await sleep(120);
+          const cards = [...window.document.querySelectorAll('#wmContent .wm-terr-card')]
+            .map(c => c.textContent);
+          check(cards.length === 1 && cards[0].includes('Astolot') && !cards[0].includes('Dewleaf'),
+            'WM: filtro «Nuestros» deja solo la tarjeta de Astolot',
+            'WM: filtro owned incorrecto → ' + cards.join(' | ').slice(0, 160));
+          const ownedStat = window.document.querySelector('#wmContent .wm-stats .stat .v.pos');
+          check(ownedStat && ownedStat.textContent.trim() === '1',
+            'WM: stats cuentan 1 territorio propio (Astolot)',
+            'WM: conteo de propios incorrecto → ' + (ownedStat ? ownedStat.textContent : 'sin stat'));
+        } else errors.push('WM: faltan chips de filtro');
+        // filtro próximos
+        const upChip = window.document.querySelector('[data-wm-filter="upcoming"]');
+        if (upChip) {
+          upChip.click(); await sleep(120);
+          const up = bodyOf('wmContent');
+          check(up.includes('Astolot') || up.includes('Driftwood'),
+            'WM: filtro «Próximos GvG» lista partidas pendientes',
+            'WM: filtro upcoming vacío → ' + up.slice(0, 120));
+        }
+        // volver a Resumen para no romper el resto de la suite
+        const sumTab = window.document.querySelector('[data-room-tab="summary"]');
+        if (sumTab) { sumTab.click(); await sleep(200); }
+      }
+    } catch (e) { errors.push('WM mapa de guerra: ' + e.message); }
 
     // filtro por nombre
     const rs = $('sgRankSearch');

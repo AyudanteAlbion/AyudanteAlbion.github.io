@@ -3319,8 +3319,13 @@ async function pfFetchRetry(path, tries = 3) {
    y otros como array directo. Normalizar evita que la tabla quede "sin datos". */
 function pfAsArray(d) {
   if (Array.isArray(d)) return d;
-  if (d && Array.isArray(d.kills)) return d.kills;
-  if (d && Array.isArray(d.members)) return d.members;
+  if (!d || typeof d !== 'object') return [];
+  if (Array.isArray(d.kills)) return d.kills;
+  if (Array.isArray(d.members)) return d.members;
+  if (Array.isArray(d.events)) return d.events;
+  if (Array.isArray(d.matches)) return d.matches;
+  if (Array.isArray(d.guildmatches)) return d.guildmatches;
+  if (Array.isArray(d.battles)) return d.battles;
   return [];
 }
 
@@ -5186,130 +5191,448 @@ function bdOpenPicker(slotKey) {
 /* ====================================================================
    🗺️ MAPA DE GUERRA DE SG
    Herramienta exclusiva para miembros de Spetsnaz Grail.
-   Muestra territorios del gremio, timers, ataques enemigos,
-   tracker de rivales y alertas de invasión.
+   El killboard oficial NO expone /guilds/:id/territories. Los territorios
+   se reconstruyen a partir de los GvG (guildmatches past/next) y de los
+   eventos PvP del gremio: el último ganador de un territorio es su dueño.
+   También muestra próximos ataques, rivales recientes y kills del gremio.
    ==================================================================== */
 const WM = {
   territories: [],
+  upcoming: [],
+  past: [],
   events: [],
-  enemies: {},
+  enemies: [],
   loading: false,
+  loadedOnce: false,
   lastUpdate: null,
+  error: null,
+  filter: 'all', // all | owned | threatened | upcoming
 };
+
+/* ---- helpers de parseo de guildmatches / events ---- */
+function wmGuildIdOf(g) {
+  if (!g || typeof g !== 'object') return '';
+  return String(g.Id || g.id || g.GuildId || g.AllianceId || '');
+}
+function wmGuildNameOf(g) {
+  if (!g) return '';
+  if (typeof g === 'string') return g;
+  return String(g.Name || g.name || g.AllianceName || '');
+}
+function wmIsSG(g, gid) {
+  const id = wmGuildIdOf(g);
+  if (gid && id && id === gid) return true;
+  return wmGuildNameOf(g).toLowerCase() === SG_GUILD_NAME.toLowerCase();
+}
+function wmMatchTeams(m) {
+  /* La API de GvG ha usado distintas formas a lo largo del tiempo:
+     attacker/defender, team1/team2, guilds[], AllianceA/B. Se normaliza. */
+  let a = m.attacker || m.Attacker || m.team1 || m.Team1 || m.Team1Guild || m.team1Guild
+    || m.guild1 || m.Guild1 || m.AllianceA || m.allianceA
+    || (Array.isArray(m.guilds) ? m.guilds[0] : null)
+    || (Array.isArray(m.Guilds) ? m.Guilds[0] : null) || null;
+  let b = m.defender || m.Defender || m.team2 || m.Team2 || m.Team2Guild || m.team2Guild
+    || m.guild2 || m.Guild2 || m.AllianceB || m.allianceB
+    || (Array.isArray(m.guilds) ? m.guilds[1] : null)
+    || (Array.isArray(m.Guilds) ? m.Guilds[1] : null) || null;
+  /* a veces vienen solo IDs/nombres planos */
+  if (!a && (m.attackerId || m.AttackerId || m.attackerName || m.AttackerName)) {
+    a = { Id: m.attackerId || m.AttackerId, Name: m.attackerName || m.AttackerName };
+  }
+  if (!b && (m.defenderId || m.DefenderId || m.defenderName || m.DefenderName)) {
+    b = { Id: m.defenderId || m.DefenderId, Name: m.defenderName || m.DefenderName };
+  }
+  return { a, b };
+}
+function wmMatchWinner(m) {
+  const direct = m.winner || m.Winner || m.winningGuild || m.WinningGuild
+    || m.TerritoryChangedOwner || m.territoryChangedOwner || null;
+  if (direct) return direct;
+  /* Winner numérico (1/2) o booleano attackerWins */
+  const { a, b } = wmMatchTeams(m);
+  const w = m.winnerTeam || m.WinnerTeam || m.winnerSide || m.WinnerSide;
+  if (w === 1 || w === '1' || w === 'team1' || w === 'attacker') return a;
+  if (w === 2 || w === '2' || w === 'team2' || w === 'defender') return b;
+  if (m.attackerWins === true || m.AttackerWins === true) return a;
+  if (m.attackerWins === false || m.AttackerWins === false) return b;
+  return null;
+}
+function wmTerritoryName(m) {
+  const t = m.territory || m.Territory;
+  if (t && typeof t === 'object') return t.Name || t.name || t.MapName || '';
+  return t || m.TerritoryName || m.territoryName
+    || m.MapName || m.mapName || m.Location || m.location
+    || m.MatchType || m.matchType || '';
+}
+function wmMatchTime(m) {
+  const raw = m.startTime || m.StartTime || m.StartTimeStamp || m.startTimeStamp
+    || m.time || m.Time || m.timestamp || m.Timestamp
+    || m.endTime || m.EndTime || null;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+function wmMatchInvolvesSG(m, gid) {
+  const { a, b } = wmMatchTeams(m);
+  if (wmIsSG(a, gid) || wmIsSG(b, gid)) return true;
+  const w = wmMatchWinner(m);
+  if (wmIsSG(w, gid)) return true;
+  const flat = [m.attackerId, m.defenderId, m.AttackerId, m.DefenderId,
+    m.guildId, m.GuildId, m.guild1Id, m.guild2Id].filter(Boolean).map(String);
+  if (gid && flat.includes(String(gid))) return true;
+  const names = [m.attackerName, m.defenderName, m.AttackerName, m.DefenderName,
+    m.guildName, m.GuildName].filter(Boolean).map(s => String(s).toLowerCase());
+  return names.includes(SG_GUILD_NAME.toLowerCase());
+}
+function wmOpponentOf(m, gid) {
+  const { a, b } = wmMatchTeams(m);
+  if (wmIsSG(a, gid)) return b;
+  if (wmIsSG(b, gid)) return a;
+  const w = wmMatchWinner(m);
+  if (wmIsSG(w, gid)) {
+    if (a && !wmIsSG(a, gid)) return a;
+    if (b && !wmIsSG(b, gid)) return b;
+  }
+  return a || b || null;
+}
+
+/* Reconstruye el dueño actual de cada territorio a partir del historial GvG.
+   Orden: partidos más recientes primero; el primer ganador visto se queda. */
+function wmBuildTerritories(past, upcoming, gid) {
+  const byName = new Map();
+  const sorted = [...past].sort((x, y) => {
+    const tx = wmMatchTime(x)?.getTime() || 0;
+    const ty = wmMatchTime(y)?.getTime() || 0;
+    return ty - tx;
+  });
+  for (const m of sorted) {
+    if (!wmMatchInvolvesSG(m, gid)) continue;
+    const name = wmTerritoryName(m);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (byName.has(key)) continue;
+    const winner = wmMatchWinner(m);
+    let ownedFinal = wmIsSG(winner, gid);
+    if (winner == null) {
+      const { b } = wmMatchTeams(m);
+      ownedFinal = wmIsSG(b, gid);
+    }
+    const when = wmMatchTime(m);
+    byName.set(key, {
+      name,
+      owned: ownedFinal,
+      lastMatch: m,
+      lastAt: when,
+      opponent: wmGuildNameOf(wmOpponentOf(m, gid)) || '—',
+      matchId: m.id || m.MatchId || m.matchId || null,
+    });
+  }
+  for (const m of upcoming) {
+    if (!wmMatchInvolvesSG(m, gid)) continue;
+    const name = wmTerritoryName(m);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const when = wmMatchTime(m);
+    const opp = wmGuildNameOf(wmOpponentOf(m, gid)) || '—';
+    if (byName.has(key)) {
+      const t = byName.get(key);
+      t.threatened = true;
+      t.nextAt = when;
+      t.nextOpponent = opp;
+      t.nextMatch = m;
+    } else {
+      /* Solo aparece en la cola: si defendemos es nuestro; si atacamos está
+         en disputa (no lo marcamos como «perdido»). */
+      const { a, b } = wmMatchTeams(m);
+      const defending = wmIsSG(b, gid);
+      const attacking = wmIsSG(a, gid);
+      byName.set(key, {
+        name,
+        owned: defending,
+        contested: attacking && !defending,
+        threatened: true,
+        lastMatch: null, lastAt: null, opponent: opp,
+        nextAt: when, nextOpponent: opp, nextMatch: m,
+        matchId: m.id || m.MatchId || m.matchId || null,
+      });
+    }
+  }
+  return [...byName.values()].sort((a, b) => {
+    if (a.owned !== b.owned) return a.owned ? -1 : 1;
+    if (!!a.threatened !== !!b.threatened) return a.threatened ? -1 : 1;
+    return a.name.localeCompare(b.name, 'es');
+  });
+}
+
+function wmProcessEnemies(events, past, gid) {
+  const enemies = {};
+  const bump = (name, when, kind) => {
+    if (!name || name.toLowerCase() === SG_GUILD_NAME.toLowerCase()) return;
+    if (!enemies[name]) enemies[name] = { name, kills: 0, gvg: 0, lastAt: null };
+    if (kind === 'kill') enemies[name].kills++;
+    else enemies[name].gvg++;
+    if (when && (!enemies[name].lastAt || when > enemies[name].lastAt)) {
+      enemies[name].lastAt = when;
+    }
+  };
+  for (const ev of events) {
+    const victim = ev.Victim || {};
+    const killer = ev.Killer || {};
+    const vGuild = victim.GuildName || '';
+    const kGuild = killer.GuildName || '';
+    const when = ev.TimeStamp ? new Date(ev.TimeStamp) : null;
+    if (vGuild === SG_GUILD_NAME && kGuild && kGuild !== SG_GUILD_NAME) {
+      bump(kGuild, when, 'kill');
+    } else if (kGuild === SG_GUILD_NAME && vGuild && vGuild !== SG_GUILD_NAME) {
+      bump(vGuild, when, 'kill');
+    }
+  }
+  for (const m of past) {
+    if (!wmMatchInvolvesSG(m, gid)) continue;
+    const opp = wmOpponentOf(m, gid);
+    bump(wmGuildNameOf(opp), wmMatchTime(m), 'gvg');
+  }
+  return Object.values(enemies).sort((a, b) => {
+    const sa = a.kills + a.gvg * 3, sb = b.kills + b.gvg * 3;
+    return sb - sa || ((b.lastAt && b.lastAt.getTime()) || 0) - ((a.lastAt && a.lastAt.getTime()) || 0);
+  });
+}
 
 function wmRender() {
   const mount = document.getElementById('wmMount');
   if (!mount) return;
-  
   mount.innerHTML = `
-    <div class="panel">
-      <div class="cd-title">
-        <svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG
-        <button class="btn" id="wmRefreshBtn" style="margin-left:auto">
+    <div class="panel wm-panel">
+      <div class="cd-title wm-head">
+        <span><svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG</span>
+        <button class="btn" id="wmRefreshBtn" title="Volver a pedir GvG y eventos al killboard">
           <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar
         </button>
       </div>
-      <div class="micro muted" style="padding:8px 14px">Territorios de Spetsnaz Grail, ataques recientes y tracker de enemigos.</div>
+      <div class="micro muted wm-intro">
+        Territorios reconstruidos desde el historial GvG del killboard (no hay endpoint oficial de dueños).
+        Próximos ataques, rivales recientes y kills del gremio en la misma vista.
+      </div>
       <div id="wmContent">
-        <div class="loading-cell">Cargando datos del mapa…</div>
+        <div class="loading-cell">Cargando territorios y eventos…</div>
       </div>
     </div>`;
-  
-  document.getElementById('wmRefreshBtn').onclick = () => wmLoad();
-  wmLoad();
+  document.getElementById('wmRefreshBtn').onclick = () => wmLoad(true);
+  if (WM.loadedOnce && !WM.loading) wmRenderContent();
+  else wmLoad(false);
 }
 
-async function wmLoad() {
+async function wmLoad(force) {
   if (WM.loading) return;
+  if (WM.loadedOnce && !force && (WM.territories.length || WM.past.length || WM.upcoming.length)) {
+    wmRenderContent();
+    return;
+  }
   WM.loading = true;
+  WM.error = null;
   const content = document.getElementById('wmContent');
-  content.innerHTML = '<div class="loading-cell">Cargando territorios y eventos…</div>';
-  
+  if (content) content.innerHTML = '<div class="loading-cell">Consultando GvG y eventos del gremio…</div>';
+  const btn = document.getElementById('wmRefreshBtn');
+  if (btn) btn.disabled = true;
+
   try {
     const gid = await sgResolveGuild();
-    
-    // Cargar territorios del gremio
-    const terrData = await pfFetchRetry('/guilds/' + gid + '/territories').catch(() => null);
-    WM.territories = pfAsArray(terrData);
-    
-    // Cargar eventos recientes (kills)
-    const eventsData = await pfFetchRetry('/events?limit=50&sort=recent').catch(() => null);
-    WM.events = pfAsArray(eventsData);
-    
-    // Procesar enemigos (gremios que mataron miembros de SG)
-    WM.enemies = wmProcessEnemies();
+    const qGid = encodeURIComponent(gid);
+    const [pastRaw, nextRaw, topRaw, eventsRaw] = await Promise.all([
+      pfFetchRetry('/guildmatches/past?limit=50&offset=0').catch(() => null),
+      pfFetchRetry('/guildmatches/next?limit=50&offset=0').catch(() => null),
+      pfFetchRetry('/guildmatches/top').catch(() => null),
+      pfFetchRetry('/events?limit=51&offset=0&guildId=' + qGid).catch(() =>
+        pfFetchRetry('/events?limit=51&offset=0').catch(() => null)),
+    ]);
+
+    const pastAll = pfAsArray(pastRaw);
+    const nextAll = pfAsArray(nextRaw);
+    const topAll = pfAsArray(topRaw);
+    const eventsAll = pfAsArray(eventsRaw);
+
+    WM.past = pastAll.filter(m => wmMatchInvolvesSG(m, gid));
+    WM.upcoming = [
+      ...nextAll.filter(m => wmMatchInvolvesSG(m, gid)),
+      ...topAll.filter(m => wmMatchInvolvesSG(m, gid)
+        && !nextAll.some(n => (n.id || n.MatchId) && (n.id || n.MatchId) === (m.id || m.MatchId))),
+    ].sort((a, b) => (wmMatchTime(a)?.getTime() || 0) - (wmMatchTime(b)?.getTime() || 0));
+
+    const sgNames = new Set((SG.room.members || []).map(m => m.Name));
+    WM.events = eventsAll.filter(ev => {
+      const k = (ev.Killer || {}).GuildName || '';
+      const v = (ev.Victim || {}).GuildName || '';
+      if (k === SG_GUILD_NAME || v === SG_GUILD_NAME) return true;
+      if (sgNames.has((ev.Killer || {}).Name) || sgNames.has((ev.Victim || {}).Name)) return true;
+      return false;
+    });
+
+    WM.territories = wmBuildTerritories(WM.past, WM.upcoming, gid);
+    WM.enemies = wmProcessEnemies(WM.events, WM.past, gid);
     WM.lastUpdate = Date.now();
+    WM.loadedOnce = true;
     WM.loading = false;
-    
+    if (btn) btn.disabled = false;
     wmRenderContent();
   } catch (err) {
     WM.loading = false;
-    content.innerHTML = `<div class="loading-cell sg-err">Error al cargar: ${sgEsc(err.message)}</div>`;
-  }
-}
-
-function wmProcessEnemies() {
-  const sgMembers = new Set((SG.room.members || []).map(m => m.Name));
-  const enemies = {};
-  
-  WM.events.forEach(ev => {
-    const victim = ev.Victim;
-    const killer = ev.Killer;
-    if (!victim || !killer) return;
-    
-    // Si la víctima es de SG y el killer es de otro gremio
-    if (sgMembers.has(victim.Name) && killer.GuildName && killer.GuildName !== SG_GUILD_NAME) {
-      const guild = killer.GuildName;
-      if (!enemies[guild]) enemies[guild] = { name: guild, kills: 0, lastKill: null };
-      enemies[guild].kills++;
-      if (!enemies[guild].lastKill || new Date(ev.TimeStamp) > new Date(enemies[guild].lastKill)) {
-        enemies[guild].lastKill = ev.TimeStamp;
-      }
+    WM.error = err && err.message ? err.message : String(err);
+    if (btn) btn.disabled = false;
+    if (content) {
+      content.innerHTML = `
+        <div class="loading-cell sg-err">No se pudo cargar el mapa: ${sgEsc(WM.error)}</div>
+        <div class="micro muted" style="padding:0 14px 14px">El killboard oficial suele saturar. Tocá «Actualizar» en unos segundos.</div>
+        <div style="padding:0 14px 14px"><button class="btn" id="wmRetryBtn"><svg class="btn-ico"><use href="#i-refresh"/></svg> Reintentar</button></div>`;
+      const r = document.getElementById('wmRetryBtn');
+      if (r) r.onclick = () => wmLoad(true);
     }
-  });
-  
-  return Object.values(enemies).sort((a, b) => b.kills - a.kills);
+  }
 }
 
 function wmRenderContent() {
   const content = document.getElementById('wmContent');
-  
-  const terrHTML = WM.territories.length ? `
+  if (!content) return;
+
+  const owned = WM.territories.filter(t => t.owned);
+  const threatened = WM.territories.filter(t => t.threatened);
+  const updated = WM.lastUpdate
+    ? new Date(WM.lastUpdate).toLocaleTimeString('es-AR')
+    : '—';
+
+  const filter = WM.filter;
+  let shown = WM.territories;
+  if (filter === 'owned') shown = owned;
+  else if (filter === 'threatened') shown = threatened;
+  else if (filter === 'upcoming') shown = [];
+
+  const chips = `
+    <div class="chip-group wm-filters" id="wmFilterChips">
+      <button class="chip ${filter === 'all' ? 'active' : ''}" data-wm-filter="all">Todos (${WM.territories.length})</button>
+      <button class="chip ${filter === 'owned' ? 'active' : ''}" data-wm-filter="owned">Nuestros (${owned.length})</button>
+      <button class="chip ${filter === 'threatened' ? 'active' : ''}" data-wm-filter="threatened">Amenazados (${threatened.length})</button>
+      <button class="chip ${filter === 'upcoming' ? 'active' : ''}" data-wm-filter="upcoming">Próximos GvG (${WM.upcoming.length})</button>
+    </div>`;
+
+  const stats = `
+    <div class="stats wm-stats">
+      <div class="stat"><div class="k">Territorios SG</div><div class="v pos">${owned.length}</div><div class="s">según último GvG ganado</div></div>
+      <div class="stat"><div class="k">Amenazados</div><div class="v ${threatened.length ? 'neg' : ''}">${threatened.length}</div><div class="s">con ataque declarado</div></div>
+      <div class="stat"><div class="k">Próximos GvG</div><div class="v">${WM.upcoming.length}</div><div class="s">en la cola del killboard</div></div>
+      <div class="stat"><div class="k">Actualizado</div><div class="v" style="font-size:1rem">${updated}</div><div class="s">tocá Actualizar para refrescar</div></div>
+    </div>`;
+
+  let mainHTML = '';
+  if (filter === 'upcoming') {
+    mainHTML = WM.upcoming.length ? `
+      <div class="wm-section">
+        <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Próximos GvG de Spetsnaz Grail</div>
+        <div class="wm-match-list">${WM.upcoming.map(m => wmMatchRow(m, true)).join('')}</div>
+      </div>` : '<div class="loading-cell">No hay GvG próximos de SG en el killboard.</div>';
+  } else {
+    mainHTML = shown.length ? `
+      <div class="wm-section">
+        <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Territorios (${shown.length})</div>
+        <div class="wm-terr-grid">${shown.map(t => wmTerritoryCard(t)).join('')}</div>
+        <div class="micro muted" style="padding:4px 14px 0">Dueño = último ganador del GvG en ese territorio. Si el killboard no trae el ganador, se asume que el defensor retiene.</div>
+      </div>` : (WM.territories.length
+        ? '<div class="loading-cell">Ningún territorio con este filtro.</div>'
+        : `<div class="wm-empty">
+            <div class="loading-cell">Todavía no hay territorios reconstruibles para Spetsnaz Grail.</div>
+            <div class="micro muted" style="padding:0 14px 12px">El killboard no publica un listado de dueños: hace falta al menos un GvG reciente (pasado o próximo) del gremio para inferir el territorio. Si SG tiene castillos tomados sin pelearse en la ventana del historial, no aparecen acá.</div>
+          </div>`);
+  }
+
+  const upcomingPreview = filter !== 'upcoming' && WM.upcoming.length ? `
     <div class="wm-section">
-      <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Territorios (${WM.territories.length})</div>
-      <div class="wm-terr-grid">
-        ${WM.territories.map(t => wmTerritoryCard(t)).join('')}
-      </div>
-    </div>` : '<div class="loading-cell">Spetsnaz Grail no tiene territorios registrados.</div>';
-  
+      <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Próximos ataques (${WM.upcoming.length})</div>
+      <div class="wm-match-list">${WM.upcoming.slice(0, 8).map(m => wmMatchRow(m, true)).join('')}</div>
+    </div>` : '';
+
+  const pastPreview = WM.past.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Últimos GvG (${Math.min(WM.past.length, 12)})</div>
+      <div class="wm-match-list">${WM.past.slice(0, 12).map(m => wmMatchRow(m, false)).join('')}</div>
+    </div>` : '';
+
   const enemyHTML = WM.enemies.length ? `
     <div class="wm-section">
-      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Gremios Enemigos (${WM.enemies.length})</div>
-      <div class="wm-enemy-list">
-        ${WM.enemies.slice(0, 10).map(e => wmEnemyCard(e)).join('')}
-      </div>
-    </div>` : '<div class="loading-cell">Sin ataques enemigos recientes.</div>';
-  
+      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Rivales recientes (${WM.enemies.length})</div>
+      <div class="wm-enemy-list">${WM.enemies.slice(0, 12).map(e => wmEnemyCard(e)).join('')}</div>
+    </div>` : '<div class="wm-section"><div class="loading-cell">Sin rivales recientes en la ventana cargada.</div></div>';
+
   const eventsHTML = WM.events.length ? `
     <div class="wm-section">
-      <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Eventos Recientes (${WM.events.length})</div>
-      <div class="wm-events-list">
-        ${WM.events.slice(0, 20).map(e => wmEventRow(e)).join('')}
-      </div>
+      <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Kills del gremio (${WM.events.length})</div>
+      <div class="wm-events-list">${WM.events.slice(0, 25).map(e => wmEventRow(e)).join('')}</div>
     </div>` : '';
-  
-  content.innerHTML = terrHTML + enemyHTML + eventsHTML;
+
+  content.innerHTML = stats + chips + mainHTML + upcomingPreview + pastPreview + enemyHTML + eventsHTML;
+
+  const chipsEl = document.getElementById('wmFilterChips');
+  if (chipsEl) {
+    chipsEl.onclick = e => {
+      const c = e.target.closest('[data-wm-filter]'); if (!c) return;
+      WM.filter = c.dataset.wmFilter;
+      wmRenderContent();
+    };
+  }
 }
 
 function wmTerritoryCard(t) {
-  const lastAttack = t.LastAttack ? new Date(t.LastAttack) : null;
-  const attacked = lastAttack && (Date.now() - lastAttack.getTime()) < 3600e3; // última hora
+  let status, cls;
+  if (t.owned) {
+    status = t.threatened
+      ? '<span class="badge warn">⚔️ Amenazado</span>'
+      : '<span class="badge" style="color:var(--green);border-color:rgba(20,185,138,.4)">🛡 Nuestro</span>';
+    cls = t.threatened ? ' wm-threatened' : ' wm-owned';
+  } else if (t.contested) {
+    status = '<span class="badge warn">🎯 Ataque nuestro</span>';
+    cls = ' wm-threatened';
+  } else {
+    status = '<span class="badge" style="color:var(--red, #ef4444);border-color:rgba(239,68,68,.4)">Perdido / rival</span>';
+    cls = ' wm-lost';
+  }
+  const rivalLine = t.owned
+    ? `<div class="muted">Rival del último GvG: <b>${sgEsc(t.opponent)}</b></div>`
+    : t.contested
+      ? `<div class="muted">Atacamos a <b>${sgEsc(t.opponent)}</b></div>`
+      : `<div class="muted">Último dueño rival · vs ${sgEsc(t.opponent)}</div>`;
   return `
-    <div class="wm-terr-card${attacked ? ' wm-attacked' : ''}">
-      <div class="wm-terr-name">${sgEsc(t.TerritoryName || t.Name || 'Sin nombre')}</div>
+    <div class="wm-terr-card${cls}">
+      <div class="wm-terr-name">${sgEsc(t.name)}</div>
       <div class="wm-terr-meta">
-        ${lastAttack ? `<div class="muted">Último ataque: ${wmTimeAgo(lastAttack)}</div>` : '<div class="muted">Sin ataques recientes</div>'}
-        ${attacked ? '<div class="badge warn">⚠️ Atacado</div>' : '<div class="badge" style="color:var(--green);border-color:rgba(20,185,138,.4)">Seguro</div>'}
+        <div>
+          ${rivalLine}
+          ${t.lastAt ? `<div class="muted">Último GvG: ${wmTimeAgo(t.lastAt)}</div>` : ''}
+          ${t.threatened && t.nextAt ? `<div class="neg">Próximo: ${wmFmtWhen(t.nextAt)} vs ${sgEsc(t.nextOpponent || '—')}</div>` : ''}
+        </div>
+        ${status}
+      </div>
+    </div>`;
+}
+
+function wmMatchRow(m, isNext) {
+  const terr = wmTerritoryName(m) || 'GvG';
+  const when = wmMatchTime(m);
+  const { a, b } = wmMatchTeams(m);
+  const aName = wmGuildNameOf(a) || '—';
+  const bName = wmGuildNameOf(b) || '—';
+  const winner = wmMatchWinner(m);
+  const wName = wmGuildNameOf(winner);
+  const gid = SG.room.guildId;
+  const weWin = wName && wmIsSG(winner, gid);
+  const weLose = wName && !weWin;
+  return `
+    <div class="wm-match-row${weWin ? ' wm-win' : weLose ? ' wm-lose' : ''}">
+      <div class="wm-match-when">${when ? (isNext ? wmFmtWhen(when) : wmTimeAgo(when)) : '—'}</div>
+      <div class="wm-match-body">
+        <div class="wm-match-terr">${sgEsc(terr)}</div>
+        <div class="wm-match-teams">
+          <span>${sgEsc(aName)}</span>
+          <span class="muted">vs</span>
+          <span>${sgEsc(bName)}</span>
+          ${wName ? `<span class="badge ${weWin ? '' : 'warn'}" style="${weWin ? 'color:var(--green);border-color:rgba(20,185,138,.4)' : ''}">${weWin ? 'Ganamos' : 'Ganó ' + sgEsc(wName)}</span>` : (isNext ? '<span class="badge">pendiente</span>' : '')}
+        </div>
       </div>
     </div>`;
 }
@@ -5319,38 +5642,56 @@ function wmEnemyCard(e) {
     <div class="wm-enemy-card">
       <div class="wm-enemy-name">${sgEsc(e.name)}</div>
       <div class="wm-enemy-stats">
-        <div><b>${e.kills}</b> kills a SG</div>
-        <div class="muted">Último: ${wmTimeAgo(new Date(e.lastKill))}</div>
+        <div><b>${e.kills}</b> kills · <b>${e.gvg}</b> GvG</div>
+        <div class="muted">${e.lastAt ? 'Último: ' + wmTimeAgo(e.lastAt) : ''}</div>
       </div>
     </div>`;
 }
 
 function wmEventRow(e) {
-  const victim = e.Victim;
-  const killer = e.Killer;
-  const isSgVictim = (SG.room.members || []).some(m => m.Name === victim.Name);
+  const victim = e.Victim || {};
+  const killer = e.Killer || {};
+  const isSgVictim = (victim.GuildName === SG_GUILD_NAME)
+    || (SG.room.members || []).some(m => m.Name === victim.Name);
+  const isSgKiller = (killer.GuildName === SG_GUILD_NAME)
+    || (SG.room.members || []).some(m => m.Name === killer.Name);
+  const when = e.TimeStamp ? new Date(e.TimeStamp) : null;
   return `
-    <div class="wm-event-row${isSgVictim ? ' wm-sg-victim' : ''}">
-      <div class="wm-event-time">${new Date(e.TimeStamp).toLocaleString('es-AR')}</div>
+    <div class="wm-event-row${isSgVictim ? ' wm-sg-victim' : isSgKiller ? ' wm-sg-killer' : ''}">
+      <div class="wm-event-time">${when ? when.toLocaleString('es-AR') : '—'}</div>
       <div class="wm-event-players">
-        <span class="${isSgVictim ? 'neg' : ''}">${sgEsc(killer.Name)}</span>
+        <span class="${isSgKiller ? 'pos' : ''}">${sgEsc(killer.Name || '?')}</span>
         ${killer.GuildName ? `<span class="muted">[${sgEsc(killer.GuildName)}]</span>` : ''}
-        →
-        <span class="${isSgVictim ? 'pos' : ''}">${sgEsc(victim.Name)}</span>
+        <span class="muted">→</span>
+        <span class="${isSgVictim ? 'neg' : ''}">${sgEsc(victim.Name || '?')}</span>
         ${victim.GuildName ? `<span class="muted">[${sgEsc(victim.GuildName)}]</span>` : ''}
+        ${e.TotalVictimKillFame ? `<span class="muted">· ${fmt(e.TotalVictimKillFame)} fama</span>` : ''}
       </div>
     </div>`;
 }
 
+function wmFmtWhen(date) {
+  if (!date || isNaN(date.getTime())) return '—';
+  const diff = date.getTime() - Date.now();
+  if (diff < 0) return wmTimeAgo(date);
+  const mins = Math.round(diff / 60e3);
+  if (mins < 60) return `en ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `en ${hours} h · ${date.toLocaleString('es-AR', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`;
+  return date.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 function wmTimeAgo(date) {
+  if (!date || isNaN(date.getTime())) return '—';
   const diff = Date.now() - date.getTime();
+  if (diff < 0) return wmFmtWhen(date);
   const mins = Math.floor(diff / 60e3);
   if (mins < 1) return 'hace instantes';
   if (mins < 60) return `hace ${mins} min`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `hace ${hours} h`;
   const days = Math.floor(hours / 24);
-  return `hace ${days} días`;
+  return `hace ${days} día${days === 1 ? '' : 's'}`;
 }
 
 /* ---- arranque: hash de vuelta de Discord + config del Worker ---- */
