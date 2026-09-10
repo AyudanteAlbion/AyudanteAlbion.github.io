@@ -118,17 +118,34 @@ window.fetch = (url) => {
     } else if (u.includes('/gameinfo/guildmatches/top')) {
       data = [];
     } else if (u.includes('/gameinfo/events')) {
+      /* asesinatos crudos con Victim.ZoneName: 3 en Astolat, 1 en Kindlegrass
+         Steppe (el ranking de actividad debe ordenar Astolat primero) */
+      const tMin = m => new Date(Date.now() - m * 60e3).toISOString();
       data = [
-        { EventId: 201, TimeStamp: '2026-09-08T20:00:00Z', TotalVictimKillFame: 44000,
-          Killer: { Name: 'EnemyPvP', GuildName: 'Rival GvG' },
-          Victim: { Name: 'AlphaSG', GuildName: 'Spetsnaz Grail' } },
-        { EventId: 202, TimeStamp: '2026-09-08T19:00:00Z', TotalVictimKillFame: 22000,
-          Killer: { Name: 'BetaSG', GuildName: 'Spetsnaz Grail' },
-          Victim: { Name: 'Foe', GuildName: 'Otros' } },
-        { EventId: 203, TimeStamp: '2026-09-08T18:30:00Z', TotalVictimKillFame: 1000,
-          Killer: { Name: 'X', GuildName: 'Ajenos' },
-          Victim: { Name: 'Y', GuildName: 'Ajenos' } },
+        { EventId: 201, TimeStamp: tMin(4), TotalVictimKillFame: 44000, BattleId: 9001,
+          Killer: { Name: 'EnemyPvP', GuildName: 'Rival GvG', AverageItemPower: 1210 },
+          Victim: { Name: 'AlphaSG', GuildName: 'Spetsnaz Grail', ZoneName: 'Astolat', AverageItemPower: 990 } },
+        { EventId: 202, TimeStamp: tMin(9), TotalVictimKillFame: 22000, BattleId: 9001,
+          Killer: { Name: 'BetaSG', GuildName: 'Spetsnaz Grail', AverageItemPower: 1100 },
+          Victim: { Name: 'Foe', GuildName: 'Otros', ZoneName: 'Astolat', AverageItemPower: 1050 } },
+        { EventId: 203, TimeStamp: tMin(16), TotalVictimKillFame: 1000, BattleId: 0,
+          Killer: { Name: 'X', GuildName: 'Ajenos', AverageItemPower: 800 },
+          Victim: { Name: 'Y', GuildName: 'Ajenos', ZoneName: 'Astolat', AverageItemPower: 700 } },
+        { EventId: 204, TimeStamp: tMin(50), TotalVictimKillFame: 60000, BattleId: 9002,
+          Killer: { Name: 'EnemyPvP', GuildName: 'Rival GvG', AverageItemPower: 1210 },
+          Victim: { Name: 'Z', GuildName: 'Errantes', ZoneName: 'Kindlegrass Steppe', AverageItemPower: 980 } },
       ];
+    } else if (u.includes('/murderledger/home')) {
+      /* testigo de frescura: Murderledger/AlbionOnline2D sincroniza aparte */
+      data = {
+        last_update: new Date(Date.now() - 3 * 60e3).toISOString(),
+        juicy_kills: [
+          { time: Math.floor((Date.now() - 6 * 60e3) / 1000), id: 555, total_kill_fame: 900000,
+            killer: { name: 'EnemyPvP', guild_name: 'Rival GvG' },
+            victim: { name: 'Alguien', guild_name: 'Otros' } },
+        ],
+        high_rank_cds: [], streamed_fights: [],
+      };
     } else if (u.includes('/gameinfo/battles/')) {
       /* detalle de batalla: participantes con IP, gremio y arma (tracker por zona) */
       data = {
@@ -894,6 +911,32 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
             'WM: filas de batalla expandibles (participantes)', 'WM: sin filas de batalla');
           check(!!$('wmCsvBtn'), 'WM: exportación CSV de batallas filtradas', 'WM: falta botón CSV');
           check(trk.includes('K/D'), 'WM: gremios activos con ratio K/D', 'WM: sin K/D en gremios activos');
+          // ── proveedores cruzados: killboard oficial (batallas + asesinatos) + Murderledger ──
+          check(trk.includes('Fuentes de datos') && trk.includes('Murderledger'),
+            'WM: panel de fuentes de datos con Murderledger/AlbionOnline2D',
+            'WM: falta el panel de proveedores → ' + trk.slice(0, 160));
+          check(trk.includes('Killboard oficial · asesinatos'),
+            'WM: el feed de asesinatos crudos (/events) figura como fuente',
+            'WM: falta la fuente de asesinatos');
+          check(trk.includes('Datos al día') || trk.includes('demorados'),
+            'WM: veredicto de frescura de los proveedores',
+            'WM: sin veredicto de frescura → ' + trk.slice(0, 160));
+          // ranking de actividad por zona, ordenado por cantidad de kills
+          check(trk.includes('Actividad por zona'),
+            'WM: ranking de actividad por zona (ordenado por asesinatos)',
+            'WM: falta el ranking de actividad');
+          const rankRows = $('wmTrackerContent').querySelectorAll('.wm-rank-row');
+          check(rankRows.length >= 2 && rankRows[0].dataset.wmGoto === 'Astolat',
+            'WM: el ranking ordena por kills (Astolat 3 > vecinos)',
+            'WM: ranking mal ordenado → ' + (rankRows.length ? [...rankRows].map(r => r.dataset.wmGoto).join(',') : 'sin filas'));
+          // feed de asesinatos crudos con enlaces de verificación externa
+          check(trk.includes('Asesinatos recientes en la zona') && trk.includes('AlphaSG') && trk.includes('killboard-1.com'),
+            'WM: asesinatos recientes con verificación en KillBoard#1',
+            'WM: falta el feed de asesinatos o el enlace a KillBoard#1 → ' + trk.slice(0, 200));
+          check(trk.includes('albiononline2d.com'),
+            'WM: verificación cruzada con enlace a AlbionOnline2D',
+            'WM: falta el enlace a AlbionOnline2D');
+          check(!!$('wmKillsCsvBtn'), 'WM: exportación CSV de asesinatos filtrados', 'WM: falta botón CSV de kills');
           // el tracker ya no necesita al Mapa de Guerra: su botón refresca batallas
           $('wmTrackerRefreshBtn').click(); await sleep(900);
           check(bodyOf('wmTrackerContent').includes('Batallas en la zona') && !$('wmTrackerRefreshBtn').disabled,

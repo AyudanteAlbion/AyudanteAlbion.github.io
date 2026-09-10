@@ -1186,6 +1186,53 @@ img { max-width: 100%; }
 .wm-section { margin-bottom: 20px; }
 .wm-section .cd-title { margin-bottom: 10px; padding: 0 14px; }
 
+/* Panel de proveedores (fuentes de datos cruzadas) */
+.wm-providers { padding: 0; }
+.wm-prov-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px; font-size: 0.82rem;
+  border-top: 1px solid rgba(255,255,255,.04);
+}
+.wm-prov-row:first-of-type { border-top: none; }
+.wm-prov-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.wm-prov-row .muted { flex: 1; min-width: 0; }
+.wm-prov-age { color: var(--green); font-size: 0.74rem; white-space: nowrap; }
+.wm-prov-age.wm-prov-stale { color: var(--red); }
+.wm-prov-err .wm-prov-name { color: var(--muted); text-decoration: line-through; }
+.wm-prov-verdict { padding: 7px 14px; font-size: 0.8rem; color: var(--green); }
+.wm-prov-verdict.wm-prov-warn { color: var(--accent); }
+.wm-prov-verdict.wm-prov-bad { color: var(--red); }
+
+/* Ranking de actividad por zona */
+.wm-rank { padding: 0 14px; display: flex; flex-direction: column; gap: 2px; }
+.wm-rank-row {
+  display: grid; grid-template-columns: 22px 1.4fr 2fr 70px 1.6fr;
+  align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px;
+  cursor: pointer; transition: background .15s;
+}
+.wm-rank-row:hover { background: rgba(255,255,255,.04); }
+.wm-rank-row.wm-rank-sel { background: var(--accent-soft); }
+.wm-rank-pos { color: var(--muted); font-size: 0.8rem; text-align: center; }
+.wm-rank-name { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-rank-bar {
+  height: 9px; border-radius: 5px; background: rgba(255,255,255,.06); overflow: hidden;
+}
+.wm-rank-bar i {
+  display: block; height: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+}
+.wm-rank-kills { font-size: 0.85rem; color: var(--accent); text-align: right; white-space: nowrap; }
+.wm-rank-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-section > .wm-rank + .micro { padding: 6px 14px 0; }
+.wm-kill-links a { color: var(--accent); text-decoration: none; margin-right: 6px; white-space: nowrap; }
+.wm-kill-links a:hover { text-decoration: underline; }
+@media (max-width: 640px) {
+  .wm-rank-row { grid-template-columns: 18px 1.5fr 1.2fr 62px; }
+  .wm-rank-meta { display: none; }
+  .wm-prov-row { flex-wrap: wrap; gap: 4px 10px; }
+  .wm-prov-row .muted { flex-basis: 100%; order: 3; }
+}
+
 .wm-terr-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

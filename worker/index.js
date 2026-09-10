@@ -10,6 +10,9 @@
    Rutas expuestas:
      GET /gameinfo/<resto>        -> gameinfo.albiononline.com/api/gameinfo/<resto>
                                      (solo las rutas que usa la app; ver GAMEINFO_ROUTES)
+     GET /murderledger/<resto>    -> murderledger.albiononline2d.com/api/<resto>
+                                     (proveedor secundario del Tracker por Zona:
+                                     verificación cruzada de frescura; ver ML_ROUTES)
      GET /twitch/uptime/<canal>   -> decapi.me/twitch/uptime/<canal>
      GET /health                  -> ok
      GET /discord/config          -> {configured} — ¿el acceso SG está activo?
@@ -35,6 +38,11 @@
    ============================================================ */
 
 const GAMEINFO = 'https://gameinfo.albiononline.com/api/gameinfo';
+/* Murderledger hoy vive bajo AlbionOnline2D (mismo operador): su API pública
+   expone el dashboard de kills (/home) con last_update, que usamos para
+   verificar si el feed oficial está atrasado. Sin zona por evento: aporta
+   frescura y kills destacadas, no el filtrado geográfico. */
+const MURDERLEDGER = 'https://murderledger.albiononline2d.com/api';
 const DECAPI = 'https://decapi.me/twitch/uptime/';
 const DISCORD_API = 'https://discord.com/api/v10';
 const SESSION_TTL = 30 * 24 * 3600e3; // la sesión sirve 30 días
@@ -73,6 +81,14 @@ const GAMEINFO_ROUTES = [
   /^\/battles\/[A-Za-z0-9_-]{1,64}$/,
 ];
 const GAMEINFO_PARAMS = new Set(['q', 'range', 'limit', 'offset', 'sort', 'guildId']);
+
+/* Murderledger: solo el dashboard de frescura y el feed de kills con VOD.
+   Nada más se reenvía (el worker no es un proxy genérico hacia AO2D). */
+const ML_ROUTES = [
+  /^\/home$/,
+  /^\/vod-events$/,
+];
+const ML_PARAMS = new Set(['take', 'skip', 'battle_size', 'weapon', 'q', 'sort']);
 
 /* Orígenes (páginas) que pueden llamar al proxy desde el navegador. El exe y
    server.py corren en localhost con puerto variable; las peticiones sin
@@ -128,6 +144,23 @@ async function handle(request, env, net) {
     const q = qs.toString();
     const target = GAMEINFO + sub + (q ? '?' + q : '');
     return forward(target, { '200-299': 60, '500-502': 0, '503-599': 0 }, BROWSER_HEADERS, net, origin);
+  }
+
+  if (path === '/murderledger' || path.startsWith('/murderledger/')) {
+    const origin = corsOrigin(request);
+    if (!origin) return plain('origen no permitido', 403);
+    const sub = path.slice('/murderledger'.length) || '/home';
+    if (!ML_ROUTES.some(re => re.test(sub))) return plain('ruta no permitida', 404);
+    const qs = new URLSearchParams();
+    for (const [k, v] of url.searchParams) if (ML_PARAMS.has(k) && v.length <= 100) qs.set(k, v);
+    const q = qs.toString();
+    const target = MURDERLEDGER + sub + (q ? '?' + q : '');
+    /* AO2D no bloquea por User-Agent como gameinfo; cabeceras normales bastan.
+       Caché corta (30 s): el dashboard se refresca cada ~5 min igual. */
+    return forward(target, { '200-299': 30, '500-502': 0, '503-599': 0 }, {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+    }, net, origin);
   }
 
   if (path.startsWith('/twitch/uptime/')) {
