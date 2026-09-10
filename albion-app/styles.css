@@ -649,7 +649,6 @@ a:hover { text-decoration: underline; }
 .planner-material { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; }
 .flip-search-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .flip-search-row .search { flex: 1 1 280px; }
-.flip-search-row .mini-select { flex: 0 1 auto; }
 .flip-head { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .search-wrap { position: relative; flex: 1; min-width: 280px; }
 .search-results {
