@@ -4987,10 +4987,10 @@ function bdSlotHTML(slot, itemId) {
       <div class="bd-slot-content">
         ${item ? `
           <div class="item-cell">
-            ${iconImg(item[0], 'item-icon sm')}
+            ${iconImg(itemId, 'item-icon sm')}
             <div>
-              <div class="item-name">${sgEsc(item[1])}</div>
-              <div class="item-meta">${sgEsc(item[0])}</div>
+              <div class="item-name">${sgEsc(catalogName(itemId))}</div>
+              <div class="item-meta">${sgEsc(itemId)}</div>
             </div>
           </div>
           <button class="btn micro-btn" data-bd-clear="${slot.key}">✕</button>
@@ -5004,7 +5004,10 @@ function bdSlotHTML(slot, itemId) {
 
 function catalogItem(id) {
   if (!CATALOG) return null;
-  return CATALOG.find(c => c[0] === id);
+  /* los ítems encantados no tienen fila propia en el catálogo: la base es el
+     id sin el sufijo @N (T6_MAIN_SWORD@2 → T6_MAIN_SWORD) */
+  const base = String(id).split('@')[0];
+  return CATALOG.find(c => c[0] === base);
 }
 
 function bdCalcCost() {
@@ -5167,7 +5170,8 @@ function bdOpenPicker(slotKey) {
         <div class="cd-title">Elegir ítem para ${BD_SLOTS.find(s => s.key === slotKey).label}</div>
         <button class="btn micro-btn" id="bdModalClose">✕</button>
       </div>
-      <input type="search" id="bdModalSearch" class="search big" placeholder="Buscar ítem…" autofocus>
+      <input type="search" id="bdModalSearch" class="search big" placeholder="Buscar ítem… Ej: Espada ancha, T6_MAIN_SWORD" autofocus>
+      <div class="micro muted" style="padding:6px 14px 0">Cada ítem aparece en su versión plana y en las encantadas <b>.1</b> a <b>.4</b> (según cuántas tenga).</div>
       <div class="bd-modal-list" id="bdModalList"></div>
     </div>`;
   document.body.appendChild(modal);
@@ -5182,16 +5186,26 @@ function bdOpenPicker(slotKey) {
   const render = (q) => {
     if (!CATALOG) { list.innerHTML = '<div class="loading-cell">Cargando catálogo…</div>'; return; }
     const query = q.toLowerCase();
-    const items = CATALOG.filter(c => !query || c[1].toLowerCase().includes(query) || c[0].toLowerCase().includes(query)).slice(0, 100);
-    if (!items.length) { list.innerHTML = '<div class="loading-cell">Sin resultados.</div>'; return; }
-    list.innerHTML = items.map(c => `
-      <div class="bd-modal-item" data-bd-select="${sgEsc(c[0])}">
-        ${iconImg(c[0], 'item-icon sm')}
+    const hits = CATALOG.filter(c => !query
+      || c[1].toLowerCase().includes(query)
+      || (c[2] || '').toLowerCase().includes(query)
+      || c[0].toLowerCase().includes(query)).slice(0, 40);
+    if (!hits.length) { list.innerHTML = '<div class="loading-cell">Sin resultados.</div>'; return; }
+    /* Como el buscador de Flipping: cada ítem aparece en su versión plana y en
+       las encantadas (.1 a .4 según maxEnch del catálogo). El id de mercado
+       lleva el sufijo @N (p. ej. T6_MAIN_SWORD@2); catalogName() y fetchPrices
+       ya lo soportan, así que el costo y las alertas funcionan igual. */
+    list.innerHTML = hits.map(([id, es, , tier, maxEnch]) => {
+      const enchs = [''].concat(Array.from({ length: maxEnch || 0 }, (_, i) => '@' + (i + 1)));
+      return enchs.map(suf => `
+      <div class="bd-modal-item" data-bd-select="${sgEsc(id + suf)}">
+        ${iconImg(id + suf, 'item-icon sm')}
         <div>
-          <div class="item-name">${sgEsc(c[1])}</div>
-          <div class="item-meta">${sgEsc(c[0])}</div>
+          <div class="item-name">${sgEsc(es)}${suf ? ' .' + suf.slice(1) : ''}</div>
+          <div class="item-meta">T${tier}${suf ? '.' + suf.slice(1) : ''} · ${sgEsc(id + suf)}</div>
         </div>
       </div>`).join('');
+    }).join('');
   };
   
   search.oninput = () => render(search.value);
