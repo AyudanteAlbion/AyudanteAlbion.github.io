@@ -3784,7 +3784,7 @@ function waRestart() {
 }
 
 /* ---- disparos: toast + beep + Notification (opcional) ---- */
-function waToast(title, msg, cls) {
+function waToast(title, msg, cls, onOpen) {
   let stack = document.getElementById('waToasts');
   if (!stack) { stack = document.createElement('div'); stack.id = 'waToasts'; stack.className = 'wa-toasts'; document.body.appendChild(stack); }
   const d = document.createElement('div');
@@ -3797,7 +3797,11 @@ function waToast(title, msg, cls) {
   const tm = document.createElement('div'); tm.className = 't-m'; tm.textContent = String(msg == null ? '' : msg);
   wrap.append(tn, tm);
   d.appendChild(wrap);
-  d.addEventListener('click', () => { gotoTab('alerts'); d.remove(); });
+  d.addEventListener('click', () => {
+    if (typeof onOpen === 'function') onOpen();
+    else gotoTab('alerts');
+    d.remove();
+  });
   stack.appendChild(d);
   while (stack.children.length > 4) stack.firstChild.remove();
   setTimeout(() => d.remove(), 15000);
@@ -5214,7 +5218,7 @@ const WM = {
   filter: 'all', // all | owned | threatened | upcoming
   // Nuevo tracker por mapa real
   mapGraph: null, // byName {name: [neighbors]}
-  mapList: [], // [{mapID, mapName, mapType, tier}]
+  mapList: [], // [{mapID, mapName, mapType, tier, x?, y?}]
   mapGraphById: null,
   selectedMap: null, // display name
   selectedNeighbors: [],
@@ -5223,9 +5227,22 @@ const WM = {
   mapSearchQuery: '',
   mapSearchResults: [],
   mapLoading: false,
+  /* --- nuevas capas: minimapa, peligro, rutas, filtros, caché --- */
+  mapPos: null,          // Map mapName(minúsculas) -> entrada de mapList con x,y
+  mapFilter: 'all',      // all | city | royal | outlands | outlands78 | roads
+  battles: [],           // últimas batallas del servidor (caché compartida)
+  battlesAt: 0,          // cuándo se trajeron
+  zoneDanger: {},        // zona(minúsculas) -> {score, battles2h, kills, fame, count, lastAt}
+  route: null,           // {short:[nombres], safe:[nombres], from, to}
+  noRoads: false,        // rutas sin Caminos de Avalon
+  detailCache: {},       // battleId -> detalle con players[] (en memoria)
+  mm: { k: 1, tx: 0, ty: 0 }, // zoom/paneo del minimapa
 };
 
 try { WM.selectedMap = localStorage.getItem('wmSelectedMap') || null; } catch(e){}
+try { WM.mapFilter = localStorage.getItem('wmMapFilter') || 'all'; } catch(e){}
+try { WM.noRoads = localStorage.getItem('wmNoRoads') === '1'; } catch(e){}
+if (!['all','city','royal','outlands','outlands78','roads'].includes(WM.mapFilter)) WM.mapFilter = 'all';
 function wmSaveSelected(){
   try { if (WM.selectedMap) localStorage.setItem('wmSelectedMap', WM.selectedMap); } catch(e){}
 }
@@ -5421,12 +5438,26 @@ async function wmLoadMapGraph(){
     WM.mapGraph = data.byName || data;
     WM.mapGraphById = data.byId || {};
     WM.mapList = data.maps || [];
-    // Si había selección guardada, recalcular vecinos
-    if (WM.selectedMap && WM.mapGraph[WM.selectedMap]) {
-      WM.selectedNeighbors = WM.mapGraph[WM.selectedMap];
-      // buscar mapID
-      const found = WM.mapList.find(m=>m.mapName===WM.selectedMap);
-      if (found) WM.selectedMapID = found.mapID;
+    // índice de posiciones (mapas con x,y del worldmapposition oficial)
+    WM.mapPos = new Map();
+    for (const m of WM.mapList) {
+      if (typeof m.x === 'number' && typeof m.y === 'number') WM.mapPos.set(m.mapName.toLowerCase(), m);
+    }
+    // Si había selección guardada (localStorage o ?map= compartido), validarla
+    if (WM.selectedMap){
+      if (WM.mapGraph[WM.selectedMap]) {
+        WM.selectedNeighbors = WM.mapGraph[WM.selectedMap];
+        // buscar mapID
+        const found = WM.mapList.find(m=>m.mapName===WM.selectedMap);
+        if (found) WM.selectedMapID = found.mapID;
+      } else {
+        // nombre que ya no existe (enlace viejo o dato corrupto): limpiar
+        waToast('⚠️ Mapa no encontrado', `«${WM.selectedMap}» no está en el mapa de Albion. Elegí otro.`, 'err', ()=>wmOpenWarTab());
+        WM.selectedMap = null;
+        WM.selectedNeighbors = [];
+        WM.selectedMapID = null;
+        try { localStorage.removeItem('wmSelectedMap'); } catch(e){}
+      }
     }
     WM.mapLoading = false;
     return WM.mapGraph;
@@ -5439,6 +5470,23 @@ async function wmLoadMapGraph(){
   }
 }
 
+/* abre SG → Salón de miembros → Mapa de Guerra (para toasts y enlaces) */
+function wmOpenWarTab(){
+  gotoTab('sg', 'members');
+  const btn = document.querySelector('[data-room-tab="war"]');
+  if (btn) btn.click();
+}
+
+/* mantiene ?map= en la URL para compartir la vigilancia de una zona */
+function wmShareURL(name){
+  try {
+    const u = new URL(location.href);
+    if (name) u.searchParams.set('map', name);
+    else u.searchParams.delete('map');
+    history.replaceState(null, '', u.pathname + u.search + u.hash);
+  } catch(e){}
+}
+
 function wmSelectMap(name){
   if (!name) return;
   WM.selectedMap = name;
@@ -5446,10 +5494,36 @@ function wmSelectMap(name){
   const found = WM.mapList.find(m=>m.mapName===name);
   WM.selectedMapID = found ? found.mapID : null;
   wmSaveSelected();
+  wmShareURL(name);
+  const inp = document.getElementById('wmMapSearch');
+  if (inp && inp.value !== name) inp.value = name;
   wmRenderContent();
+  wmRenderSelInfo();
+  wmRenderMinimap();
   // auto cargar tracker
   wmLoadTracker(true);
 }
+
+/* filtro por tipo de mapa (chips): reduce ruido al buscar o mirar el minimapa */
+const WM_MAP_FILTERS = [
+  { id: 'all', label: 'Todos' },
+  { id: 'city', label: 'Ciudades y hubs' },
+  { id: 'royal', label: 'Royals' },
+  { id: 'outlands', label: 'Zona Negra' },
+  { id: 'outlands78', label: 'Negra T7–T8' },
+  { id: 'roads', label: 'Caminos de Avalon' },
+];
+function wmMapMatches(m){
+  switch (WM.mapFilter) {
+    case 'city': return m.mapType === 'royal';
+    case 'royal': return m.mapType === 'royalBlue' || m.mapType === 'royalYellow' || m.mapType === 'royalRed';
+    case 'outlands': return m.mapType === 'outlands';
+    case 'outlands78': return m.mapType === 'outlands' && (m.tier || 0) >= 7;
+    case 'roads': return m.mapType === 'roads';
+    default: return true;
+  }
+}
+const WM_TYPE_ES = { royal: 'ciudad/hub', royalBlue: 'royal azul', royalYellow: 'royal amarilla', royalRed: 'royal roja', outlands: 'Zona Negra', roads: 'Camino de Avalon', other: 'especial' };
 
 function wmMapSearch(q){
   WM.mapSearchQuery = q;
@@ -5459,6 +5533,7 @@ function wmMapSearch(q){
   }
   const low = q.toLowerCase();
   const hits = WM.mapList.filter(m=>{
+    if (!wmMapMatches(m)) return false;
     return m.mapName.toLowerCase().includes(low) || (m.mapID && m.mapID.toLowerCase().includes(low));
   }).slice(0, 30);
   WM.mapSearchResults = hits;
@@ -5466,6 +5541,92 @@ function wmMapSearch(q){
 }
 
 /* ---- NUEVO: tracker de enemigos por zona real ---- */
+/* Caché compartida de /battles: la usan el tracker, el minimapa, el scoring
+   de peligro, las rutas y las alertas por zona. Se persiste en localStorage
+   (5 min) para no quemar el rate limit del killboard (muy 502). */
+function wmSlimBattle(b){
+  const g = b.guilds || b.Guilds || {};
+  let guilds = null;
+  if (Array.isArray(g)) guilds = g.map(x=>({ name: x.name||x.Name||'', kills: x.kills||x.Kills||0, deaths: x.deaths||x.Deaths||0, fame: x.fame||x.Fame||0 }));
+  else if (typeof g === 'object' && g) { guilds = {}; for (const k of Object.keys(g)) { const x = g[k]; guilds[k] = { name: x.name||x.Name||k, kills: x.kills||x.Kills||0, deaths: x.deaths||x.Deaths||0, fame: x.fame||x.Fame||0 }; } }
+  return {
+    id: b.id ?? b.Id ?? null,
+    startTime: b.startTime ?? b.StartTime ?? null,
+    clusterName: b.clusterName ?? b.ClusterName ?? b.location ?? '',
+    totalKills: b.totalKills ?? b.TotalKills ?? b.kills ?? 0,
+    totalFame: b.totalFame ?? b.TotalFame ?? b.fame ?? 0,
+    totalPlayers: b.totalPlayers ?? b.TotalPlayers ?? 0,
+    guilds,
+  };
+}
+async function wmFetchBattles(maxAgeMs = 5 * 60e3){
+  if (WM.battles.length && WM.battlesAt && Date.now() - WM.battlesAt < maxAgeMs) return WM.battles;
+  if (!(maxAgeMs > 0)) { /* force */ }
+  else {
+    // caché de sesión anterior (localStorage), aún fresca
+    try {
+      const c = JSON.parse(localStorage.getItem('wmBattlesCache') || 'null');
+      if (c && Array.isArray(c.data) && c.data.length && Date.now() - c.at < maxAgeMs) {
+        WM.battles = c.data; WM.battlesAt = c.at;
+        wmBuildZoneDanger();
+        return WM.battles;
+      }
+    } catch(e){}
+  }
+  const raw = await pfFetchRetry('/battles?limit=100&offset=0&sort=recent').catch(()=>pfFetchRetry('/battles?limit=50&offset=0'));
+  const battles = pfAsArray(raw);
+  WM.battles = battles;
+  WM.battlesAt = Date.now();
+  try { localStorage.setItem('wmBattlesCache', JSON.stringify({ at: WM.battlesAt, data: battles.map(wmSlimBattle) })); } catch(e){}
+  wmBuildZoneDanger();
+  return battles;
+}
+
+/* ---- scoring de peligro por zona ----
+   danger = Σ (kills·1 + fama/1000) · decaimiento(Δt), decaimiento
+   exponencial con vida media de 2 h. Umbrales orientativos. */
+const WM_DANGER_LEVELS = [
+  { max: 4, key: 'calm', emoji: '🟢', label: 'tranquilo', cls: 'wm-dg-calm' },
+  { max: 20, key: 'warm', emoji: '🟡', label: 'activo', cls: 'wm-dg-warm' },
+  { max: Infinity, key: 'hot', emoji: '🔴', label: 'muy caliente', cls: 'wm-dg-hot' },
+];
+function wmDangerDecay(when, now = Date.now()){
+  const t = when ? new Date(when).getTime() : NaN;
+  if (!isFinite(t)) return 0;
+  const h = Math.max(0, (now - t) / 36e5);
+  return Math.pow(0.5, h / 2);
+}
+function wmBuildZoneDanger(battles = WM.battles){
+  const now = Date.now();
+  const map = {};
+  for (const b of battles) {
+    const zone = String(b.clusterName ?? b.ClusterName ?? '').toLowerCase();
+    if (!zone) continue;
+    const kills = b.totalKills ?? b.TotalKills ?? 0;
+    const fame = b.totalFame ?? b.TotalFame ?? 0;
+    const t = b.startTime ?? b.StartTime ?? null;
+    const ts = t ? new Date(t).getTime() : 0;
+    const d = map[zone] || (map[zone] = { zone, score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0 });
+    d.score += (kills + fame / 1000) * wmDangerDecay(t, now);
+    d.kills += kills; d.fame += fame; d.count++;
+    if (ts && now - ts < 2 * 36e5) d.battles2h++;
+    if (ts > d.lastAt) d.lastAt = ts;
+  }
+  WM.zoneDanger = map;
+  return map;
+}
+function wmDangerLevel(score){
+  return WM_DANGER_LEVELS.find(l => score <= l.max) || WM_DANGER_LEVELS[WM_DANGER_LEVELS.length - 1];
+}
+function wmZoneDanger(zone){
+  return WM.zoneDanger[String(zone || '').toLowerCase()] || { zone: String(zone||'').toLowerCase(), score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0 };
+}
+function wmDangerBadge(zone){
+  const d = wmZoneDanger(zone);
+  const lv = wmDangerLevel(d.score);
+  return `<span class="wm-dg-badge ${lv.cls}" title="Peligro ${lv.label} · score ${d.score.toFixed(1)} · ${d.battles2h} batalla(s) en 2 h">${lv.emoji}</span>`;
+}
+
 async function wmLoadTracker(force){
   if (!WM.selectedMap) return;
   if (WM.tracker.loading) return;
@@ -5480,9 +5641,8 @@ async function wmLoadTracker(force){
   const zoneSet = new Set(zones.map(z=>String(z).toLowerCase()));
   // también incluir variaciones con market/bank? No, battles usan nombres exactos sin market
   try {
-    // battles recientes (oficial) - límite 100 para cubrir más zonas
-    const battlesRaw = await pfFetchRetry('/battles?limit=100&offset=0&sort=recent').catch(()=>pfFetchRetry('/battles?limit=50&offset=0'));
-    const battles = pfAsArray(battlesRaw);
+    // battles recientes (oficial) - límite 100 para cubrir más zonas (con caché de 5 min)
+    const battles = await wmFetchBattles(force ? 0 : 5 * 60e3);
     // Filtrar por clusterName en zonas objetivo
     const filtered = battles.filter(b=>{
       const cn = (b.clusterName || b.ClusterName || b.location || '').toString();
@@ -5505,6 +5665,7 @@ async function wmLoadTracker(force){
           guildStats[gname].battles++;
           guildStats[gname].kills += g.kills||g.Kills||0;
           guildStats[gname].deaths += g.deaths||g.Deaths||0;
+          guildStats[gname].fame += g.fame||g.Fame||0;
           const t = b.startTime ? new Date(b.startTime) : null;
           if (t && (!guildStats[gname].lastAt || t>guildStats[gname].lastAt)) guildStats[gname].lastAt = t;
         }
@@ -5516,17 +5677,13 @@ async function wmLoadTracker(force){
           guildStats[gname].battles++;
           guildStats[gname].kills += g.kills||g.Kills||0;
           guildStats[gname].deaths += g.deaths||g.Deaths||0;
+          guildStats[gname].fame += g.fame||g.Fame||0;
         }
-      }
-      // players por si no hay guilds
-      if (!Object.keys(gs).length){
-        const pls = b.players || b.Players || [];
-        // no hacer mucho
       }
     }
     const guildsSorted = Object.values(guildStats).sort((a,b)=>b.kills - a.kills || b.battles - a.battles);
 
-    // También intentar cargar events recientes y filtrar por si el proxy agrega location? 
+    // También intentar cargar events recientes y filtrar por si el proxy agrega location?
     // events no tienen zona, pero mostramos los últimos events de los gremios enemigos detectados
     let events = [];
     try {
@@ -5554,6 +5711,7 @@ async function wmLoadTracker(force){
     WM.tracker.loading = false;
     if (btn) btn.disabled = false;
     wmRenderTracker();
+    wmRenderMinimap(); // refrescar puntos rojos con datos nuevos
   } catch(err){
     WM.tracker.loading = false;
     WM.tracker.error = err && err.message ? err.message : String(err);
@@ -5588,19 +5746,21 @@ function wmRenderTracker(){
   const updated = t.lastUpdate ? new Date(t.lastUpdate).toLocaleTimeString('es-AR') : '—';
   const totalFame = t.totalFame || 0;
   const totalKills = t.totalKills || 0;
+  const selDanger = wmZoneDanger(WM.selectedMap);
+  const selLv = wmDangerLevel(selDanger.score);
 
   box.innerHTML = `
     <div class="stats wm-stats">
       <div class="stat"><div class="k">Zonas vigiladas</div><div class="v">${zones.length}</div><div class="s">${sgEsc(WM.selectedMap)} + ${WM.selectedNeighbors.length} conexiones</div></div>
       <div class="stat"><div class="k">Batallas recientes</div><div class="v pos">${filtered.length}</div><div class="s">de ${t.battles?.length||0} últimas en servidor</div></div>
-      <div class="stat"><div class="k">Kills</div><div class="v">${fmt(totalKills)}</div><div class="s">fama total ${fmt(totalFame)}</div></div>
-      <div class="stat"><div class="k">Actualizado</div><div class="v" style="font-size:1rem">${updated}</div><div class="s"><button class="btn micro-btn" id="wmTrackerBtnInner">↻ Actualizar</button></div></div>
+      <div class="stat"><div class="k">Peligro de la zona</div><div class="v">${selLv.emoji}</div><div class="s">${selLv.label} · score ${selDanger.score.toFixed(1)} · ${selDanger.battles2h} en 2 h</div></div>
+      <div class="stat"><div class="k">Actualizado</div><div class="v" style="font-size:1rem">${updated}</div><div class="s"><button class="btn micro-btn" id="wmTrackerBtnInner">↻ Actualizar</button> <button class="btn micro-btn" id="wmCsvBtn" title="Descargar las batallas filtradas en CSV">⬇ CSV</button></div></div>
     </div>
 
     <div class="wm-section">
       <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Zonas objetivo</div>
-      <div class="chip-group" style="padding:4px 0 8px">
-        ${zones.map(z=>`<span class="chip ${z===WM.selectedMap?'active':''}" data-wm-zone="${sgEsc(z)}">${sgEsc(z)}${z===WM.selectedMap?' <b>(sel)</b>':''}</span>`).join('')}
+      <div class="chip-group" style="padding:4px 0 8px; flex-wrap:wrap">
+        ${zones.map(z=>`<span class="chip ${z===WM.selectedMap?'active':''}" data-wm-zone="${sgEsc(z)}" title="Batallas (2 h): ${wmZoneDanger(z).battles2h} · score ${wmZoneDanger(z).score.toFixed(1)}">${wmDangerBadge(z)} ${sgEsc(z)}${z===WM.selectedMap?' <b>(sel)</b>':''}</span>`).join('')}
       </div>
       <div class="micro muted">Conexiones según world.xml oficial (ao-bin-dumps). ${WM.selectedNeighbors.length ? 'Mapas fronterizos: ' + WM.selectedNeighbors.map(n=>sgEsc(n)).join(', ') : 'Este mapa no tiene conexiones registradas o es aislado.'}</div>
     </div>
@@ -5612,13 +5772,14 @@ function wmRenderTracker(){
         <thead><tr><th>Fecha</th><th>Mapa</th><th class="num">Kills</th><th class="num">Fama</th><th>Gremios</th></tr></thead>
         <tbody>${filtered.slice(0,25).map(b=>wmBattleRow(b)).join('')}</tbody>
       </table></div>
+      <div class="micro muted" style="padding:4px 14px 0">Tocá una batalla para ver los participantes (equipo, IP, gremio).</div>
     </div>` : '<div class="wm-section"><div class="loading-cell">Sin batallas recientes en estas zonas (últimas 100 del servidor). Probá otro mapa o tocá Actualizar.</div></div>'}
 
     ${guilds.length ? `
     <div class="wm-section">
       <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Gremios activos en la zona (${guilds.length})</div>
-      <div class="wm-enemy-list">${guilds.slice(0,15).map(g=>wmEnemyCard({name:g.name, kills:g.kills, gvg:g.battles, lastAt:g.lastAt})).join('')}</div>
-      <div class="micro muted">Top por kills en las batallas filtradas. Usalo como tracker de enemigos en tu zona de farmeo/roaming.</div>
+      <div class="wm-enemy-list">${guilds.slice(0,15).map(g=>wmEnemyCard({name:g.name, kills:g.kills, deaths:g.deaths, fame:g.fame, gvg:g.battles, lastAt:g.lastAt})).join('')}</div>
+      <div class="micro muted">Top por kills en las batallas filtradas, con ratio K/D para ver quién domina la zona. Usalo como tracker de enemigos en tu zona de farmeo/roaming.</div>
     </div>` : ''}
 
     ${t.events && t.events.length ? `
@@ -5627,10 +5788,12 @@ function wmRenderTracker(){
       <div class="wm-events-list">${t.events.map(e=>wmEventRow(e)).join('')}</div>
     </div>` : ''}
 
-    <div class="micro muted pad">Fuente: killboard oficial /battles (clusterName). Zonas objetivo = mapa seleccionado + vecinos según grafo de conexiones. Si un mapa tiene muchas conexiones (ciudad), verás más batallas.</div>
+    <div class="micro muted pad">Fuente: killboard oficial /battles (clusterName). Zonas objetivo = mapa seleccionado + vecinos según grafo de conexiones. Si un mapa tiene muchas conexiones (ciudad), verás más batallas. El peligro decae a la mitad cada 2 h.</div>
   `;
   const innerBtn = box.querySelector('#wmTrackerBtnInner');
   if (innerBtn) innerBtn.onclick = ()=>wmLoadTracker(true);
+  const csvBtn = box.querySelector('#wmCsvBtn');
+  if (csvBtn) csvBtn.onclick = ()=>wmExportCSV();
   // click en chip de zona para cambiar mapa rápido
   box.querySelectorAll('[data-wm-zone]').forEach(ch=>{
     ch.style.cursor='pointer';
@@ -5638,6 +5801,39 @@ function wmRenderTracker(){
       wmSelectMap(ch.dataset.wmZone);
     };
   });
+}
+
+/* ---- exportar las batallas filtradas a CSV ---- */
+function wmExportCSV(){
+  const rows = WM.tracker.filtered || [];
+  if (!rows.length) { waToast('⚠️ Sin datos', 'No hay batallas filtradas para exportar. Rastreá una zona primero.', 'err', ()=>wmOpenWarTab()); return; }
+  const head = ['fecha', 'mapa', 'kills', 'fama', 'jugadores', 'gremios', 'id_batalla', 'link'].join(';');
+  const lines = rows.map(b => {
+    const when = b.startTime ? new Date(b.startTime) : null;
+    const guilds = b.guilds || b.Guilds || {};
+    let glist = '';
+    if (Array.isArray(guilds)) glist = guilds.map(g=>g.name||g.Name||'').filter(Boolean).join(' | ');
+    else if (typeof guilds === 'object') glist = Object.values(guilds).map(g=>g.name||g.Name||'').filter(Boolean).join(' | ');
+    const bid = b.id ?? b.Id ?? '';
+    return [
+      when ? when.toISOString() : '',
+      csvCell(b.clusterName || b.ClusterName || ''),
+      b.totalKills ?? b.TotalKills ?? 0,
+      b.totalFame ?? b.TotalFame ?? 0,
+      b.totalPlayers ?? b.TotalPlayers ?? 0,
+      csvCell(glist),
+      csvCell(String(bid)),
+      csvCell(bid ? 'https://albiononline.com/killboard/battles/' + bid : ''),
+    ].join(';');
+  });
+  const csv = '\ufeff' + head + '\r\n' + lines.join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const slug = (WM.selectedMap || 'zona').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  a.download = 'batallas-' + slug + '-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'') + '.csv';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  waToast('⬇ CSV exportado', rows.length + ' batallas de «' + (WM.selectedMap || '') + '» (separador ;).', '', ()=>wmOpenWarTab());
 }
 
 function wmBattleRow(b){
@@ -5656,11 +5852,549 @@ function wmBattleRow(b){
   const isExpanded = WM.tracker.expandedBattle === String(bid);
   return `<tr class="clickable ${isExpanded?'expanded':''}" data-wm-battle="${bid}">
     <td class="muted micro">${when ? when.toLocaleString('es-AR') : '—'}</td>
-    <td><b>${sgEsc(cluster)}</b></td>
+    <td><b>${sgEsc(cluster)}</b> ${wmDangerBadge(cluster)}</td>
     <td class="num">${fmt(kills)}</td>
     <td class="num pos">${fmt(fame)}</td>
     <td class="muted micro">${guildList||'—'}</td>
-  </tr>` + (isExpanded ? `<tr><td colspan="5"><div class="micro muted" style="padding:6px">ID batalla: ${sgEsc(bid)} — <a href="https://albiononline.com/killboard/battles/${bid}" target="_blank" rel="noopener">Ver en killboard oficial</a></div></td></tr>` : '');
+  </tr>` + (isExpanded ? `<tr><td colspan="5">${wmBattleDetailHTML(bid)}</td></tr>` : '');
+}
+
+/* ---- detalle de batalla: /battles/{id} trae players[] con equipo, IP y gremio ---- */
+async function wmLoadBattleDetail(bid){
+  if (!bid || WM.detailCache[bid]) return;
+  if (WM.detailLoading && WM.detailLoading[bid]) return;
+  WM.detailLoading = WM.detailLoading || {};
+  WM.detailLoading[bid] = true;
+  try {
+    const d = await pfFetchRetry('/battles/' + encodeURIComponent(bid));
+    WM.detailCache[bid] = d || null;
+  } catch(e){
+    WM.detailCache[bid] = { __error: e && e.message ? e.message : String(e) };
+  }
+  delete WM.detailLoading[bid];
+  // repintar solo si sigue expandida
+  if (WM.tracker.expandedBattle === String(bid)) wmRenderTracker();
+}
+
+function wmWeaponLabel(p){
+  const eq = p.Equipment || p.equipment || {};
+  const mh = eq.MainHand || eq.mainHand || null;
+  if (!mh || !mh.Type && !mh.type) return '—';
+  const t = String(mh.Type || mh.type);
+  const name = (typeof catalogName === 'function' && CATALOG) ? catalogName(t.split('@')[0]) : t;
+  return name === t.split('@')[0] ? t : name; // si el catálogo no lo conoce, mostrar el código
+}
+
+function wmBattleDetailHTML(bid){
+  const d = WM.detailCache[bid];
+  if (!d) return '<div class="micro muted" style="padding:8px 6px">⏳ Cargando participantes de la batalla…</div>';
+  if (d.__error) return `<div class="micro muted" style="padding:8px 6px">No se pudo traer el detalle (${sgEsc(d.__error)}). <a href="https://albiononline.com/killboard/battles/${sgEsc(bid)}" target="_blank" rel="noopener">Ver en el killboard oficial</a></div>`;
+  let players = d.players || d.Players || [];
+  if (!Array.isArray(players) && typeof players === 'object') players = Object.values(players);
+  players = players.filter(p => p && (p.Name || p.name));
+  players.sort((a,b)=>(b.KillFame||b.killFame||0)-(a.KillFame||a.killFame||0));
+  if (!players.length){
+    return `<div class="micro muted" style="padding:8px 6px">ID batalla: ${sgEsc(bid)} — el killboard no trajo participantes. <a href="https://albiononline.com/killboard/battles/${sgEsc(bid)}" target="_blank" rel="noopener">Ver en killboard oficial</a></div>`;
+  }
+  const max = WM.tracker.detailShowAll ? players.length : 40;
+  const shown = players.slice(0, max);
+  const rows = shown.map(p => {
+    const name = p.Name || p.name || '?';
+    const guild = p.GuildName || p.guildName || '';
+    const ip = p.AverageItemPower || p.averageItemPower;
+    const k = p.Kills ?? p.kills ?? 0;
+    const dd = p.Deaths ?? p.deaths ?? 0;
+    const fame = p.KillFame || p.killFame || 0;
+    return `<tr>
+      <td><b>${sgEsc(name)}</b></td>
+      <td class="muted micro">${guild ? sgEsc(guild) : '—'}</td>
+      <td class="num">${ip ? Math.round(ip).toLocaleString('es-AR') : '—'}</td>
+      <td class="num">${k}</td>
+      <td class="num">${dd}</td>
+      <td class="num pos">${fmt(fame)}</td>
+      <td class="muted micro">${sgEsc(wmWeaponLabel(p))}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div style="padding:6px 4px 8px">
+      <div class="micro muted" style="margin-bottom:6px">
+        ${players.length} participantes · IP = poder de equipo promedio · ordenados por fama de kills ·
+        <a href="https://albiononline.com/killboard/battles/${sgEsc(bid)}" target="_blank" rel="noopener">abrir en el killboard oficial</a>
+      </div>
+      <div class="table-wrap"><table class="ledger wm-battle-detail">
+        <thead><tr><th>Jugador</th><th>Gremio</th><th class="num">IP</th><th class="num">K</th><th class="num">D</th><th class="num">Fama</th><th>Arma</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${players.length > max ? `<button class="btn micro-btn" data-wm-battle-all="${sgEsc(bid)}" style="margin-top:6px">Ver los ${players.length} participantes</button>` : (WM.tracker.detailShowAll && players.length > 40 ? `<button class="btn micro-btn" data-wm-battle-all="${sgEsc(bid)}" style="margin-top:6px">Colapsar</button>` : '')}
+    </div>`;
+}
+
+/* ---- panel del tracker: info del mapa, minimapa, rutas y vigilancia ---- */
+function wmRenderSelInfo(){
+  const box = document.getElementById('wmSelInfo');
+  if (!box) return;
+  if (!WM.selectedMap){
+    box.innerHTML = '<div class="micro muted" style="margin-top:6px">Tip: probá con Martlock (conexiones: Blackthorn Quarry, Eldon Hill, Haytor, Mase Knoll), Caerleon, Thetford o un mapa de Zona Negra.</div>';
+    return;
+  }
+  const m = WM.mapList.find(x=>x.mapName===WM.selectedMap);
+  const d = wmZoneDanger(WM.selectedMap);
+  const lv = wmDangerLevel(d.score);
+  const watched = typeof wzHas === 'function' && wzHas(WM.selectedMap);
+  box.innerHTML = `
+    <div class="wm-sel-info">
+      <div class="wm-sel-main">
+        <div><b>${sgEsc(WM.selectedMap)}</b> ${wmDangerBadge(WM.selectedMap)}
+          <span class="muted micro">${m ? sgEsc(WM_TYPE_ES[m.mapType] || m.mapType) + ' T' + (m.tier ?? '?') : ''}${WM.selectedMapID ? ' · ' + sgEsc(WM.selectedMapID) : ''}</span></div>
+        <div class="micro muted">${lv.emoji} ${lv.label} · score ${d.score.toFixed(1)} · ${d.battles2h} batalla(s) en 2 h · ${WM.selectedNeighbors.length} conexiones</div>
+        ${wmTerritoryInfoHTML()}
+      </div>
+      <div class="wm-sel-actions">
+        <button class="btn micro-btn" id="wmClearMap">✕ Quitar</button>
+        <button class="btn micro-btn primary" id="wmTrackerBtn">🎯 Rastrear</button>
+        <button class="btn micro-btn${watched ? ' wm-watch-on' : ''}" id="wmWatchToggle">${watched ? '🔔 Vigilada' : '🔔 Vigilar'}</button>
+        <button class="btn micro-btn" id="wmShareBtn" title="Copiar link para compartir esta zona">🔗 Link</button>
+      </div>
+    </div>`;
+  const clearBtn = box.querySelector('#wmClearMap');
+  if (clearBtn) clearBtn.onclick = ()=>{
+    WM.selectedMap=null; WM.selectedNeighbors=[]; WM.selectedMapID=null;
+    try{localStorage.removeItem('wmSelectedMap');}catch(e){}
+    wmShareURL(null);
+    const inp = document.getElementById('wmMapSearch'); if (inp) inp.value='';
+    wmRenderContent(); wmRenderSelInfo(); wmRenderMinimap(); wmRenderTracker();
+  };
+  const trackBtn = box.querySelector('#wmTrackerBtn');
+  if (trackBtn) trackBtn.onclick = ()=>wmLoadTracker(true);
+  const watchBtn = box.querySelector('#wmWatchToggle');
+  if (watchBtn) watchBtn.onclick = ()=>wzToggle(WM.selectedMap);
+  const shareBtn = box.querySelector('#wmShareBtn');
+  if (shareBtn) shareBtn.onclick = ()=>wmCopyShareLink();
+}
+
+function wmCopyShareLink(){
+  if (!WM.selectedMap) return;
+  const url = location.origin + location.pathname + '?map=' + encodeURIComponent(WM.selectedMap);
+  const done = () => waToast('🔗 Link copiado', 'Compartilo: quien lo abra entra directo a la vigilancia de «' + WM.selectedMap + '».', '', ()=>wmOpenWarTab());
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done).catch(()=>wmFallbackCopy(url, done));
+  } else wmFallbackCopy(url, done);
+}
+function wmFallbackCopy(text, done){
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    done();
+  } catch(e){ waToast('🔗 Link de la zona', text, '', ()=>wmOpenWarTab()); }
+}
+
+/* ---- territorios SG: distancia en saltos desde el mapa seleccionado ---- */
+function wmTerritoryDistances(){
+  if (!WM.mapGraph || !WM.selectedMap || !WM.territories.length) return null;
+  const targets = new Map();
+  for (const t of WM.territories) {
+    const key = String(t.name || '').toLowerCase();
+    if (key && !targets.has(key)) targets.set(key, t);
+  }
+  if (!targets.size) return null;
+  const dist = new Map([[WM.selectedMap, 0]]);
+  const queue = [WM.selectedMap];
+  let owned = null, rival = null;
+  while (queue.length){
+    const cur = queue.shift();
+    const cd = dist.get(cur);
+    if (cd > 14) break;
+    const t = targets.get(String(cur).toLowerCase());
+    if (t) {
+      if (t.owned && !owned) owned = { name: t.name, dist: cd };
+      if (!t.owned && !rival) rival = { name: t.name, dist: cd, opponent: t.opponent || '' };
+      if (owned && rival) break;
+    }
+    for (const nb of (WM.mapGraph[cur] || [])) {
+      if (!dist.has(nb)) { dist.set(nb, cd + 1); queue.push(nb); }
+    }
+  }
+  return { owned, rival };
+}
+function wmTerritoryInfoHTML(){
+  const r = wmTerritoryDistances();
+  if (!r || (!r.owned && !r.rival)) return '';
+  const parts = [];
+  if (r.owned) parts.push(`🛡 Tu territorio más cercano: <button class="wm-linklike" data-wm-goto="${sgEsc(r.owned.name)}"><b>${sgEsc(r.owned.name)}</b></button> a ${r.owned.dist} salto${r.owned.dist === 1 ? '' : 's'}`);
+  if (r.rival) parts.push(`⚔️ Rival más cercano: <button class="wm-linklike" data-wm-goto="${sgEsc(r.rival.name)}"><b>${sgEsc(r.rival.name)}</b></button> a ${r.rival.dist} salto${r.rival.dist === 1 ? '' : 's'}${r.rival.opponent ? ' (vs ' + sgEsc(r.rival.opponent) + ')' : ''}`);
+  return `<div class="micro wm-terr-near">${parts.join('<br>')}</div>`;
+}
+
+/* ---- minimapa SVG (posiciones oficiales worldmapposition de world.xml) ---- */
+const WM_CITY_LABELS = ['Martlock', 'Thetford', 'Bridgewatch', 'Fort Sterling', 'Lymhurst', 'Caerleon'];
+function wmMinimapData(){
+  if (WM.mmData) return WM.mmData;
+  const nodes = [];
+  const byKey = new Map();
+  for (const m of WM.mapList) {
+    if (typeof m.x === 'number' && typeof m.y === 'number') {
+      nodes.push(m);
+      byKey.set(m.mapName.toLowerCase(), m);
+    }
+  }
+  const edges = [];
+  const seen = new Set();
+  for (const m of nodes) {
+    for (const nbName of (WM.mapGraph[m.mapName] || [])) {
+      const nb = byKey.get(String(nbName).toLowerCase());
+      if (!nb) continue;
+      const key = [m.mapName, nb.mapName].sort().join('||');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push([m, nb]);
+    }
+  }
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const m of nodes) {
+    if (m.x < minX) minX = m.x; if (m.x > maxX) maxX = m.x;
+    if (m.y < minY) minY = m.y; if (m.y > maxY) maxY = m.y;
+  }
+  const pad = 16;
+  const vb = { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+  WM.mmData = { nodes, edges, byKey, vb };
+  return WM.mmData;
+}
+function wmRenderMinimap(){
+  const host = document.getElementById('wmMinimapWrap');
+  if (!host) return;
+  if (!WM.mapPos || !WM.mapPos.size || !WM.mapGraph) { host.innerHTML = ''; return; }
+  const { nodes, edges, vb } = wmMinimapData();
+  const selKey = WM.selectedMap ? WM.selectedMap.toLowerCase() : null;
+  const nbSet = new Set(WM.selectedNeighbors.map(n=>String(n).toLowerCase()));
+  const watchSet = (typeof WZ !== 'undefined' ? WZ.zones : []).map(z=>String(z).toLowerCase());
+  const route = (WM.route && WM.route.safe) ? WM.route.safe : null;
+  const routeSet = route ? new Set(route.map(s=>String(s).toLowerCase())) : null;
+  const routeEdgeKeys = new Set();
+  if (route) for (let i = 0; i + 1 < route.length; i++) {
+    routeEdgeKeys.add([route[i], route[i+1]].sort().join('||').toLowerCase());
+  }
+  const ownedSet = new Set(WM.territories.filter(t=>t.owned).map(t=>String(t.name).toLowerCase()));
+
+  // puntos rojos: zonas con batallas recientes (score de peligro)
+  const battleDots = [];
+  for (const zone of Object.keys(WM.zoneDanger)) {
+    const d = WM.zoneDanger[zone];
+    if (d.score <= 0.5) continue;
+    const m = WM.mapPos.get(zone);
+    if (m) battleDots.push({ m, d, zone });
+  }
+  battleDots.sort((a,b)=>b.d.score - a.d.score);
+
+  const edgeHTML = edges.map(([a,b]) => {
+    const ka = [a.mapName, b.mapName].sort().join('||').toLowerCase();
+    const inRoute = routeEdgeKeys.has(ka);
+    return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="wm-mm-edge${inRoute ? ' wm-mm-edge-route' : ''}"/>`;
+  }).join('');
+
+  const nodeHTML = nodes.map(m => {
+    const key = m.mapName.toLowerCase();
+    const isSel = key === selKey;
+    const isNb = !isSel && nbSet.has(key);
+    const inRoute = routeSet && routeSet.has(key) && !isSel;
+    const dim = WM.mapFilter !== 'all' && !wmMapMatches(m) && !isSel && !isNb;
+    const cls = 'wm-mm-node' + (isSel ? ' wm-mm-sel' : isNb ? ' wm-mm-nb' : inRoute ? ' wm-mm-route' : '')
+      + (dim ? ' wm-mm-dim' : '') + (watchSet.includes(key) ? ' wm-mm-watch' : '');
+    return `<circle cx="${m.x}" cy="${m.y}" r="${isSel ? 5 : isNb ? 3.4 : inRoute ? 3.4 : 2.1}" class="${cls}" data-wm-node="${sgEsc(m.mapName)}" data-wm-tip="node"/>`;
+  }).join('');
+
+  const terrHTML = WM.territories.filter(t => t.owned).map(t => {
+    const m = WM.mapPos.get(String(t.name).toLowerCase());
+    if (!m) return '';
+    return `<rect x="${m.x - 4.6}" y="${m.y - 4.6}" width="9.2" height="9.2" class="wm-mm-terr" data-wm-node="${sgEsc(t.name)}" data-wm-tip="terr"><title>Territorio SG: ${sgEsc(t.name)}</title></rect>`;
+  }).join('');
+
+  const dotHTML = battleDots.slice(0, 120).map(({m, d, zone}) => {
+    const r = 2.6 + Math.min(9, Math.sqrt(d.score) * 1.35);
+    return `<circle cx="${m.x}" cy="${m.y}" r="${r.toFixed(1)}" class="wm-mm-battle" data-wm-node="${sgEsc(m.mapName)}" data-wm-tip="battle" data-wm-zone="${sgEsc(zone)}"/>`;
+  }).join('');
+
+  const labelHTML = nodes.map(m => {
+    const key = m.mapName.toLowerCase();
+    const show = WM_CITY_LABELS.includes(m.mapName)
+      || key === selKey
+      || (routeSet && routeSet.has(key))
+      || watchSet.includes(key);
+    if (!show) return '';
+    const cls = 'wm-mm-label' + (key === selKey ? ' wm-mm-label-sel' : '');
+    return `<text x="${m.x}" y="${m.y - (WM_CITY_LABELS.includes(m.mapName) ? 7 : 6)}" class="${cls}" text-anchor="middle">${sgEsc(m.mapName)}</text>`;
+  }).join('');
+
+  const legend = `
+    <div class="wm-mm-legend micro muted">
+      <span><i class="wm-lg wm-lg-sel"></i>seleccionado</span>
+      <span><i class="wm-lg wm-lg-nb"></i>vecino</span>
+      <span><i class="wm-lg wm-lg-battle"></i>batallas</span>
+      <span><i class="wm-lg wm-lg-terr"></i>territorio SG</span>
+      <span><i class="wm-lg wm-lg-route"></i>ruta</span>
+    </div>`;
+
+  host.innerHTML = `
+    <div class="cd-title"><svg class="title-ico"><use href="#i-globe"/></svg> Minimapa del mundo <span class="muted micro">(posiciones oficiales del cliente · ${nodes.length} zonas con posición; Caminos de Avalon y zonas interiores no tienen posición fija)</span></div>
+    <div class="wm-mm-wrap">
+      <svg id="wmMinimap" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Minimapa de Albion: zonas y batallas recientes">
+        <g id="wmMMG" transform="translate(${WM.mm.tx} ${WM.mm.ty}) scale(${WM.mm.k})">
+          ${edgeHTML}${nodeHTML}${terrHTML}${dotHTML}${labelHTML}
+        </g>
+      </svg>
+      <div class="wm-mm-tip" id="wmMMTip" hidden></div>
+      <div class="wm-mm-zoom">
+        <button class="btn micro-btn" id="wmMMZin" title="Acercar">＋</button>
+        <button class="btn micro-btn" id="wmMMZout" title="Alejar">−</button>
+        <button class="btn micro-btn" id="wmMMReset" title="Ver todo">⤢</button>
+      </div>
+      ${legend}
+    </div>`;
+  wmMinimapWire(host, vb);
+}
+function wmMMScale(svg, vb){
+  const r = svg.getBoundingClientRect();
+  if (!r.width || !r.height) return { s: 1, ox: 0, oy: 0, r };
+  const s = Math.min(r.width / vb.w, r.height / vb.h);
+  return { s, ox: (r.width - vb.w * s) / 2, oy: (r.height - vb.h * s) / 2, r };
+}
+function wmMMPoint(svg, vb, e){
+  const { s, ox, oy, r } = wmMMScale(svg, vb);
+  return { x: vb.x + (e.clientX - r.left - ox) / s, y: vb.y + (e.clientY - r.top - oy) / s };
+}
+function wmMMApply(svg){
+  const g = svg.querySelector('#wmMMG');
+  if (g) g.setAttribute('transform', `translate(${WM.mm.tx} ${WM.mm.ty}) scale(${WM.mm.k})`);
+}
+function wmMMZoomAt(svg, vb, e, factor){
+  const p = wmMMPoint(svg, vb, e);
+  const k2 = Math.max(0.7, Math.min(14, WM.mm.k * factor));
+  WM.mm.tx = p.x - (p.x - WM.mm.tx) * (k2 / WM.mm.k);
+  WM.mm.ty = p.y - (p.y - WM.mm.ty) * (k2 / WM.mm.k);
+  WM.mm.k = k2;
+  wmMMApply(svg);
+}
+function wmMinimapWire(host, vb){
+  const svg = host.querySelector('#wmMinimap');
+  const tip = host.querySelector('#wmMMTip');
+  if (!svg) return;
+
+  svg.addEventListener('click', e => {
+    const c = e.target.closest('[data-wm-node]');
+    if (!c || WM.mm.dragged) return;
+    wmSelectMap(c.dataset.wmNode);
+  });
+
+  /* pan: arrastrar con mouse/touch (con captura del puntero) */
+  let pan = null;
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    pan = { x: e.clientX, y: e.clientY, tx: WM.mm.tx, ty: WM.mm.ty };
+    WM.mm.dragged = false;
+    try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  svg.addEventListener('pointermove', e => {
+    if (pan) {
+      const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+      if (Math.hypot(dx, dy) > 6) WM.mm.dragged = true;
+      const { s } = wmMMScale(svg, vb);
+      WM.mm.tx = pan.tx + dx / s;
+      WM.mm.ty = pan.ty + dy / s;
+      wmMMApply(svg);
+    }
+    if (tip && !tip.hidden) wmMMPlaceTip(host, tip, e);
+  });
+  const endPan = () => { pan = null; setTimeout(()=>{ WM.mm.dragged = false; }, 50); };
+  svg.addEventListener('pointerup', endPan);
+  svg.addEventListener('pointercancel', endPan);
+
+  /* zoom con rueda, centrado en el puntero */
+  svg.addEventListener('wheel', e => {
+    e.preventDefault();
+    wmMMZoomAt(svg, vb, e, Math.pow(1.0015, -e.deltaY));
+  }, { passive: false });
+
+  const zin = host.querySelector('#wmMMZin');
+  const zout = host.querySelector('#wmMMZout');
+  const zreset = host.querySelector('#wmMMReset');
+  if (zin) zin.onclick = () => wmMMZoomCenter(svg, vb, 1.35);
+  if (zout) zout.onclick = () => wmMMZoomCenter(svg, vb, 1 / 1.35);
+  if (zreset) zreset.onclick = () => { WM.mm = { k: 1, tx: 0, ty: 0 }; wmMMApply(svg); };
+
+  /* tooltip */
+  svg.addEventListener('pointerover', e => {
+    const c = e.target.closest('[data-wm-tip]');
+    if (!c || !tip) { if (tip) tip.hidden = true; return; }
+    tip.innerHTML = wmMinimapTipHTML(c);
+    tip.hidden = false;
+    wmMMPlaceTip(host, tip, e);
+  });
+  svg.addEventListener('pointerout', e => {
+    if (tip && !e.relatedTarget?.closest?.('[data-wm-tip]')) tip.hidden = true;
+  });
+}
+function wmMMZoomCenter(svg, vb, factor){
+  const { s, ox, oy, r } = wmMMScale(svg, vb);
+  const cx = r.left + ox + vb.w * s / 2, cy = r.top + oy + vb.h * s / 2;
+  wmMMZoomAt(svg, vb, { clientX: cx, clientY: cy }, factor);
+}
+function wmMMPlaceTip(host, tip, e){
+  const hr = host.getBoundingClientRect();
+  let x = e.clientX - hr.left + 14, y = e.clientY - hr.top + 14;
+  const tw = tip.offsetWidth || 180, th = tip.offsetHeight || 60;
+  if (x + tw > hr.width - 6) x = Math.max(6, e.clientX - hr.left - tw - 10);
+  if (y + th > hr.height - 6) y = Math.max(6, e.clientY - hr.top - th - 10);
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+function wmMinimapTipHTML(el){
+  const kind = el.dataset.wmTip;
+  const name = el.dataset.wmNode || el.dataset.wmZone || '?';
+  const m = WM.mapList.find(x=>x.mapName === name);
+  const d = wmZoneDanger(name);
+  const lv = wmDangerLevel(d.score);
+  if (kind === 'battle') {
+    return `<b>${sgEsc(name)}</b> ${lv.emoji}<br>${d.count} batalla(s) reciente(s) · ${d.battles2h} en 2 h<br>${fmt(d.kills)} kills · ${fmt(d.fame)} fama<br><span class="muted">clic = seleccionar zona</span>`;
+  }
+  if (kind === 'terr') {
+    return `<b>${sgEsc(name)}</b> 🛡<br>Territorio de Spetsnaz Grail<br><span class="muted">clic = seleccionar zona</span>`;
+  }
+  const extra = m ? `<span class="muted">${sgEsc(WM_TYPE_ES[m.mapType] || m.mapType)} T${m.tier ?? '?'} · ${(WM.mapGraph[m.mapName] || []).length} conexiones</span><br>` : '';
+  return `<b>${sgEsc(name)}</b> ${lv.emoji} ${lv.label}<br>${extra}${d.count} batalla(s) · score ${d.score.toFixed(1)} · ${d.battles2h} en 2 h<br><span class="muted">clic = seleccionar zona</span>`;
+}
+
+/* ---- rutas: BFS (más corta) + Dijkstra (más segura, penaliza peligro) ---- */
+function wmMapTypeOf(name){
+  if (!WM.mapTypeIdx) {
+    WM.mapTypeIdx = new Map();
+    for (const m of WM.mapList) WM.mapTypeIdx.set(m.mapName.toLowerCase(), m.mapType);
+  }
+  return WM.mapTypeIdx.get(String(name||'').toLowerCase());
+}
+function wmNeighbors(name){
+  const nbs = (WM.mapGraph && WM.mapGraph[name]) || [];
+  if (!WM.noRoads) return nbs;
+  return nbs.filter(nb => wmMapTypeOf(nb) !== 'roads');
+}
+function wmResolveMapName(q){
+  if (!q) return null;
+  if (WM.mapGraph && WM.mapGraph[q]) return q;
+  const low = q.toLowerCase();
+  const m = WM.mapList.find(x=>x.mapName.toLowerCase() === low);
+  if (m) return m.mapName;
+  const partial = WM.mapList.find(x=>x.mapName.toLowerCase().includes(low));
+  return partial ? partial.mapName : null;
+}
+function wmBFSRoute(from, to){
+  const prev = new Map([[from, null]]);
+  const q = [from];
+  while (q.length){
+    const cur = q.shift();
+    if (cur === to) break;
+    for (const nb of wmNeighbors(cur)) {
+      if (!prev.has(nb)) { prev.set(nb, cur); q.push(nb); }
+    }
+  }
+  if (!prev.has(to)) return null;
+  const path = [];
+  for (let c = to; c != null; c = prev.get(c)) path.unshift(c);
+  return path;
+}
+function wmEnterCost(name){
+  // coste de ENTRAR a una zona: 1 salto + peligro (cada 4 puntos de score
+  // suman un salto equivalente, tope +12). Sin batallas → 1 (ruta corta).
+  // Se aplica a cualquier tipo de zona: si el killboard reporta batallas
+  // ahí, no es segura, aunque sea royal azul.
+  const d = wmZoneDanger(name);
+  return 1 + Math.min(12, d.score / 4);
+}
+function wmSafeRoute(from, to){
+  const dist = new Map([[from, 0]]);
+  const prev = new Map();
+  const pq = [[0, from]];
+  const done = new Set();
+  while (pq.length){
+    pq.sort((a,b)=>a[0]-b[0]);
+    const [d, cur] = pq.shift();
+    if (done.has(cur)) continue;
+    done.add(cur);
+    if (cur === to) break;
+    for (const nb of wmNeighbors(cur)) {
+      const nd = d + wmEnterCost(nb);
+      if (nd < (dist.has(nb) ? dist.get(nb) : Infinity)) { dist.set(nb, nd); prev.set(nb, cur); pq.push([nd, nb]); }
+    }
+  }
+  if (!dist.has(to)) return null;
+  const path = [];
+  for (let c = to; c != null; c = prev.get(c)) path.unshift(c);
+  return path;
+}
+function wmRouteDanger(path){
+  // peligro total de la ruta = suma del score de las zonas por las que PASÁS (sin el origen)
+  let s = 0;
+  for (let i = 1; i < path.length; i++) s += wmZoneDanger(path[i]).score;
+  return s;
+}
+async function wmRouteCalc(){
+  await wmLoadMapGraph();
+  const fromRaw = (document.getElementById('wmRouteFrom')?.value || '').trim() || WM.selectedMap || '';
+  const toRaw = (document.getElementById('wmRouteTo')?.value || '').trim();
+  const from = wmResolveMapName(fromRaw);
+  const to = wmResolveMapName(toRaw);
+  if (!from || !to) {
+    WM.route = null;
+    wmRenderRoute();
+    wmRenderMinimap();
+    return;
+  }
+  // traer batallas (caché 5 min) para el scoring de peligro de cada salto
+  wmFetchBattles(5 * 60e3).catch(()=>{}).then(()=>{ if (WM.route) { wmRenderRoute(); wmRenderMinimap(); } });
+  const short = wmBFSRoute(from, to);
+  const safe = wmSafeRoute(from, to);
+  WM.route = short ? { from, to, short, safe: safe || short } : null;
+  wmRenderRoute();
+  wmRenderMinimap();
+}
+function wmRouteChips(path){
+  return path.map((z, i) => {
+    const d = wmZoneDanger(z);
+    const lv = wmDangerLevel(d.score);
+    return `${i ? '<span class="wm-route-arrow">→</span>' : ''}<button class="chip wm-route-chip" data-wm-goto="${sgEsc(z)}" title="${d.battles2h} batalla(s) en 2 h · score ${d.score.toFixed(1)}">${lv.emoji} ${sgEsc(z)}${d.battles2h ? ` <b class="wm-route-b2h">${d.battles2h}</b>` : ''}</button>`;
+  }).join(' ');
+}
+function wmRenderRoute(){
+  const box = document.getElementById('wmRouteResult');
+  if (!box) return;
+  if (!WM.route){
+    box.innerHTML = '<div class="micro muted">Elegí origen y destino: calculamos la ruta más corta (BFS sobre el grafo de conexiones) y la más segura (evita zonas calientes según las batallas de las últimas 2 h).</div>';
+    return;
+  }
+  const { from, to, short, safe } = WM.route;
+  const same = short.join('||') === safe.join('||');
+  const shortD = wmRouteDanger(short);
+  const safeD = wmRouteDanger(safe);
+  const lvS = wmDangerLevel(shortD / Math.max(1, short.length - 1));
+  const lvSafe = wmDangerLevel(safeD / Math.max(1, safe.length - 1));
+  let html = '';
+  if (same){
+    html = `<div class="wm-route-res">
+      <div class="wm-route-head">📍 ${sgEsc(from)} → ${sgEsc(to)}: <b>${short.length - 1} salto${short.length - 1 === 1 ? '' : 's'}</b> ${lvS.emoji} peligro total ${shortD.toFixed(1)}</div>
+      <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(short)}</div>
+    </div>`;
+  } else {
+    html = `<div class="wm-route-res">
+      <div class="wm-route-head">⚡ Más corta: <b>${short.length - 1} salto${short.length - 1 === 1 ? '' : 's'}</b> ${lvS.emoji} peligro ${shortD.toFixed(1)}</div>
+      <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(short)}</div>
+    </div>
+    <div class="wm-route-res">
+      <div class="wm-route-head">🛡 Más segura: <b>${safe.length - 1} salto${safe.length - 1 === 1 ? '' : 's'}</b> ${lvSafe.emoji} peligro ${safeD.toFixed(1)} <span class="muted micro">(esquiva zonas calientes; penaliza cada punto de peligro)</span></div>
+      <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(safe)}</div>
+    </div>`;
+  }
+  html += '<div class="micro muted" style="margin-top:6px">Peligro por zona = Σ(kills + fama/1000) con decaimiento de 2 h, según las últimas 100 batallas del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
+  box.innerHTML = html;
 }
 
 function wmRender() {
@@ -5675,74 +6409,161 @@ function wmRender() {
         </button>
       </div>
       <div class="micro muted wm-intro">
-        Territorios SG reconstruidos desde GvG. NUEVO: elegí cualquier mapa real de Albion y rastrea asesinatos en esa zona + conexiones fronterizas (grafo oficial world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas).
+        Territorios SG reconstruidos desde GvG. Elegí cualquier mapa real de Albion y rastrea asesinatos en esa zona + conexiones fronterizas (grafo oficial world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas).
       </div>
 
-      <div class="panel" style="margin:12px 0; padding:12px; border:1px solid var(--border, #2a2f3a)">
-        <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Tracker de enemigos por mapa real</div>
-        <div class="micro muted" style="margin:4px 0 8px">Aunque no tengamos info de mapas de SG, podés vigilar cualquier zona real. El tracker filtra /battles por clusterName ∈ [mapa + vecinos].</div>
-        <div class="search-wrap" style="position:relative; max-width:420px">
-          <input type="search" id="wmMapSearch" class="search big" placeholder="Buscar mapa… Ej: Martlock, Caerleon, Eldon Hill, Swamp Cross" value="${sgEsc(WM.selectedMap||'')}" autocomplete="off">
-          <div id="wmMapResults" class="sr-results"></div>
+      <div id="wmSheet" class="wm-sheet">
+        <div class="panel wm-tracker-panel">
+          <div class="wm-sheet-head">
+            <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Tracker por zona real</div>
+            <button class="btn micro-btn wm-sheet-close" id="wmSheetClose" title="Cerrar">✕</button>
+          </div>
+          <div class="micro muted" style="margin:4px 0 8px">Vigilá cualquier zona real: filtramos /battles por clusterName ∈ [mapa + vecinos]. En móvil, este panel se abre como hoja inferior con el botón flotante 🎯.</div>
+
+          <div class="chip-group wm-type-chips" id="wmTypeChips">
+            ${WM_MAP_FILTERS.map(f=>`<button class="chip ${WM.mapFilter === f.id ? 'active' : ''}" data-wm-type="${f.id}">${f.label}</button>`).join('')}
+          </div>
+
+          <div class="search-wrap wm-search">
+            <input type="search" id="wmMapSearch" class="search big" placeholder="Buscar mapa… Ej: Martlock, Caerleon, Eldon Hill, Swamp Cross" value="${sgEsc(WM.selectedMap||'')}" autocomplete="off">
+            <div id="wmMapResults" class="search-results"></div>
+          </div>
+
+          <div id="wmSelInfo"></div>
+          <div id="wmMinimapWrap" class="wm-minimap"></div>
+
+          <div class="wm-route-box">
+            <div class="cd-title"><svg class="title-ico"><use href="#i-globe"/></svg> Rutas seguras</div>
+            <div class="wm-route-form">
+              <input type="search" id="wmRouteFrom" class="search" placeholder="Desde (vacío = mapa seleccionado)" value="${sgEsc(WM.route?.from || WM.selectedMap || '')}" autocomplete="off">
+              <div class="search-wrap" style="position:relative; flex:1; min-width:150px">
+                <input type="search" id="wmRouteTo" class="search" placeholder="Hasta… Ej: Thetford" value="${sgEsc(WM.route?.to || '')}" autocomplete="off">
+                <div id="wmRouteToResults" class="search-results"></div>
+              </div>
+              <button class="btn primary" id="wmRouteGo">🧭 Calcular</button>
+            </div>
+            <label class="micro muted wm-noroads"><input type="checkbox" id="wmNoRoads" ${WM.noRoads ? 'checked' : ''}> Evitar Caminos de Avalon</label>
+            <div id="wmRouteResult"></div>
+          </div>
+
+          <div id="wmWatchBox" class="wm-watch"></div>
+
+          <div id="wmTrackerContent" style="margin-top:10px"></div>
         </div>
-        ${WM.selectedMap ? `<div class="micro muted" style="margin-top:6px">Mapa seleccionado: <b>${sgEsc(WM.selectedMap)}</b> ${WM.selectedMapID ? '('+sgEsc(WM.selectedMapID)+')' : ''} — ${WM.selectedNeighbors.length} conexiones — <button class="btn micro-btn" id="wmClearMap">Quitar</button> <button class="btn micro-btn primary" id="wmTrackerBtn">🎯 Rastrear asesinatos</button></div>` : '<div class="micro muted" style="margin-top:6px">Tip: probá con Martlock (conexiones: Blackthorn Quarry, Eldon Hill, Haytor, Mase Knoll) o Thetford, Lymhurst, etc.</div>'}
-        <div id="wmTrackerContent" style="margin-top:10px"></div>
       </div>
+      <button class="wm-fab" id="wmFab" title="Abrir el tracker por zona">🎯 Rastrear zona</button>
 
       <div id="wmContent">
         <div class="loading-cell">Cargando territorios y eventos de SG…</div>
       </div>
     </div>`;
   document.getElementById('wmRefreshBtn').onclick = () => wmLoad(true);
-  // mapa
-  const mapInput = document.getElementById('wmMapSearch');
-  const mapResults = document.getElementById('wmMapResults');
-  const clearBtn = document.getElementById('wmClearMap');
-  const trackBtn = document.getElementById('wmTrackerBtn');
-  if (clearBtn) clearBtn.onclick = ()=>{ WM.selectedMap=null; WM.selectedNeighbors=[]; WM.selectedMapID=null; try{localStorage.removeItem('wmSelectedMap');}catch(e){} wmRenderContent(); wmRenderTracker(); mapInput.value=''; };
-  if (trackBtn) trackBtn.onclick = ()=>wmLoadTracker(true);
 
-  let searchTimer=null;
-  if (mapInput){
-    mapInput.addEventListener('input', ()=>{
-      clearTimeout(searchTimer);
-      const q = mapInput.value.trim();
-      searchTimer=setTimeout(async ()=>{
-        if (!WM.mapGraph) await wmLoadMapGraph();
-        const hits = wmMapSearch(q);
-        if (!hits.length){ mapResults.classList.remove('open'); mapResults.innerHTML=''; return; }
-        mapResults.innerHTML = hits.map(m=>`<div class="sr-item" data-wm-map="${sgEsc(m.mapName)}"><div><div class="n">${sgEsc(m.mapName)}</div><div class="m">${sgEsc(m.mapID)} · ${sgEsc(m.mapType)} T${m.tier||'?'} · ${(WM.mapGraph && WM.mapGraph[m.mapName] ? WM.mapGraph[m.mapName].length : '?')} conexiones</div></div></div>`).join('');
-        mapResults.classList.add('open');
-      }, 250);
-    });
-    mapInput.addEventListener('focus', ()=>{
-      if (WM.mapSearchResults.length){ mapResults.classList.add('open'); }
-    });
-  }
-  if (mapResults){
-    mapResults.addEventListener('click', e=>{
-      const it = e.target.closest('[data-wm-map]'); if (!it) return;
-      mapResults.classList.remove('open');
-      wmSelectMap(it.dataset.wmMap);
-      mapInput.value = it.dataset.wmMap;
-    });
-  }
-  document.addEventListener('click', e=>{
-    if (!e.target.closest('#wmMapSearch') && !e.target.closest('#wmMapResults')){
-      const r = document.getElementById('wmMapResults');
-      if (r) r.classList.remove('open');
-    }
+  // hoja inferior (móvil) + botón flotante
+  const sheet = document.getElementById('wmSheet');
+  const fab = document.getElementById('wmFab');
+  if (fab) fab.onclick = () => {
+    if (sheet) sheet.classList.add('open');
+    if (WM.selectedMap) wmLoadTracker(true);
+    else document.getElementById('wmMapSearch')?.focus();
+  };
+  const sheetClose = document.getElementById('wmSheetClose');
+  if (sheetClose) sheetClose.onclick = () => { if (sheet) sheet.classList.remove('open'); };
+
+  // chips de tipo de mapa
+  const typeChips = document.getElementById('wmTypeChips');
+  if (typeChips) typeChips.onclick = e => {
+    const c = e.target.closest('[data-wm-type]'); if (!c) return;
+    WM.mapFilter = c.dataset.wmType;
+    try { localStorage.setItem('wmMapFilter', WM.mapFilter); } catch(err){}
+    typeChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('active', x === c));
+    const q = document.getElementById('wmMapSearch')?.value.trim();
+    if (q) wmMapSearch(q); // re-filtra resultados abiertos
+    wmRenderMinimap();
+  };
+
+  // buscador de mapas (con dropdown reutilizable)
+  wmAttachMapInput('wmMapSearch', 'wmMapResults', name => {
+    wmSelectMap(name);
+    const inp = document.getElementById('wmMapSearch');
+    if (inp) inp.value = name;
   });
+  // destino de ruta con el mismo buscador
+  wmAttachMapInput('wmRouteTo', 'wmRouteToResults', name => {
+    const inp = document.getElementById('wmRouteTo');
+    if (inp) inp.value = name;
+    const res = document.getElementById('wmRouteToResults');
+    if (res) res.classList.remove('open');
+  });
+
+  const routeGo = document.getElementById('wmRouteGo');
+  if (routeGo) routeGo.onclick = () => wmRouteCalc();
+  const noRoads = document.getElementById('wmNoRoads');
+  if (noRoads) noRoads.onchange = () => {
+    WM.noRoads = noRoads.checked;
+    try { localStorage.setItem('wmNoRoads', WM.noRoads ? '1' : ''); } catch(e){}
+    if (WM.route) wmRouteCalc();
+  };
+
+  // botones dentro de selInfo / watch / minimapa / tracker (delegación, una sola vez por elemento)
+  if (!mount.dataset.wmWired) {
+    mount.dataset.wmWired = '1';
+    mount.addEventListener('click', e => {
+      const g = e.target.closest('[data-wm-goto]');
+      if (g) wmSelectMap(g.dataset.wmGoto);
+    });
+  }
+
+  wmRenderSelInfo();
+  wmRenderWatch();
+  wmRenderRoute();
+  wmRenderTracker();
 
   // cargar grafo de mapas en segundo plano
   wmLoadMapGraph().then(()=>{
     if (WM.selectedMap) wmLoadTracker(false);
+    wmRenderSelInfo();
+    wmRenderMinimap();
+    wmRenderRoute();
     wmRenderTracker();
   });
 
   if (WM.loadedOnce && !WM.loading) wmRenderContent();
   else wmLoad(false);
 }
+
+/* buscador de mapas reutilizable (tracker + destino de ruta) */
+function wmAttachMapInput(inputId, resultsId, onPick){
+  const input = document.getElementById(inputId);
+  const results = document.getElementById(resultsId);
+  if (!input || !results) return;
+  let timer = null;
+  input.addEventListener('input', ()=>{
+    clearTimeout(timer);
+    const q = input.value.trim();
+    timer = setTimeout(async ()=>{
+      if (!WM.mapGraph) await wmLoadMapGraph();
+      const hits = wmMapSearch(q);
+      if (!hits.length){ results.classList.remove('open'); results.innerHTML=''; return; }
+      results.innerHTML = hits.map(m=>`<div class="sr-item" data-wm-pick="${sgEsc(m.mapName)}"><div><div class="n">${sgEsc(m.mapName)}</div><div class="m">${sgEsc(m.mapID)} · ${sgEsc(WM_TYPE_ES[m.mapType] || m.mapType)} T${m.tier||'?'} · ${(WM.mapGraph && WM.mapGraph[m.mapName] ? WM.mapGraph[m.mapName].length : '?')} conexiones</div></div></div>`).join('');
+      results.classList.add('open');
+    }, 250);
+  });
+  input.addEventListener('focus', ()=>{
+    if (results.children.length) results.classList.add('open');
+  });
+  results.addEventListener('click', e=>{
+    const it = e.target.closest('[data-wm-pick]');
+    if (!it) return;
+    results.classList.remove('open');
+    onPick(it.dataset.wmPick);
+  });
+}
+/* cerrar cualquier dropdown de búsqueda de mapas al clickear afuera (una sola delegación global) */
+document.addEventListener('click', e=>{
+  if (e.target.closest('.wm-search') || e.target.closest('.wm-route-form')) return;
+  document.querySelectorAll('#wmMapResults.open, #wmRouteToResults.open').forEach(r=>r.classList.remove('open'));
+});
 
 async function wmLoad(force) {
   if (WM.loading) return;
@@ -5903,8 +6724,10 @@ function wmRenderContent() {
   // delegar click en batallas del tracker si están dentro de wmContent? No, están en trackerContent
   // Pero también necesitamos click para battles del SG? No.
 
-  // asegurar tracker pintado
+  // asegurar tracker pintado + refrescar distancias a territorios y minimapa
   wmRenderTracker();
+  wmRenderSelInfo();
+  wmRenderMinimap();
 }
 
 function wmTerritoryCard(t) {
@@ -5967,11 +6790,12 @@ function wmMatchRow(m, isNext) {
 }
 
 function wmEnemyCard(e) {
+  const kd = (e.deaths != null) ? (e.kills / Math.max(1, e.deaths)).toFixed(1).replace('.', ',') : null;
   return `
     <div class="wm-enemy-card">
       <div class="wm-enemy-name">${sgEsc(e.name)}</div>
       <div class="wm-enemy-stats">
-        <div><b>${e.kills}</b> kills · <b>${e.gvg}</b> GvG</div>
+        <div><b>${e.kills}</b> kills${e.gvg != null ? ` · <b>${e.gvg}</b> GvG` : ''}${kd ? ` · K/D <b>${kd}</b>` : ''}${e.fame ? ` · ${fmt(e.fame)} fama` : ''}</div>
         <div class="muted">${e.lastAt ? 'Último: ' + wmTimeAgo(e.lastAt) : ''}</div>
       </div>
     </div>`;
@@ -6026,14 +6850,214 @@ function wmTimeAgo(date) {
 
 /* ---- arranque: hash de vuelta de Discord + config del Worker ---- */
 
-/* delegación para expandir batallas del tracker */
+/* ====================================================================
+   🔔 ALERTAS POR ZONA — mismo espíritu que las alertas de precio (WA):
+   cada N minutos (default 3) se consultan las últimas /battles del
+   killboard a través de la caché compartida y, si aparece una batalla
+   en una zona vigilada → toast + beep suave + notificación del navegador.
+   Persiste en localStorage ('wmZoneAlerts' + 'wmZoneSeen'); sin service
+   worker: si cerrás la pestaña, no hay alertas. El primer ciclo marca la
+   línea de base (no dispara con batallas viejas); después avisa de las
+   batallas nuevas con menos de 15 min de antigüedad.
+   ==================================================================== */
+const WZ = {
+  zones: [],          // nombres de zonas vigiladas (máx 20)
+  sound: true,
+  browser: false,
+  intervalMin: 3,
+  seen: [],           // ids de batallas ya vistas (dedupe, tope 1000)
+  primed: false,      // false hasta terminar el primer ciclo completo
+  timer: null, running: false, fails: 0, lastError: null, lastCheck: null, nextAt: 0, firedTotal: 0,
+};
+try {
+  const saved = JSON.parse(localStorage.getItem('wmZoneAlerts') || 'null');
+  if (saved && Array.isArray(saved.zones)) {
+    WZ.zones = saved.zones.filter(z=>typeof z === 'string').slice(0, 20);
+    if (typeof saved.sound === 'boolean') WZ.sound = saved.sound;
+    if (typeof saved.browser === 'boolean') WZ.browser = saved.browser;
+    const iv = parseFloat(saved.intervalMin);
+    if (iv >= 1 && iv <= 30) WZ.intervalMin = iv;
+  }
+  const seenSaved = JSON.parse(localStorage.getItem('wmZoneSeen') || '[]');
+  if (Array.isArray(seenSaved)) WZ.seen = seenSaved.map(String).slice(-1000);
+} catch(e){}
+function wzSave(){
+  try { localStorage.setItem('wmZoneAlerts', JSON.stringify({ zones: WZ.zones, sound: WZ.sound, browser: WZ.browser, intervalMin: WZ.intervalMin })); } catch(e){}
+}
+function wzSaveSeen(){
+  try { localStorage.setItem('wmZoneSeen', JSON.stringify(WZ.seen.slice(-1000))); } catch(e){}
+}
+function wzIntervalMin(){ return Math.max(1, Math.min(30, parseFloat(WZ.intervalMin) || 3)); }
+function wzIntervalMs(){ return wzIntervalMin() * 60e3; }
+function wzHas(zone){ return WZ.zones.some(z => z.toLowerCase() === String(zone || '').toLowerCase()); }
+
+function wzToggle(zone){
+  if (!zone) return;
+  if (wzHas(zone)) {
+    WZ.zones = WZ.zones.filter(z => z.toLowerCase() !== zone.toLowerCase());
+    waToast('🔕 Zona sin vigilar', `«${zone}» salió de tu lista.`, '', ()=>wmOpenWarTab());
+  } else {
+    if (WZ.zones.length >= 20) { waToast('⚠️ Límite alcanzado', 'Máximo 20 zonas vigiladas.', 'err', ()=>wmOpenWarTab()); return; }
+    WZ.zones.push(zone);
+    // marcar como vistas las batallas ya conocidas de esa zona (no disparar con historia vieja)
+    const zl = zone.toLowerCase();
+    const seen = new Set(WZ.seen);
+    for (const b of WM.battles) {
+      const id = String(b.id ?? b.Id ?? ''); if (!id) continue;
+      if (String(b.clusterName ?? b.ClusterName ?? '').toLowerCase() === zl) seen.add(id);
+    }
+    WZ.seen = [...seen].slice(-1000);
+    wzSaveSeen();
+    waToast('🔔 Zona vigilada', `Te avisamos si aparece una batalla en «${zone}» (chequeo cada ${wzIntervalMin()} min).`, '', ()=>wmOpenWarTab());
+  }
+  wzSave();
+  wzRestart();
+  wmRenderWatch();
+  wmRenderSelInfo();
+  wmRenderMinimap();
+}
+
+function wzSchedule(ms){ clearTimeout(WZ.timer); WZ.timer = setTimeout(wzTick, ms); WZ.nextAt = Date.now() + ms; wzStatus(); }
+function wzRestart(){
+  clearTimeout(WZ.timer);
+  if (WZ.zones.length) wzSchedule(1500); // primer chequeo rápido al prender
+  else { WZ.nextAt = 0; WZ.primed = false; WZ.firedTotal = 0; wzStatus(); }
+}
+
+async function wzTick(){
+  if (WZ.running) { wzSchedule(30000); return; }
+  if (!WZ.zones.length) { WZ.nextAt = 0; wzStatus(); return; }
+  WZ.running = true;
+  wzStatus();
+  try {
+    // el ciclo de alertas fuerza datos frescos (ventana chica: solo deduplica
+    // ticks seguidos por reinicios); la caché de 5 min queda para la UI
+    const battles = await wmFetchBattles(45e3);
+    const seen = new Set(WZ.seen);
+    const watch = new Set(WZ.zones.map(z=>z.toLowerCase()));
+    const now = Date.now();
+    let fired = 0;
+    for (const b of battles) {
+      const id = String(b.id ?? b.Id ?? '');
+      if (!id || seen.has(id)) continue;
+      const zone = String(b.clusterName ?? b.ClusterName ?? '').toLowerCase();
+      const when = b.startTime ? new Date(b.startTime).getTime() : 0;
+      const fresh = when && (now - when) < 15 * 60e3;
+      if (WZ.primed && watch.has(zone) && fresh && fired < 5) {
+        wzNotify(b);
+        fired++; WZ.firedTotal++;
+      }
+      seen.add(id);
+    }
+    WZ.seen = [...seen].slice(-1000);
+    wzSaveSeen();
+    WZ.primed = true;
+    WZ.fails = 0; WZ.lastError = null; WZ.lastCheck = Date.now();
+    if (fired && document.getElementById('wmTrackerContent')) wmRenderTracker();
+  } catch(e){
+    WZ.fails++;
+    WZ.lastError = e && e.message ? e.message : String(e);
+    if (WZ.fails === 3) waToast('⚠️ Alertas de zona sin respuesta', 'El killboard falla hace 3 ciclos. Se reintenta solo en el próximo.', 'err', ()=>wmOpenWarTab());
+  }
+  WZ.running = false;
+  if (WZ.zones.length) wzSchedule(wzIntervalMs());
+  else WZ.nextAt = 0;
+  wzStatus();
+  wmRenderWatch();
+  if (WZ.firedTotal && document.getElementById('wmMinimapWrap')) wmRenderMinimap();
+}
+
+function wzNotify(b){
+  const zone = String(b.clusterName ?? b.ClusterName ?? '') || 'zona';
+  const kills = b.totalKills ?? b.TotalKills ?? 0;
+  const fame = b.totalFame ?? b.TotalFame ?? 0;
+  const players = b.totalPlayers ?? b.TotalPlayers ?? 0;
+  const when = b.startTime ? new Date(b.startTime) : null;
+  const msg = `${kills} kills · ${fmt(fame)} fama${players ? ' · ' + players + ' jugadores' : ''}${when ? ' · ' + wmTimeAgo(when) : ''}`;
+  waToast('⚔️ Batalla en ' + zone, msg, '', ()=>wmOpenWarTab());
+  if (WZ.sound) waBeep();
+  if (WZ.browser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      const n = new Notification('Ayudante Albion — batalla en ' + zone, { body: msg, tag: 'wz-' + String(b.id ?? b.Id ?? '') });
+      n.onclick = () => { window.focus(); wmOpenWarTab(); };
+    } catch(e){}
+  }
+}
+
+function wzStatus(){
+  const el = document.getElementById('wzStatus');
+  if (!el) return;
+  if (!WZ.zones.length) { el.textContent = 'Sin zonas vigiladas: elegí un mapa y tocá «🔔 Vigilar».'; return; }
+  if (WZ.running) { el.textContent = 'Verificando ' + WZ.zones.length + ' zona(s)…'; return; }
+  let t = `${WZ.zones.length} zona(s) · cada ${wzIntervalMin()} min · próxima en ${waCd(WZ.nextAt - Date.now())}`;
+  if (WZ.lastCheck) t += ' · última hace ' + Math.max(0, Math.round((Date.now() - WZ.lastCheck) / 6e4)) + ' min';
+  if (WZ.firedTotal) t += ' · ' + WZ.firedTotal + ' aviso(s) en la sesión';
+  if (WZ.lastError) t += ' · ⚠ ' + WZ.lastError + (WZ.fails > 1 ? ' (' + WZ.fails + ' fallos seguidos)' : '');
+  el.textContent = t;
+}
+/* countdown vivo del estado mientras el Mapa de Guerra está a la vista */
+setInterval(() => { if (document.getElementById('wzStatus')) wzStatus(); }, 1000);
+
+function wmRenderWatch(){
+  const box = document.getElementById('wmWatchBox');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Zonas vigiladas</div>
+    <div class="micro muted" style="margin:4px 0 8px">Como las alertas de precio: miramos las últimas batallas del servidor y te avisamos (toast + beep + notificación) si hay actividad PvP en tus zonas. Solo mientras la app esté abierta.</div>
+    ${WZ.zones.length ? `<div class="chip-group wm-watch-chips">
+      ${WZ.zones.map(z=>`<span class="chip active wm-watch-chip">${wmDangerBadge(z)} ${sgEsc(z)} <button class="wm-chip-x" data-wz-del="${sgEsc(z)}" title="Dejar de vigilar «${sgEsc(z)}»">✕</button></span>`).join('')}
+    </div>` : ''}
+    <div class="wz-cfg">
+      <label class="micro muted">chequeo cada
+        <select id="wzInterval" class="wz-select">${[2,3,5,10,15].map(v=>`<option value="${v}" ${wzIntervalMin()===v?'selected':''}>${v} min</option>`).join('')}</select>
+      </label>
+      <label class="micro muted"><input type="checkbox" id="wzSound" ${WZ.sound?'checked':''}> beep</label>
+      <label class="micro muted"><input type="checkbox" id="wzBrowser" ${WZ.browser?'checked':''}> notificaciones del navegador</label>
+    </div>
+    <div class="micro muted" id="wzStatus"></div>`;
+  box.querySelectorAll('[data-wz-del]').forEach(b=>{
+    b.onclick = e => { e.stopPropagation(); wzToggle(b.dataset.wzDel); };
+  });
+  const sel = box.querySelector('#wzInterval');
+  if (sel) sel.onchange = () => {
+    WZ.intervalMin = parseInt(sel.value, 10) || 3;
+    wzSave(); wzRestart(); wmRenderWatch();
+  };
+  const snd = box.querySelector('#wzSound');
+  if (snd) snd.onchange = () => { WZ.sound = snd.checked; wzSave(); };
+  const brw = box.querySelector('#wzBrowser');
+  if (brw) brw.onchange = async () => {
+    WZ.browser = brw.checked;
+    if (WZ.browser && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch(e){}
+    }
+    if (WZ.browser && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      waToast('🔕 Notificaciones bloqueadas', 'El navegador no dio permiso: habilitá las notificaciones del sitio en el candado de la dirección.', 'err', ()=>wmOpenWarTab());
+      WZ.browser = false;
+      brw.checked = false;
+    }
+    wzSave();
+  };
+  wzStatus();
+}
+
+/* delegación para expandir batallas del tracker (y traer participantes) */
 document.addEventListener('click', e=>{
+  const all = e.target.closest('[data-wm-battle-all]');
+  if (all) {
+    WM.tracker.detailShowAll = !WM.tracker.detailShowAll;
+    wmRenderTracker();
+    return;
+  }
   const b = e.target.closest('[data-wm-battle]');
   if (!b) return;
   const id = b.dataset.wmBattle;
   if (!id) return;
-  WM.tracker.expandedBattle = WM.tracker.expandedBattle === String(id) ? null : String(id);
+  const opening = WM.tracker.expandedBattle !== String(id);
+  WM.tracker.expandedBattle = opening ? String(id) : null;
+  if (!opening) WM.tracker.detailShowAll = false;
   wmRenderTracker();
+  if (opening) wmLoadBattleDetail(id);
 });
 
 
@@ -6129,3 +7153,26 @@ async function sgFetchConfig() {
   return { configured: false, loginUrl: '', missing: [] };
 }
 sgInit();
+
+/* ====================================================================
+   🗺️ arranque del tracker: alertas de zona + enlace compartible ?map=
+   ==================================================================== */
+/* motor de alertas por zona: vive mientras la pestaña esté abierta,
+   independientemente de la pestaña activa (como las alertas de precio) */
+wzRestart();
+
+/* ?map=NombreDeZona — compartir la vigilancia de una zona. Se valida al
+   cargar el grafo (wmLoadMapGraph) y abre directo el Mapa de Guerra. */
+(function wmShareInit(){
+  try {
+    const map = (new URLSearchParams(location.search).get('map') || '').trim();
+    if (!map) return;
+    WM.selectedMap = map.slice(0, 60);
+    wmSaveSelected();
+    /* si todavía no hay sesión, el Salón muestra la tarjeta de ingreso;
+       preseleccionar la subpestaña hace que al entrar caiga directo al
+       Mapa de Guerra con la zona compartida ya elegida. */
+    try { sgRoomTab = 'war'; } catch (e) {}
+    wmOpenWarTab();
+  } catch(e){}
+})();
