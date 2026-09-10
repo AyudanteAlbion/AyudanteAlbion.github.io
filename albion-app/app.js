@@ -4566,7 +4566,15 @@ async function sgResolveGuild(force) {
   return g.Id;
 }
 
-/* Sub-tabs internas del salón: resumen, builds, mapa de guerra */
+/* Sub-tabs internas del salón: resumen, builds, mapa de guerra, tracker por zona.
+   Cada herramienta tiene su propio botón: el Mapa de Guerra (territorios/GvG de SG)
+   y el Tracker por zona real (PvP sobre el grafo de world.xml) son independientes. */
+const SG_ROOM_TABS = {
+  summary: { panel: 'sgRoomSummary' },
+  builds:  { panel: 'sgRoomBuilds', render: () => bdRender() },
+  war:     { panel: 'sgRoomWar',    render: () => wmRender() },
+  tracker: { panel: 'sgRoomTracker', render: () => wmTrackerRender() },
+};
 let sgRoomTab = 'summary';
 function sgRoomContent() {
   const body = document.getElementById('sgRoomBody');
@@ -4597,6 +4605,9 @@ function sgRoomContent() {
     </button>
     <button class="sg-room-tab${sgRoomTab === 'war' ? ' active' : ''}" data-room-tab="war" role="tab" aria-selected="${sgRoomTab === 'war'}">
       <svg class="tab-ico"><use href="#i-shield"/></svg> Mapa de Guerra
+    </button>
+    <button class="sg-room-tab${sgRoomTab === 'tracker' ? ' active' : ''}" data-room-tab="tracker" role="tab" aria-selected="${sgRoomTab === 'tracker'}">
+      <svg class="tab-ico"><use href="#i-globe"/></svg> Tracker por Zona
     </button>
   </div>
 
@@ -4637,11 +4648,15 @@ function sgRoomContent() {
 
   <div class="sg-room-panel" id="sgRoomWar"${sgRoomTab !== 'war' ? ' hidden' : ''}>
     <div id="wmMount"></div>
+  </div>
+
+  <div class="sg-room-panel" id="sgRoomTracker"${sgRoomTab !== 'tracker' ? ' hidden' : ''}>
+    <div id="wmTrackerMount"></div>
   </div>`;
 
   /* renderizar el panel activo */
-  if (sgRoomTab === 'builds') bdRender();
-  if (sgRoomTab === 'war') wmRender();
+  const tab = SG_ROOM_TABS[sgRoomTab] || SG_ROOM_TABS.summary;
+  if (tab.render) tab.render();
 }
 
 function sgCharBoxHTML() {
@@ -4831,7 +4846,7 @@ document.addEventListener('click', e => {
   }
   const mem = t.closest('[data-sg-member]');
   if (mem) { sgOpenMember(mem.dataset.sgMember, mem.dataset.sgName); return; }
-  /* sub-tabs del salón (Resumen / Builds / Mapa de Guerra) */
+  /* sub-tabs del salón (Resumen / Builds / Mapa de Guerra / Tracker por Zona) */
   const roomTab = t.closest('[data-room-tab]');
   if (roomTab) {
     sgRoomTab = roomTab.dataset.roomTab;
@@ -4841,10 +4856,10 @@ document.addEventListener('click', e => {
       b.setAttribute('aria-selected', String(on));
     });
     document.querySelectorAll('.sg-room-panel').forEach(p => p.hidden = true);
-    const target = document.getElementById(sgRoomTab === 'summary' ? 'sgRoomSummary' : sgRoomTab === 'builds' ? 'sgRoomBuilds' : 'sgRoomWar');
+    const tab = SG_ROOM_TABS[sgRoomTab] || SG_ROOM_TABS.summary;
+    const target = document.getElementById(tab.panel);
     if (target) target.hidden = false;
-    if (sgRoomTab === 'builds') bdRender();
-    if (sgRoomTab === 'war') wmRender();
+    if (tab.render) tab.render();
     return;
   }
   if (!t.closest('#sgAccountMenu') && !t.closest('#sgAccountBtn')) sgToggleMenu(false);
@@ -5195,11 +5210,14 @@ function bdOpenPicker(slotKey) {
 /* ====================================================================
    🗺️ MAPA DE GUERRA DE SG + TRACKER DE ENEMIGOS POR MAPA REAL
    Herramienta exclusiva para miembros de Spetsnaz Grail.
+   Son DOS botones separados en el Salón, para no mezclar las herramientas:
+     · «Mapa de Guerra» (data-room-tab="war", #wmMount)  → wmRender()
+     · «Tracker por Zona» (data-room-tab="tracker", #wmTrackerMount) → wmTrackerRender()
    El killboard oficial NO expone /guilds/:id/territories. Los territorios
    se reconstruyen a partir de los GvG (guildmatches past/next) y de los
    eventos PvP del gremio: el último ganador de un territorio es su dueño.
-   NUEVO: Tracker de enemigos por mapa real de Albion.
-   Fuente del grafo de mapas: broderickhyman/ao-bin-dumps cluster/world.xml
+   El tracker por mapa real no depende de los territorios: su fuente es el grafo
+   de mapas de broderickhyman/ao-bin-dumps cluster/world.xml
    (815 zonas, 1356 conexiones) parseado a data/albion_map_connections.json
    Estructura: byName {Mapa: [vecinos]} + maps[].
    El usuario elige un mapa real y se rastrean asesinatos (battles) en
@@ -5452,7 +5470,7 @@ async function wmLoadMapGraph(){
         if (found) WM.selectedMapID = found.mapID;
       } else {
         // nombre que ya no existe (enlace viejo o dato corrupto): limpiar
-        waToast('⚠️ Mapa no encontrado', `«${WM.selectedMap}» no está en el mapa de Albion. Elegí otro.`, 'err', ()=>wmOpenWarTab());
+        waToast('⚠️ Mapa no encontrado', `«${WM.selectedMap}» no está en el mapa de Albion. Elegí otro.`, 'err', ()=>wmOpenTrackerTab());
         WM.selectedMap = null;
         WM.selectedNeighbors = [];
         WM.selectedMapID = null;
@@ -5470,11 +5488,19 @@ async function wmLoadMapGraph(){
   }
 }
 
-/* abre SG → Salón de miembros → Mapa de Guerra (para toasts y enlaces) */
-function wmOpenWarTab(){
+/* abre SG → Salón de miembros → una subpestaña concreta (para toasts y enlaces) */
+function wmOpenRoomTab(id){
   gotoTab('sg', 'members');
-  const btn = document.querySelector('[data-room-tab="war"]');
+  const btn = document.querySelector('[data-room-tab="' + id + '"]');
   if (btn) btn.click();
+}
+/* abre directo el Mapa de Guerra (territorios / GvG de SG) */
+function wmOpenWarTab(){
+  wmOpenRoomTab('war');
+}
+/* abre directo el Tracker por zona real (otro botón, otra herramienta) */
+function wmOpenTrackerTab(){
+  wmOpenRoomTab('tracker');
 }
 
 /* mantiene ?map= en la URL para compartir la vigilancia de una zona */
@@ -5629,6 +5655,8 @@ function wmDangerBadge(zone){
 
 async function wmLoadTracker(force){
   if (!WM.selectedMap) return;
+  /* el panel del tracker no está montado (p. ej. ?map= al arrancar): no gastar el killboard */
+  if (!document.getElementById('wmTrackerContent')) return;
   if (WM.tracker.loading) return;
   if (!force && WM.tracker.lastUpdate && WM.tracker.filtered && WM.tracker.filtered.length) { wmRenderTracker(); return; }
   WM.tracker.loading = true;
@@ -5806,7 +5834,7 @@ function wmRenderTracker(){
 /* ---- exportar las batallas filtradas a CSV ---- */
 function wmExportCSV(){
   const rows = WM.tracker.filtered || [];
-  if (!rows.length) { waToast('⚠️ Sin datos', 'No hay batallas filtradas para exportar. Rastreá una zona primero.', 'err', ()=>wmOpenWarTab()); return; }
+  if (!rows.length) { waToast('⚠️ Sin datos', 'No hay batallas filtradas para exportar. Rastreá una zona primero.', 'err', ()=>wmOpenTrackerTab()); return; }
   const head = ['fecha', 'mapa', 'kills', 'fama', 'jugadores', 'gremios', 'id_batalla', 'link'].join(';');
   const lines = rows.map(b => {
     const when = b.startTime ? new Date(b.startTime) : null;
@@ -5833,7 +5861,7 @@ function wmExportCSV(){
   a.download = 'batallas-' + slug + '-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'') + '.csv';
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
-  waToast('⬇ CSV exportado', rows.length + ' batallas de «' + (WM.selectedMap || '') + '» (separador ;).', '', ()=>wmOpenWarTab());
+  waToast('⬇ CSV exportado', rows.length + ' batallas de «' + (WM.selectedMap || '') + '» (separador ;).', '', ()=>wmOpenTrackerTab());
 }
 
 function wmBattleRow(b){
@@ -5975,7 +6003,7 @@ function wmRenderSelInfo(){
 function wmCopyShareLink(){
   if (!WM.selectedMap) return;
   const url = location.origin + location.pathname + '?map=' + encodeURIComponent(WM.selectedMap);
-  const done = () => waToast('🔗 Link copiado', 'Compartilo: quien lo abra entra directo a la vigilancia de «' + WM.selectedMap + '».', '', ()=>wmOpenWarTab());
+  const done = () => waToast('🔗 Link copiado', 'Compartilo: quien lo abra entra directo a la vigilancia de «' + WM.selectedMap + '».', '', ()=>wmOpenTrackerTab());
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(done).catch(()=>wmFallbackCopy(url, done));
   } else wmFallbackCopy(url, done);
@@ -5988,7 +6016,7 @@ function wmFallbackCopy(text, done){
     document.execCommand('copy');
     ta.remove();
     done();
-  } catch(e){ waToast('🔗 Link de la zona', text, '', ()=>wmOpenWarTab()); }
+  } catch(e){ waToast('🔗 Link de la zona', text, '', ()=>wmOpenTrackerTab()); }
 }
 
 /* ---- territorios SG: distancia en saltos desde el mapa seleccionado ---- */
@@ -6397,78 +6425,113 @@ function wmRenderRoute(){
   box.innerHTML = html;
 }
 
+/* ── pestaña «Mapa de Guerra»: solo territorios / GvG / rivales de SG ─────
+   El tracker por zona real vivió acá adentro; ahora tiene su propio botón
+   («Tracker por Zona») y su propio mount: ver wmTrackerRender().          */
 function wmRender() {
   const mount = document.getElementById('wmMount');
   if (!mount) return;
   mount.innerHTML = `
     <div class="panel wm-panel">
       <div class="cd-title wm-head">
-        <span><svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG + Tracker por Zona Real</span>
-        <button class="btn" id="wmRefreshBtn" title="Volver a pedir GvG y eventos al killboard">
-          <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar SG
-        </button>
-      </div>
-      <div class="micro muted wm-intro">
-        Territorios SG reconstruidos desde GvG. Elegí cualquier mapa real de Albion y rastrea asesinatos en esa zona + conexiones fronterizas (grafo oficial world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas).
-      </div>
-
-      <div id="wmSheet" class="wm-sheet">
-        <div class="panel wm-tracker-panel">
-          <div class="wm-sheet-head">
-            <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Tracker por zona real</div>
-            <button class="btn micro-btn wm-sheet-close" id="wmSheetClose" title="Cerrar">✕</button>
-          </div>
-          <div class="micro muted" style="margin:4px 0 8px">Vigilá cualquier zona real: filtramos /battles por clusterName ∈ [mapa + vecinos]. En móvil, este panel se abre como hoja inferior con el botón flotante 🎯.</div>
-
-          <div class="chip-group wm-type-chips" id="wmTypeChips">
-            ${WM_MAP_FILTERS.map(f=>`<button class="chip ${WM.mapFilter === f.id ? 'active' : ''}" data-wm-type="${f.id}">${f.label}</button>`).join('')}
-          </div>
-
-          <div class="search-wrap wm-search">
-            <input type="search" id="wmMapSearch" class="search big" placeholder="Buscar mapa… Ej: Martlock, Caerleon, Eldon Hill, Swamp Cross" value="${sgEsc(WM.selectedMap||'')}" autocomplete="off">
-            <div id="wmMapResults" class="search-results"></div>
-          </div>
-
-          <div id="wmSelInfo"></div>
-          <div id="wmMinimapWrap" class="wm-minimap"></div>
-
-          <div class="wm-route-box">
-            <div class="cd-title"><svg class="title-ico"><use href="#i-globe"/></svg> Rutas seguras</div>
-            <div class="wm-route-form">
-              <input type="search" id="wmRouteFrom" class="search" placeholder="Desde (vacío = mapa seleccionado)" value="${sgEsc(WM.route?.from || WM.selectedMap || '')}" autocomplete="off">
-              <div class="search-wrap" style="position:relative; flex:1; min-width:150px">
-                <input type="search" id="wmRouteTo" class="search" placeholder="Hasta… Ej: Thetford" value="${sgEsc(WM.route?.to || '')}" autocomplete="off">
-                <div id="wmRouteToResults" class="search-results"></div>
-              </div>
-              <button class="btn primary" id="wmRouteGo">🧭 Calcular</button>
-            </div>
-            <label class="micro muted wm-noroads"><input type="checkbox" id="wmNoRoads" ${WM.noRoads ? 'checked' : ''}> Evitar Caminos de Avalon</label>
-            <div id="wmRouteResult"></div>
-          </div>
-
-          <div id="wmWatchBox" class="wm-watch"></div>
-
-          <div id="wmTrackerContent" style="margin-top:10px"></div>
+        <span><svg class="title-ico"><use href="#i-shield"/></svg> Mapa de Guerra de SG</span>
+        <div class="wm-head-actions">
+          <button class="btn" id="wmGoTrackerBtn" title="Ver el tracker de actividad PvP por zona real"><svg class="btn-ico"><use href="#i-globe"/></svg> Tracker por Zona</button>
+          <button class="btn" id="wmRefreshBtn" title="Volver a pedir GvG y eventos al killboard">
+            <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar SG
+          </button>
         </div>
       </div>
-      <button class="wm-fab" id="wmFab" title="Abrir el tracker por zona">🎯 Rastrear zona</button>
+      <div class="micro muted wm-intro">
+        Territorios de SG reconstruidos desde los GvG del killboard: quién los tiene, cuáles están amenazados, los próximos ataques y los rivales del gremio.
+        La actividad PvP de un mapa concreto (minimapa, rutas seguras, alertas por zona) vive en el botón <button class="wm-linklike" data-wm-open-tracker>Tracker por Zona</button>.
+      </div>
 
       <div id="wmContent">
         <div class="loading-cell">Cargando territorios y eventos de SG…</div>
       </div>
     </div>`;
   document.getElementById('wmRefreshBtn').onclick = () => wmLoad(true);
+  document.getElementById('wmGoTrackerBtn').onclick = () => wmOpenTrackerTab();
 
-  // hoja inferior (móvil) + botón flotante
-  const sheet = document.getElementById('wmSheet');
-  const fab = document.getElementById('wmFab');
-  if (fab) fab.onclick = () => {
-    if (sheet) sheet.classList.add('open');
-    if (WM.selectedMap) wmLoadTracker(true);
-    else document.getElementById('wmMapSearch')?.focus();
-  };
-  const sheetClose = document.getElementById('wmSheetClose');
-  if (sheetClose) sheetClose.onclick = () => { if (sheet) sheet.classList.remove('open'); };
+  // botones dentro de wmContent (delegación, una sola vez por elemento)
+  if (!mount.dataset.wmWired) {
+    mount.dataset.wmWired = '1';
+    mount.addEventListener('click', e => {
+      const tr = e.target.closest('[data-wm-open-tracker]');
+      if (tr) { wmOpenTrackerTab(); return; }
+      const g = e.target.closest('[data-wm-goto]');
+      if (g) wmTrackZone(g.dataset.wmGoto);
+    });
+  }
+
+  if (WM.loadedOnce && !WM.loading) wmRenderContent();
+  else wmLoad(false);
+}
+
+/* ── pestaña «Tracker por Zona»: PvP por mapa real de Albion ──────────────
+   Grafo oficial world.xml (815 zonas / 1356 conexiones) + /battles del
+   killboard. Minimapa, peligro por zona, rutas seguras, vigilancia y detalle
+   de batalla. No depende del Mapa de Guerra: abre directo y solo pide los
+   territorios al fondo, para mostrar a cuántos saltos está cada uno.      */
+function wmTrackerRender() {
+  const mount = document.getElementById('wmTrackerMount');
+  if (!mount) return;
+  mount.innerHTML = `
+    <div class="panel wm-panel wm-tracker-panel">
+      <div class="cd-title wm-head">
+        <span><svg class="title-ico"><use href="#i-globe"/></svg> Tracker por zona real</span>
+        <div class="wm-head-actions">
+          <button class="btn" id="wmGoWarBtn" title="Ver los territorios y GvG de Spetsnaz Grail"><svg class="btn-ico"><use href="#i-shield"/></svg> Mapa de Guerra</button>
+          <button class="btn" id="wmTrackerRefreshBtn" title="Volver a pedir las últimas batallas del killboard">
+            <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar batallas
+          </button>
+        </div>
+      </div>
+      <div class="micro muted wm-intro">
+        Vigilá cualquier mapa real de Albion: filtramos /battles por clusterName ∈ [mapa + vecinos] del grafo oficial (world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas). Con minimapa, peligro por zona, rutas seguras y alertas.
+      </div>
+
+      <div class="chip-group wm-type-chips" id="wmTypeChips">
+        ${WM_MAP_FILTERS.map(f=>`<button class="chip ${WM.mapFilter === f.id ? 'active' : ''}" data-wm-type="${f.id}">${f.label}</button>`).join('')}
+      </div>
+
+      <div class="search-wrap wm-search">
+        <input type="search" id="wmMapSearch" class="search big" placeholder="Buscar mapa… Ej: Martlock, Caerleon, Eldon Hill, Swamp Cross" value="${sgEsc(WM.selectedMap||'')}" autocomplete="off">
+        <div id="wmMapResults" class="search-results"></div>
+      </div>
+
+      <div id="wmSelInfo"></div>
+      <div id="wmMinimapWrap" class="wm-minimap"></div>
+
+      <div class="wm-route-box">
+        <div class="cd-title"><svg class="title-ico"><use href="#i-globe"/></svg> Rutas seguras</div>
+        <div class="wm-route-form">
+          <input type="search" id="wmRouteFrom" class="search" placeholder="Desde (vacío = mapa seleccionado)" value="${sgEsc(WM.route?.from || WM.selectedMap || '')}" autocomplete="off">
+          <div class="search-wrap" style="position:relative; flex:1; min-width:150px">
+            <input type="search" id="wmRouteTo" class="search" placeholder="Hasta… Ej: Thetford" value="${sgEsc(WM.route?.to || '')}" autocomplete="off">
+            <div id="wmRouteToResults" class="search-results"></div>
+          </div>
+          <button class="btn primary" id="wmRouteGo">🧭 Calcular</button>
+        </div>
+        <label class="micro muted wm-noroads"><input type="checkbox" id="wmNoRoads" ${WM.noRoads ? 'checked' : ''}> Evitar Caminos de Avalon</label>
+        <div id="wmRouteResult"></div>
+      </div>
+
+      <div id="wmWatchBox" class="wm-watch"></div>
+
+      <div id="wmTrackerContent" style="margin-top:10px"></div>
+    </div>`;
+
+  document.getElementById('wmTrackerRefreshBtn').onclick = () => wmTrackerRefresh();
+
+  if (!mount.dataset.wtWired) {
+    mount.dataset.wtWired = '1';
+    mount.addEventListener('click', e => {
+      const g = e.target.closest('[data-wm-goto]');
+      if (g) wmSelectMap(g.dataset.wmGoto);
+    });
+  }
 
   // chips de tipo de mapa
   const typeChips = document.getElementById('wmTypeChips');
@@ -6505,14 +6568,9 @@ function wmRender() {
     if (WM.route) wmRouteCalc();
   };
 
-  // botones dentro de selInfo / watch / minimapa / tracker (delegación, una sola vez por elemento)
-  if (!mount.dataset.wmWired) {
-    mount.dataset.wmWired = '1';
-    mount.addEventListener('click', e => {
-      const g = e.target.closest('[data-wm-goto]');
-      if (g) wmSelectMap(g.dataset.wmGoto);
-    });
-  }
+  // ir al Mapa de Guerra desde el propio tracker
+  const goWar = document.getElementById('wmGoWarBtn');
+  if (goWar) goWar.onclick = () => wmOpenWarTab();
 
   wmRenderSelInfo();
   wmRenderWatch();
@@ -6528,8 +6586,36 @@ function wmRender() {
     wmRenderTracker();
   });
 
-  if (WM.loadedOnce && !WM.loading) wmRenderContent();
-  else wmLoad(false);
+  /* los territorios de SG no son necesarios para rastrear, pero sirven para
+     el «territorio más cercano a N saltos»; se piden sin bloquear el tracker */
+  if (!WM.loadedOnce) wmLoad(false);
+}
+
+/* actualizar lo del tracker sin depender del Mapa de Guerra: batallas frescas
+   (caché de 5 min saltada) → peligro, minimapa, rutas y detalle de la zona */
+function wmTrackerRefresh(){
+  const btn = document.getElementById('wmTrackerRefreshBtn');
+  if (btn) btn.disabled = true;
+  const done = () => { if (btn) btn.disabled = false; };
+  const repaint = () => {
+    wmRenderSelInfo();
+    wmRenderMinimap();
+    wmRenderRoute();
+    wmRenderTracker();
+  };
+  if (WM.selectedMap) {
+    /* wmLoadTracker(true) ya pide /battles sin caché y repinta tracker + minimapa */
+    wmLoadTracker(true).then(()=>{ wmRenderSelInfo(); wmRenderRoute(); done(); }, done);
+    return;
+  }
+  wmFetchBattles(0).then(repaint, repaint).then(done, done);
+}
+
+/* atajo desde el Mapa de Guerra: elegir esa zona real y saltar al tracker */
+function wmTrackZone(name){
+  if (!name) { wmOpenTrackerTab(); return; }
+  wmSelectMap(name);       // guarda vecinos, mapID y localStorage; actualiza el buscador si existe
+  wmOpenTrackerTab();      // monta el tracker y fuerza el rastreo de la zona
 }
 
 /* buscador de mapas reutilizable (tracker + destino de ruta) */
@@ -6751,7 +6837,9 @@ function wmTerritoryCard(t) {
       : `<div class="muted">Último dueño rival · vs ${sgEsc(t.opponent)}</div>`;
   return `
     <div class="wm-terr-card${cls}">
-      <div class="wm-terr-name">${sgEsc(t.name)}</div>
+      <div class="wm-terr-name">${sgEsc(t.name)}
+        <button class="btn micro-btn wm-terr-track" data-wm-goto="${sgEsc(t.name)}" title="Ver la actividad PvP de ${sgEsc(t.name)} en el Tracker por Zona">🎯 Rastrear</button>
+      </div>
       <div class="wm-terr-meta">
         <div>
           ${rivalLine}
@@ -6895,9 +6983,9 @@ function wzToggle(zone){
   if (!zone) return;
   if (wzHas(zone)) {
     WZ.zones = WZ.zones.filter(z => z.toLowerCase() !== zone.toLowerCase());
-    waToast('🔕 Zona sin vigilar', `«${zone}» salió de tu lista.`, '', ()=>wmOpenWarTab());
+    waToast('🔕 Zona sin vigilar', `«${zone}» salió de tu lista.`, '', ()=>wmOpenTrackerTab());
   } else {
-    if (WZ.zones.length >= 20) { waToast('⚠️ Límite alcanzado', 'Máximo 20 zonas vigiladas.', 'err', ()=>wmOpenWarTab()); return; }
+    if (WZ.zones.length >= 20) { waToast('⚠️ Límite alcanzado', 'Máximo 20 zonas vigiladas.', 'err', ()=>wmOpenTrackerTab()); return; }
     WZ.zones.push(zone);
     // marcar como vistas las batallas ya conocidas de esa zona (no disparar con historia vieja)
     const zl = zone.toLowerCase();
@@ -6908,7 +6996,7 @@ function wzToggle(zone){
     }
     WZ.seen = [...seen].slice(-1000);
     wzSaveSeen();
-    waToast('🔔 Zona vigilada', `Te avisamos si aparece una batalla en «${zone}» (chequeo cada ${wzIntervalMin()} min).`, '', ()=>wmOpenWarTab());
+    waToast('🔔 Zona vigilada', `Te avisamos si aparece una batalla en «${zone}» (chequeo cada ${wzIntervalMin()} min).`, '', ()=>wmOpenTrackerTab());
   }
   wzSave();
   wzRestart();
@@ -6957,7 +7045,7 @@ async function wzTick(){
   } catch(e){
     WZ.fails++;
     WZ.lastError = e && e.message ? e.message : String(e);
-    if (WZ.fails === 3) waToast('⚠️ Alertas de zona sin respuesta', 'El killboard falla hace 3 ciclos. Se reintenta solo en el próximo.', 'err', ()=>wmOpenWarTab());
+    if (WZ.fails === 3) waToast('⚠️ Alertas de zona sin respuesta', 'El killboard falla hace 3 ciclos. Se reintenta solo en el próximo.', 'err', ()=>wmOpenTrackerTab());
   }
   WZ.running = false;
   if (WZ.zones.length) wzSchedule(wzIntervalMs());
@@ -6974,12 +7062,12 @@ function wzNotify(b){
   const players = b.totalPlayers ?? b.TotalPlayers ?? 0;
   const when = b.startTime ? new Date(b.startTime) : null;
   const msg = `${kills} kills · ${fmt(fame)} fama${players ? ' · ' + players + ' jugadores' : ''}${when ? ' · ' + wmTimeAgo(when) : ''}`;
-  waToast('⚔️ Batalla en ' + zone, msg, '', ()=>wmOpenWarTab());
+  waToast('⚔️ Batalla en ' + zone, msg, '', ()=>wmOpenTrackerTab());
   if (WZ.sound) waBeep();
   if (WZ.browser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
       const n = new Notification('Ayudante Albion — batalla en ' + zone, { body: msg, tag: 'wz-' + String(b.id ?? b.Id ?? '') });
-      n.onclick = () => { window.focus(); wmOpenWarTab(); };
+      n.onclick = () => { window.focus(); wmOpenTrackerTab(); };
     } catch(e){}
   }
 }
@@ -7032,7 +7120,7 @@ function wmRenderWatch(){
       try { await Notification.requestPermission(); } catch(e){}
     }
     if (WZ.browser && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-      waToast('🔕 Notificaciones bloqueadas', 'El navegador no dio permiso: habilitá las notificaciones del sitio en el candado de la dirección.', 'err', ()=>wmOpenWarTab());
+      waToast('🔕 Notificaciones bloqueadas', 'El navegador no dio permiso: habilitá las notificaciones del sitio en el candado de la dirección.', 'err', ()=>wmOpenTrackerTab());
       WZ.browser = false;
       brw.checked = false;
     }
@@ -7162,17 +7250,20 @@ sgInit();
 wzRestart();
 
 /* ?map=NombreDeZona — compartir la vigilancia de una zona. Se valida al
-   cargar el grafo (wmLoadMapGraph) y abre directo el Mapa de Guerra. */
-(function wmShareInit(){
+   cargar el grafo (wmLoadMapGraph) y abre directo el Tracker por Zona. */
+function wmApplySharedZone(){
   try {
     const map = (new URLSearchParams(location.search).get('map') || '').trim();
-    if (!map) return;
-    WM.selectedMap = map.slice(0, 60);
-    wmSaveSelected();
+    if (!map) return false;
+    /* wmSelectMap guarda vecinos/mapID/cachea la selección; si el grafo todavía
+       no bajó, wmLoadMapGraph revalida y completa al terminar */
+    wmSelectMap(map.slice(0, 60));
     /* si todavía no hay sesión, el Salón muestra la tarjeta de ingreso;
        preseleccionar la subpestaña hace que al entrar caiga directo al
-       Mapa de Guerra con la zona compartida ya elegida. */
-    try { sgRoomTab = 'war'; } catch (e) {}
-    wmOpenWarTab();
-  } catch(e){}
-})();
+       Tracker por Zona con la zona compartida ya elegida. */
+    try { sgRoomTab = 'tracker'; } catch (e) {}
+    wmOpenTrackerTab();
+    return true;
+  } catch(e){ return false; }
+}
+wmApplySharedZone();
