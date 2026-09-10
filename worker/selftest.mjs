@@ -227,12 +227,27 @@ const gi = p => wp.fetch(new Request('http://w.test' + p, { headers: { Origin: '
 check((await gi('/gameinfo/players/abc123/kills')).status === 200, 'ruta usada por la app (players/:id/kills) pasa', 'ruta legítima bloqueada');
 check((await gi('/gameinfo/guilds/g1/top?range=week')).status === 200 && seen.at(-1).endsWith('/guilds/g1/top?range=week'),
   'guilds/:id/top?range=week pasa con su parámetro', 'parámetro range perdido → ' + seen.at(-1));
-check((await gi('/gameinfo/battles')).status === 404, 'ruta no usada (battles) → 404 sin reenviar', 'battles reenviada');
+/* Mapa de Guerra: GvG + eventos del gremio (nunca existió /guilds/:id/territories) */
+check((await gi('/gameinfo/guildmatches/past?limit=50&offset=0')).status === 200
+  && seen.at(-1).includes('/guildmatches/past') && seen.at(-1).includes('limit=50'),
+  'guildmatches/past pasa con limit/offset', 'guildmatches/past bloqueada → ' + seen.at(-1));
+check((await gi('/gameinfo/guildmatches/next?limit=50')).status === 200,
+  'guildmatches/next pasa', 'guildmatches/next bloqueada');
+check((await gi('/gameinfo/guildmatches/top')).status === 200,
+  'guildmatches/top pasa', 'guildmatches/top bloqueada');
+check((await gi('/gameinfo/events?limit=51&guildId=sgg9&sort=recent')).status === 200
+  && seen.at(-1).includes('guildId=sgg9') && seen.at(-1).includes('sort=recent'),
+  'events con guildId+sort pasa', 'events filtrado mal → ' + seen.at(-1));
+check((await gi('/gameinfo/battles?range=week&limit=2')).status === 200,
+  'battles (Mapa de Guerra) pasa', 'battles bloqueada');
+check((await gi('/gameinfo/guilds/sgg9/territories')).status === 404,
+  'guilds/:id/territories (endpoint inexistente) → 404 sin reenviar',
+  'territories se reenvió al killboard');
 check((await gi('/gameinfo/players/abc/../../admin')).status === 404, 'path traversal → 404', 'traversal reenviado');
 const before = seen.length;
 await gi('/gameinfo/search?q=Nombre&evil=1&sort=asc');
-check(seen.at(-1).includes('q=Nombre') && !seen.at(-1).includes('evil') && seen.length === before + 1,
-  'query: solo parámetros conocidos llegan arriba', 'query no filtrada → ' + seen.at(-1));
+check(seen.at(-1).includes('q=Nombre') && seen.at(-1).includes('sort=asc') && !seen.at(-1).includes('evil') && seen.length === before + 1,
+  'query: solo parámetros conocidos llegan arriba (incl. sort)', 'query no filtrada → ' + seen.at(-1));
 const evilOrigin = await wp.fetch(new Request('http://w.test/gameinfo/search?q=x', { headers: { Origin: 'https://evil.example' } }));
 check(evilOrigin.status === 403, 'Origin ajeno → 403 (no sirve de proxy a otros sitios)', 'Origin ajeno aceptado → ' + evilOrigin.status);
 const localOrigin = await wp.fetch(new Request('http://w.test/gameinfo/search?q=x', { headers: { Origin: 'http://localhost:3000' } }));

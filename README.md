@@ -36,7 +36,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem y exportación CSV |
 | Perfil | Fama, kills y muertes del personaje real desde el killboard oficial, más el cálculo del costo de Foco según tus especializaciones |
 | SG → Spetsnaz Grail | Información del gremio, enlaces a su web y Discord, y creadores con estado EN VIVO / OFFLINE de Twitch |
-| SG → Salón de miembros | Ingreso con Discord; los miembros verificados del servidor desbloquean ranking, estadísticas, top semanal, vínculo de personaje y exportación CSV |
+| SG → Salón de miembros | Ingreso con Discord; los miembros verificados desbloquean ranking, top semanal, vínculo de personaje, exportación CSV, compositor de builds y **Mapa de Guerra** (territorios reconstruidos desde GvG del killboard, próximos ataques y rivales) |
 | Fórmulas | Referencia de todas las cuentas que usa la app, para poder verificarlas |
 
 El **Inicio** organiza las herramientas en dos slides manuales: **Crafteo** (equipo, refinamiento, alquimia, cocina, encantado y granja) y **Flipping** (flipping, transmutación, artefactos y alertas). Se cambian con los selectores de grupo, las flechas o el teclado, sin avance automático. Buscador, Registro, Perfil y Fórmulas conservan accesos rápidos; los favoritos siguen aparte.
@@ -87,7 +87,9 @@ node smoke-test.js
 
 > **Estado: activo.** El ingreso con Discord funciona en producción (web y ejecutable) desde el 9 de septiembre de 2026. `GET https://ayudantealbion.josemesina21.workers.dev/discord/config` responde `{"configured":true, …, "missing":[]}`.
 
-La app es pública, pero tiene una sección exclusiva: los miembros de Spetsnaz Grail ingresan con su cuenta de Discord y desbloquean el **Salón de miembros** (ranking completo del gremio desde el killboard, estadísticas, top semanal y vínculo con su personaje de Albion).
+La app es pública, pero tiene una sección exclusiva: los miembros de Spetsnaz Grail ingresan con su cuenta de Discord y desbloquean el **Salón de miembros** (ranking completo del gremio desde el killboard, estadísticas, top semanal, vínculo con su personaje de Albion y el **Mapa de Guerra**).
+
+El killboard oficial **no** publica un listado de dueños de territorios (`/guilds/:id/territories` no existe). El Mapa de Guerra reconstruye la posesión a partir del historial y la cola de GvG (`guildmatches/past` y `guildmatches/next`): el último ganador de cada territorio es su dueño actual, y los ataques declarados marcan amenazas. También muestra rivales recientes y kills del gremio.
 
 La pestaña **SG** tiene dos subpestañas: **Spetsnaz Grail**, pública y seleccionada por defecto, y **Salón de miembros**, con el acceso y las herramientas. El retorno desde Discord y el acceso desde el menú de cuenta abren directamente el Salón. Las subpestañas también se recorren con las flechas del teclado, Inicio y Fin.
 
@@ -128,9 +130,9 @@ Si alguna variable falta, la app no se rompe: el Salón muestra las herramientas
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs           # 59 chequeos del OAuth, la verificación de sesión y el proxy, con Discord simulado
+node worker/selftest.mjs           # OAuth, verificación de sesión y allowlist del proxy (incl. Mapa de Guerra), Discord simulado
 cd albion-app && python3 server.py # server local con simulador de consentimiento de Discord (miembro / no miembro)
-cd albion-app && node qa-test.js   # QA completa, incluye la Sala de miembros
+cd albion-app && node qa-test.js   # QA completa, incluye la Sala y el Mapa de Guerra
 ```
 
 ## Ejecutable
