@@ -777,13 +777,30 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
             'WM: filtro «Próximos GvG» lista partidas pendientes',
             'WM: filtro upcoming vacío → ' + up.slice(0, 120));
         }
-        // ── TRACKER POR ZONA: minimapa, peligro, rutas, vigilancia, detalle ──
+        // el mapa de guerra quedó solo con lo de SG: el tracker se fue de acá
+        check(!bodyOf('wmMount').includes('wmMinimapWrap') && !window.document.getElementById('wmMapSearch'),
+          'WM: el Mapa de Guerra ya no incluye el tracker por zona (botones separados)',
+          'WM: el tracker sigue adentro del Mapa de Guerra');
+        const trackTabBtn = window.document.querySelector('[data-room-tab="tracker"]');
+        check(!!trackTabBtn && /Tracker/i.test(trackTabBtn.textContent),
+          'SG: existe el botón «Tracker por Zona» junto al de Mapa de Guerra',
+          'SG: falta data-room-tab=tracker');
+
+        // ── TRACKER POR ZONA (pestaña propia): minimapa, peligro, rutas, vigilancia, detalle ──
         try {
           const allChip = window.document.querySelector('[data-wm-filter="all"]');
           if (allChip) { allChip.click(); await sleep(120); }
-          check(!!$('wmSheet') && !!$('wmMinimapWrap') && !!$('wmRouteFrom') && !!$('wmWatchBox'),
-            'WM: panel del tracker con minimapa, rutas y zonas vigiladas',
-            'WM: falta estructura del tracker por zona');
+          // atajo desde una tarjeta de territorio → selecciona la zona y saltea al tracker
+          const trackBtn = window.document.querySelector('#wmContent [data-wm-goto="Astolot"]');
+          check(!!trackBtn, 'WM: cada territorio tiene su atajo 🎯 Rastrear', 'WM: falta el atajo al tracker desde el territorio');
+          if (trackTabBtn) { trackTabBtn.click(); await sleep(400); }
+          check(!!$('wmTrackerMount') && !$('sgRoomTracker').hidden
+              && !!$('wmMinimapWrap') && !!$('wmRouteFrom') && !!$('wmWatchBox'),
+            'WZ: panel propio del tracker con buscador, minimapa, rutas y zonas vigiladas',
+            'WZ: falta estructura del tracker por zona');
+          check(!!window.document.getElementById('wmMapSearch') && !!window.document.getElementById('wmTrackerRefreshBtn'),
+            'WZ: buscador de mapas y botón «Actualizar batallas» en su propia pestaña',
+            'WZ: faltan controles del tracker');
           await sleep(600); // grafo de mapas
           const svg = $('wmMinimap');
           check(!!svg && svg.querySelectorAll('circle[data-wm-node]').length > 300,
@@ -817,6 +834,11 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
             'WM: filas de batalla expandibles (participantes)', 'WM: sin filas de batalla');
           check(!!$('wmCsvBtn'), 'WM: exportación CSV de batallas filtradas', 'WM: falta botón CSV');
           check(trk.includes('K/D'), 'WM: gremios activos con ratio K/D', 'WM: sin K/D en gremios activos');
+          // el tracker ya no necesita al Mapa de Guerra: su botón refresca batallas
+          $('wmTrackerRefreshBtn').click(); await sleep(900);
+          check(bodyOf('wmTrackerContent').includes('Batallas en la zona') && !$('wmTrackerRefreshBtn').disabled,
+            'WZ: «Actualizar batallas» refresca desde la propia pestaña',
+            'WZ: el refresco propio falló → ' + bodyOf('wmTrackerContent').slice(0, 100));
           // detalle de batalla: /battles/:id con players[]
           const brow = $('wmTrackerContent').querySelector('[data-wm-battle]');
           if (brow) { brow.click(); await sleep(800); }
@@ -856,6 +878,24 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
             'WM: nodo seleccionado en verde', 'WM: sin nodo seleccionado en el minimapa');
           check(!!svg3 && svg3.querySelectorAll('.wm-mm-nb').length >= 2,
             'WM: vecinos en amarillo', 'WM: sin vecinos marcados');
+          // ?map=Nombre → cae directo en el Tracker por Zona, no en el Mapa de Guerra
+          const prevZone = $('wmMapSearch') ? $('wmMapSearch').value : '';
+          window.history.replaceState(null, '', '/?map=Martlock');
+          window.document.querySelector('[data-room-tab="summary"]').click(); await sleep(150);
+          check(window.eval('wmApplySharedZone()') === true,
+            'WZ: el enlace con ?map= se reconoce y se aplica', 'WZ: ?map= no se aplicó');
+          const activeBtn = window.document.querySelector('.sg-room-tab.active');
+          const deepPanel = $('sgRoomTracker');
+          check(!!activeBtn && activeBtn.dataset.roomTab === 'tracker'
+              && !!deepPanel && !deepPanel.hidden && $('sgRoomWar').hidden,
+            'WZ: ?map= abre la pestaña del tracker (no el Mapa de Guerra)',
+            'WZ: ?map= abrió otra pestaña → ' + (activeBtn ? activeBtn.dataset.roomTab : 'sin tab activo'));
+          check(!!$('wmMapSearch') && $('wmMapSearch').value === 'Martlock'
+              && window.location.search.includes('map=Martlock'),
+            'WZ: el enlace compartido deja la zona cargada en el buscador',
+            'WZ: la zona del enlace no llegó al buscador');
+          window.history.replaceState(null, '', '/');
+          if (prevZone) { window.eval('wmSelectMap(' + JSON.stringify(prevZone) + ')'); await sleep(300); }
         } catch (e) { errors.push('WM tracker por zona: ' + e.message); }
         // volver a Resumen para no romper el resto de la suite
         const sumTab = window.document.querySelector('[data-room-tab="summary"]');
