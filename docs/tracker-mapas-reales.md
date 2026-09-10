@@ -37,7 +37,7 @@ UI en Mapa de Guerra (wmMount):
   - Render de chips con todas las zonas, clic rápido para cambiar.
 
 Lógica de rastreo:
-- `pfFetchRetry('/battles?limit=100&sort=recent')` -> array battles con clusterName
+- `pfFetchRetry('/battles?limit=51&sort=recent')` -> array battles con clusterName (gameinfo rechaza `limit` mayor que 51)
 - Filtrado client-side: `zoneSet.has(clusterName.toLowerCase())`
 - Stats: totalFame, totalKills, nº batallas filtradas vs totales
 - Guilds activos: agregación por `battle.guilds` (objeto o array) -> kills, battles, lastAt, ordenado por kills
@@ -104,7 +104,7 @@ Persistencia y performance:
 
 ## 4 · Scoring de peligro
 - `danger = Σ (kills·1 + fama/1000) · 0.5^(Δt/2h)` por zona (vida media 2 h), sobre las
-  últimas 100 batallas del servidor.
+  últimas ~150 batallas del servidor (3 páginas de 51; el API admite como máximo 51 por página).
 - Umbrales: 🟢 ≤ 4 tranquilo · 🟡 ≤ 20 activo · 🔴 > 20 muy caliente (heurístico).
 - Badges en chips de zona, filas de batalla, rutas y minimapa. Gremios activos con K/D.
 
@@ -156,9 +156,11 @@ herramientas se pisaban. Ahora son dos botones independientes del Salón:
 
 ## Diagnóstico: ¿las respuestas eran reales?
 Sí, pero incompletas y potencialmente atrasadas:
-- El tracker solo pedía `/battles?limit=100&offset=0`: las últimas **100 batallas de todo el
-  servidor**. Para una zona concreta eso suelen ser 0–2 batallas, y una «batalla» oficial exige
-  ≥3 kills: **los asesinatos en solitario jamás aparecían**.
+- El tracker intentaba pedir `/battles?limit=100&offset=0`, pero el API actual responde 400:
+  `query param limit must be less than or equal to 51`. Por eso todas las páginas fallaban y la
+  app terminaba mostrando «killboard oficial sin respuesta (battles)». Para una zona concreta
+  además suelen aparecer 0–2 batallas, y una «batalla» oficial exige ≥3 kills: **los asesinatos
+  en solitario jamás aparecían**.
 - El killboard oficial (gameinfo) sufre 502 intermitentes y períodos de caché/atraso conocidos
   (hilos del foro de 2020, 2025, 2026): cuando el API se atrasa, todas las herramientas que se
   alimentan de ella muestran datos viejos sin avisar.
@@ -179,8 +181,9 @@ Sí, pero incompletas y potencialmente atrasadas:
   (paginado), pedir el feed crudo (/events) y cruzar frescura** entre fuentes.
 
 ## Implementación
-1. **Killboard oficial paginado**: `/battles` ahora se trae en 3 páginas de 100 (≈ un día de
-   batallas del servidor), con dedupe por id y tolerancia a páginas 502 (`pvFetchBattlePages`).
+1. **Killboard oficial paginado**: `/battles` ahora se trae en 3 páginas de 51 (≈150 batallas
+   recientes del servidor; 51 es el máximo que acepta el API), con dedupe por id y tolerancia a
+   páginas 502 (`pvFetchBattlePages`).
 2. **Asesinatos crudos**: `/events` en 5 páginas de 51 (`pvFetchEventPages`), normalizados a
    `{id, ts, zone, v, vg, k, kg, f, ip, bid}` (`pvSlimEvent`). Zona desde `Victim.ZoneName`.
 3. **Murderledger vía proxy**: rutas nuevas `/murderledger/home` y `/murderledger/vod-events` en
