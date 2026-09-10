@@ -102,13 +102,13 @@ La pestaña **SG** tiene dos subpestañas: **Spetsnaz Grail**, pública y selecc
 1. Pestaña **SG → Salón de miembros** (o el botón de Discord de la barra superior) → **«Ingresar con Discord»**.
 2. Discord pide autorizar a *Ayudante Albion* para ver tu identidad y la lista de tus servidores. Solo eso: no se piden mensajes, ni amigos, ni permisos de bot.
 3. Volvés a la app con la sesión activa. Si estás en el servidor de Discord de SG, el Salón se desbloquea; si no, aparece la invitación al servidor y el botón «Volver a verificar» para reintentar después de unirte.
-4. La sesión dura 30 días y se revalida con el servidor en cada carga. «Cerrar sesión» está en el menú del avatar.
+4. La sesión dura 7 días y se revalida con el servidor en cada carga. «Cerrar sesión» está en el menú del avatar.
 
 Si tocás «Cancelar» en Discord, la app simplemente avisa y no pasa nada más.
 
 ### Cómo funciona (técnico)
 
-El botón «Ingresar con Discord» lleva a `/discord/login` del Worker de Cloudflare, que redirige a la pantalla de autorización de Discord con `scope=identify guilds` y un `state` firmado (HMAC, 10 minutos). Discord vuelve a `/discord/callback`, donde el Worker canjea el código con el Client Secret (que nunca llega al navegador), consulta `GET /users/@me` y `GET /users/@me/guilds`, y comprueba si entre los servidores figura el de Spetsnaz Grail. Devuelve a la app una sesión firmada válida 30 días por el fragmento de la URL (`#aa_session=…`, que no viaja a ningún servidor).
+El botón «Ingresar con Discord» lleva a `/discord/login` del Worker de Cloudflare, que redirige a la pantalla de autorización de Discord con `scope=identify guilds` y un `state` firmado (HMAC, 10 minutos). Discord vuelve a `/discord/callback`, donde el Worker canjea el código con el Client Secret (que nunca llega al navegador), consulta `GET /users/@me` y `GET /users/@me/guilds`, y comprueba si entre los servidores figura el de Spetsnaz Grail. Devuelve a la app una sesión firmada válida 7 días por el fragmento de la URL (`#aa_session=…`, que no viaja a ningún servidor).
 
 **La app no confía en ninguna sesión** (ni la que vuelve de Discord ni la guardada en el navegador) hasta que `GET /discord/verify` del Worker confirma firma y vigencia; una sesión forjada o alterada se descarta. El «Ver miembros del gremio» del módulo Perfil también queda reservado a miembros. Los datos que hoy muestra el Salón siguen siendo públicos (killboard); cualquier futura herramienta con datos privados debe servirlos desde el Worker validando la sesión, nunca desde el sitio estático.
 

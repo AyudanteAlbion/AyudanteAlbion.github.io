@@ -39,3 +39,12 @@ Requiere Go (golang.org). Desde la raíz del repositorio:
   ./build.sh
 El script verifica la app, sincroniza los archivos, compila el .exe
 (con el ícono incluido vía rsrc_windows_amd64.syso) y genera el .zip.
+El Go que baja solo está incluido si coincide el checksum oficial fijo
+en el script (GO_SHA256).
+
+PARA DESARROLLADORES
+--------------------
+- albion-app/server.py es el servidor de DESARROLLO local: escucha solo en
+  127.0.0.1 y trae un simulador de Discord que emite tokens SIN firma real.
+  No exponerlo a la red ni usarlo como servidor público: el acceso de
+  miembros SG real lo resuelve el Worker de Cloudflare.

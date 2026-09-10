@@ -45,7 +45,7 @@ const GAMEINFO = 'https://gameinfo.albiononline.com/api/gameinfo';
 const MURDERLEDGER = 'https://murderledger.albiononline2d.com/api';
 const DECAPI = 'https://decapi.me/twitch/uptime/';
 const DISCORD_API = 'https://discord.com/api/v10';
-const SESSION_TTL = 30 * 24 * 3600e3; // la sesión sirve 30 días
+const SESSION_TTL = 7 * 24 * 3600e3; // la sesión sirve 7 días (TTL corto: si un token llegara a filtrarse, la ventana de abuso es acotada)
 const STATE_TTL = 10 * 60e3;          // el state de OAuth vive 10 minutos
 
 /* Orígenes a los que el callback puede devolver al usuario (evita que el
@@ -251,7 +251,8 @@ async function discordCallback(request, url, env, net) {
   /* sin clave no hay firma que comprobar (y HMAC con clave vacía lanza) */
   if (dc.sessionKey && state.includes('.')) {
     const [st, sig] = state.split('.');
-    if (sig === (await hmac(dc.sessionKey, st))) {
+    /* comparación en tiempo constante, igual que en /discord/verify */
+    if (timingSafeEqual(sig, await hmac(dc.sessionKey, st))) {
       try {
         const p = fromB64url(st);
         if (typeof p.r === 'string' && Date.now() - p.t <= STATE_TTL) {
