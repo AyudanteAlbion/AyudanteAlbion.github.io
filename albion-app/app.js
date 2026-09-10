@@ -5721,11 +5721,11 @@ function wmMapSearch(q){
    localStorage (5 min) para no quemar el rate limit del killboard (muy 502).
 
    ══ PROVEEDORES DE DATOS (2026-09) ═══════════════════════════════════════
-   El feed oficial (gameinfo /battles?limit=100) era la única fuente: solo las
-   últimas 100 batallas del servidor y sin kills sueltos (una «batalla» exige
-   ≥3 kills; un asesinato en solitario jamás aparece). Ahora se consultan TRES
+   El feed oficial (gameinfo /battles?limit=51) era la única fuente: solo las
+   últimas 51 batallas del servidor por página y sin kills sueltos (una «batalla»
+   exige ≥3 kills; un asesinato en solitario jamás aparece). Ahora se consultan TRES
    fuentes y se cruzan:
-     1 · Killboard oficial — /battles paginado (3×100): batallas de ~un día.
+     1 · Killboard oficial — /battles paginado (3×51): batallas recientes del servidor.
      2 · Killboard oficial — /events paginado (5×51): asesinatos CRUDOS con
          Victim.ZoneName; captura kills sueltos y lo último de los últimos
          minutos. Es lo que mantiene el dato «al día» de verdad.
@@ -5736,7 +5736,8 @@ function wmMapSearch(q){
          Murderledger lo delata y avisamos al usuario.
    KillBoard#1 (killboard-1.com) también sincroniza cada ~5 min pero no expone
    API pública: se usa como enlace externo de verificación en cada kill.     */
-const PV_BATTLE_PAGES = 3;   // 3 páginas × 100 batallas ≈ un día de actividad del servidor
+const PV_BATTLE_LIMIT = 51;   // gameinfo rechaza cualquier limit superior a 51
+const PV_BATTLE_PAGES = 3;     // 3 páginas × 51 batallas; reduce carga y evita 400/limit
 const PV_EVENT_PAGES = 5;    // 5 páginas × 51 kills ≈ las últimas horas de asesinatos
 const PV_CACHE_KEY = 'wmTrackerCacheV2';
 
@@ -5783,7 +5784,7 @@ function pvSlimEvent(ev){
 async function pvFetchBattlePages(pages = PV_BATTLE_PAGES){
   const jobs = [];
   for (let p = 0; p < pages; p++) {
-    jobs.push(pfFetchRetry('/battles?limit=100&offset=' + (p * 100) + '&sort=recent', 2).catch(() => null));
+    jobs.push(pfFetchRetry('/battles?limit=' + PV_BATTLE_LIMIT + '&offset=' + (p * PV_BATTLE_LIMIT) + '&sort=recent', 2).catch(() => null));
   }
   const res = await Promise.all(jobs);
   const byId = new Map();
@@ -6911,7 +6912,7 @@ function wmRenderRoute(){
       <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(safe)}</div>
     </div>`;
   }
-  html += '<div class="micro muted" style="margin-top:6px">Peligro por zona = batallas (kills + fama/1000) + asesinatos crudos, con decaimiento de 2 h, según las últimas ~300 batallas y ~250 kills del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
+  html += '<div class="micro muted" style="margin-top:6px">Peligro por zona = batallas (kills + fama/1000) + asesinatos crudos, con decaimiento de 2 h, según las últimas ~150 batallas y ~250 kills del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
   box.innerHTML = html;
 }
 
