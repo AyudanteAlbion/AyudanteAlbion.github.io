@@ -13,6 +13,9 @@ import urllib.request
 import urllib.error
 
 GAMEINFO = 'https://gameinfo.albiononline.com/api/gameinfo'
+# Murderledger/AlbionOnline2D: proveedor secundario del Tracker por Zona
+# (verificación cruzada de frescura; el feed oficial puede atrasarse).
+MURDERLEDGER = 'https://murderledger.albiononline2d.com/api'
 DEC = 'https://decapi.me/twitch'   # ojo: /twitch es parte de la ruta de DecAPI
 
 # gameinfo bloquea User-Agents de bot desde el borde de Cloudflare (502).
@@ -30,6 +33,8 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/gameinfo/'):
             return self.proxy_gameinfo()
+        if self.path.startswith('/murderledger/'):
+            return self.proxy_murderledger()
         if self.path.startswith('/twitch/'):
             return self.proxy_twitch()
         if self.path == '/discord/config':
@@ -180,6 +185,33 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         url = GAMEINFO + self.path[len('/gameinfo'):]
         try:
             req = urllib.request.Request(url, headers=BROWSER_HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                body = r.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        except urllib.error.HTTPError as e:
+            self.send_error(e.code)
+        except Exception:
+            self.send_error(502)
+
+    def proxy_murderledger(self):
+        """Murderledger (AlbionOnline2D): dashboard de kills con last_update.
+        El Tracker por Zona lo usa para verificar si el feed oficial está al día."""
+        sub = self.path[len('/murderledger'):] or '/home'
+        # allowlist estricta, igual que el Worker
+        if sub.split('?', 1)[0] not in ('/home', '/vod-events'):
+            return self.send_error(404)
+        url = MURDERLEDGER + sub
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+            })
             with urllib.request.urlopen(req, timeout=15) as r:
                 body = r.read()
                 self.send_response(200)
