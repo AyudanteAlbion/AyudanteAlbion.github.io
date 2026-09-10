@@ -5396,7 +5396,10 @@ const WM = {
   mapFilter: 'all',      // all | city | royal | outlands | outlands78 | roads
   battles: [],           // últimas batallas del servidor (caché compartida)
   battlesAt: 0,          // cuándo se trajeron
-  zoneDanger: {},        // zona(minúsculas) -> {score, battles2h, kills, fame, count, lastAt}
+  kills: [],             // asesinatos crudos (gameinfo /events): incluyen kills sueltos que no llegan a «batalla»
+  killsAt: 0,
+  providers: null,       // estado de cada fuente: {battles, events, murderledger} -> {ok, count, newest, ...}
+  zoneDanger: {},        // zona(minúsculas) -> {score, battles2h, kills, fame, count, lastAt, evKills, evFame, lastKillAt}
   route: null,           // {short:[nombres], safe:[nombres], from, to}
   noRoads: false,        // rutas sin Caminos de Avalon
   detailCache: {},       // battleId -> detalle con players[] (en memoria)
@@ -5713,9 +5716,30 @@ function wmMapSearch(q){
 }
 
 /* ---- NUEVO: tracker de enemigos por zona real ---- */
-/* Caché compartida de /battles: la usan el tracker, el minimapa, el scoring
-   de peligro, las rutas y las alertas por zona. Se persiste en localStorage
-   (5 min) para no quemar el rate limit del killboard (muy 502). */
+/* Caché compartida de batallas + kills: la usan el tracker, el minimapa, el
+   scoring de peligro, las rutas y las alertas por zona. Se persiste en
+   localStorage (5 min) para no quemar el rate limit del killboard (muy 502).
+
+   ══ PROVEEDORES DE DATOS (2026-09) ═══════════════════════════════════════
+   El feed oficial (gameinfo /battles?limit=100) era la única fuente: solo las
+   últimas 100 batallas del servidor y sin kills sueltos (una «batalla» exige
+   ≥3 kills; un asesinato en solitario jamás aparece). Ahora se consultan TRES
+   fuentes y se cruzan:
+     1 · Killboard oficial — /battles paginado (3×100): batallas de ~un día.
+     2 · Killboard oficial — /events paginado (5×51): asesinatos CRUDOS con
+         Victim.ZoneName; captura kills sueltos y lo último de los últimos
+         minutos. Es lo que mantiene el dato «al día» de verdad.
+     3 · Murderledger (murderledger.albiononline2d.com, AlbionOnline2D):
+         mantiene su propia base con sync cada ~5 min. No expone zona por
+         evento, pero su last_update + kill más reciente sirven de testigo:
+         si el killboard oficial está atrasado (pasa seguido: 502, caché),
+         Murderledger lo delata y avisamos al usuario.
+   KillBoard#1 (killboard-1.com) también sincroniza cada ~5 min pero no expone
+   API pública: se usa como enlace externo de verificación en cada kill.     */
+const PV_BATTLE_PAGES = 3;   // 3 páginas × 100 batallas ≈ un día de actividad del servidor
+const PV_EVENT_PAGES = 5;    // 5 páginas × 51 kills ≈ las últimas horas de asesinatos
+const PV_CACHE_KEY = 'wmTrackerCacheV2';
+
 function wmSlimBattle(b){
   const g = b.guilds || b.Guilds || {};
   let guilds = null;
@@ -5731,32 +5755,161 @@ function wmSlimBattle(b){
     guilds,
   };
 }
-async function wmFetchBattles(maxAgeMs = 5 * 60e3){
-  if (WM.battles.length && WM.battlesAt && Date.now() - WM.battlesAt < maxAgeMs) return WM.battles;
-  if (!(maxAgeMs > 0)) { /* force */ }
-  else {
+/* timestamp de un campo de fecha cualquiera (ISO o epoch); 0 si no se entiende */
+function pvTimeOf(t){
+  const d = t ? new Date(t).getTime() : NaN;
+  return isFinite(d) && d > 0 ? d : 0;
+}
+
+/* asesinato crudo de /events → formato compacto (cacheable y pinteable) */
+function pvSlimEvent(ev){
+  const v = ev.Victim || ev.victim || {};
+  const k = ev.Killer || ev.killer || {};
+  return {
+    id: ev.EventId ?? ev.eventId ?? ev.id ?? null,
+    ts: ev.TimeStamp ?? ev.timeStamp ?? ev.Time ?? null,
+    zone: v.ZoneName ?? v.zoneName ?? ev.ZoneName ?? '',
+    v: v.Name ?? v.name ?? '',
+    vg: v.GuildName ?? v.guildName ?? '',
+    k: k.Name ?? k.name ?? '',
+    kg: k.GuildName ?? k.guildName ?? '',
+    f: ev.TotalVictimKillFame ?? ev.totalVictimKillFame ?? 0,
+    ip: Math.round(v.AverageItemPower ?? v.averageItemPower ?? 0),
+    bid: ev.BattleId ?? ev.battleId ?? 0,
+  };
+}
+
+/* pagina /battles del killboard oficial (dedupe por id, tolera páginas 502) */
+async function pvFetchBattlePages(pages = PV_BATTLE_PAGES){
+  const jobs = [];
+  for (let p = 0; p < pages; p++) {
+    jobs.push(pfFetchRetry('/battles?limit=100&offset=' + (p * 100) + '&sort=recent', 2).catch(() => null));
+  }
+  const res = await Promise.all(jobs);
+  const byId = new Map();
+  let okPages = 0;
+  for (const raw of res){
+    if (raw == null) continue;
+    okPages++;
+    for (const b of pfAsArray(raw)) {
+      const id = String(b.id ?? b.Id ?? '');
+      if (id && !byId.has(id)) byId.set(id, b);
+    }
+  }
+  const list = [...byId.values()].sort((a, b) =>
+    pvTimeOf(b.startTime ?? b.StartTime) - pvTimeOf(a.startTime ?? a.StartTime));
+  return { list, okPages, pages };
+}
+
+/* pagina /events del killboard oficial: asesinatos crudos con zona. Sin esto,
+   los kills sueltos (la mayoría) jamás entrarían al tracker. */
+async function pvFetchEventPages(pages = PV_EVENT_PAGES){
+  const jobs = [];
+  for (let p = 0; p < pages; p++) {
+    jobs.push(pfFetchRetry('/events?limit=51&offset=' + (p * 51) + '&sort=recent', 2).catch(() => null));
+  }
+  const res = await Promise.all(jobs);
+  const byId = new Map();
+  let okPages = 0;
+  for (const raw of res){
+    if (raw == null) continue;
+    okPages++;
+    for (const ev of pfAsArray(raw)) {
+      const id = String(ev.EventId ?? ev.eventId ?? ev.id ?? '');
+      if (id && !byId.has(id)) byId.set(id, pvSlimEvent(ev));
+    }
+  }
+  const list = [...byId.values()].sort((a, b) => pvTimeOf(b.ts) - pvTimeOf(a.ts));
+  return { list, okPages, pages };
+}
+
+/* Murderledger vive en AlbionOnline2D (mismo operador): /murderledger/* lo
+   sirven el server.py local y el Worker (murderledger.albiononline2d.com/api).
+   Devuelve el dashboard de kills: last_update + kills destacadas con época. */
+async function mlFetch(path){
+  const local = await fetch('/murderledger' + path).catch(() => null);
+  if (local && local.ok) { try { return await local.json(); } catch(e){} }
+  if (WORKER_URL) {
+    const w = await fetch(WORKER_URL + '/murderledger' + path).catch(() => null);
+    if (w && w.ok) { try { return await w.json(); } catch(e){} }
+  }
+  throw new Error('murderledger ' + (local ? 'HTTP ' + local.status : 'sin conexión'));
+}
+
+async function pvFetchMurderledger(){
+  try {
+    const d = await mlFetch('/home');
+    if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('respuesta vacía');
+    if (!d.last_update && !d.juicy_kills && !d.high_rank_cds) throw new Error('respuesta sin datos');
+    const kills = [...(d.juicy_kills || []), ...(d.high_rank_cds || []), ...(d.streamed_fights || [])];
+    let newest = 0;
+    for (const k of kills) { const t = (k.time || 0) * 1000; if (t > newest) newest = t; }
+    return { ok: true, count: kills.length, newest, lastUpdate: d.last_update ? new Date(d.last_update).getTime() : 0 };
+  } catch (e) {
+    return { ok: false, count: 0, newest: 0, lastUpdate: 0, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+/* trae batallas + kills + testigo Murderledger (en paralelo), con caché.
+   opts: { pages, eventPages, light } — light = ciclo de alertas (1 página de
+   cada cosa, sin Murderledger, para no martillar el killboard). */
+async function wmFetchBattles(maxAgeMs = 5 * 60e3, opts = {}){
+  const force = !(maxAgeMs > 0);
+  if (!force && WM.battles.length && WM.battlesAt && Date.now() - WM.battlesAt < maxAgeMs) return WM.battles;
+  if (!force) {
     // caché de sesión anterior (localStorage), aún fresca
     try {
-      const c = JSON.parse(localStorage.getItem('wmBattlesCache') || 'null');
-      if (c && Array.isArray(c.data) && c.data.length && Date.now() - c.at < maxAgeMs) {
-        WM.battles = c.data; WM.battlesAt = c.at;
+      const c = JSON.parse(localStorage.getItem(PV_CACHE_KEY) || 'null');
+      if (c && c.v === 2 && Array.isArray(c.battles) && c.battles.length && Date.now() - c.at < maxAgeMs) {
+        WM.battles = c.battles; WM.battlesAt = c.at;
+        WM.kills = Array.isArray(c.kills) ? c.kills : []; WM.killsAt = c.at;
+        WM.providers = c.providers || null;
         wmBuildZoneDanger();
         return WM.battles;
       }
     } catch(e){}
   }
-  const raw = await pfFetchRetry('/battles?limit=100&offset=0&sort=recent').catch(()=>pfFetchRetry('/battles?limit=50&offset=0'));
-  const battles = pfAsArray(raw);
-  WM.battles = battles;
+  const pages = opts.pages || (opts.light ? 1 : PV_BATTLE_PAGES);
+  const eventPages = opts.eventPages || (opts.light ? 1 : PV_EVENT_PAGES);
+  const [bp, ep, ml] = await Promise.all([
+    pvFetchBattlePages(pages),
+    pvFetchEventPages(eventPages),
+    opts.light ? Promise.resolve(null) : pvFetchMurderledger(),
+  ]);
+  if (!bp.okPages) {
+    // sin ninguna página de batallas el tracker queda ciego: avisar
+    throw new Error('killboard oficial sin respuesta (battles)');
+  }
+  WM.battles = bp.list;
   WM.battlesAt = Date.now();
-  try { localStorage.setItem('wmBattlesCache', JSON.stringify({ at: WM.battlesAt, data: battles.map(wmSlimBattle) })); } catch(e){}
+  if (ep.okPages) { WM.kills = ep.list; WM.killsAt = WM.battlesAt; }
+  else if (!WM.kills.length) { WM.kills = []; WM.killsAt = 0; }
+  WM.providers = {
+    battles: { ok: true, count: bp.list.length, pages: bp.okPages + '/' + bp.pages,
+               newest: bp.list.length ? pvTimeOf(bp.list[0].startTime ?? bp.list[0].StartTime) : 0 },
+    events: { ok: ep.okPages > 0, count: ep.list.length, pages: ep.okPages + '/' + ep.pages,
+              newest: ep.list.length ? pvTimeOf(ep.list[0].ts) : 0 },
+    murderledger: ml ? { ok: ml.ok, count: ml.count, newest: ml.newest, lastUpdate: ml.lastUpdate }
+                     : (WM.providers && WM.providers.murderledger) || { ok: false, count: 0, newest: 0, lastUpdate: 0 },
+  };
+  try {
+    localStorage.setItem(PV_CACHE_KEY, JSON.stringify({
+      v: 2, at: WM.battlesAt,
+      battles: WM.battles.map(wmSlimBattle),
+      kills: WM.kills.slice(0, 300),
+      providers: WM.providers,
+    }));
+    // la clave vieja queda obsoleta: limpiar para no duplicar espacio
+    localStorage.removeItem('wmBattlesCache');
+  } catch(e){}
   wmBuildZoneDanger();
-  return battles;
+  return WM.battles;
 }
 
 /* ---- scoring de peligro por zona ----
-   danger = Σ (kills·1 + fama/1000) · decaimiento(Δt), decaimiento
-   exponencial con vida media de 2 h. Umbrales orientativos. */
+   danger = Σ (kills·1 + fama/1000) · decaimiento(Δt) por batalla, más
+   Σ (0.5 + fama/20000) · decaimiento(Δt) por asesinato crudo de /events.
+   Decaimiento exponencial con vida media de 2 h. Umbrales orientativos. */
 const WM_DANGER_LEVELS = [
   { max: 4, key: 'calm', emoji: '🟢', label: 'tranquilo', cls: 'wm-dg-calm' },
   { max: 20, key: 'warm', emoji: '🟡', label: 'activo', cls: 'wm-dg-warm' },
@@ -5768,20 +5921,34 @@ function wmDangerDecay(when, now = Date.now()){
   const h = Math.max(0, (now - t) / 36e5);
   return Math.pow(0.5, h / 2);
 }
-function wmBuildZoneDanger(battles = WM.battles){
+function wmBuildZoneDanger(){
   const now = Date.now();
   const map = {};
-  for (const b of battles) {
+  const entry = zone => map[zone] || (map[zone] = { zone, score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0, evKills: 0, evFame: 0, lastKillAt: 0 });
+  for (const b of WM.battles) {
     const zone = String(b.clusterName ?? b.ClusterName ?? '').toLowerCase();
     if (!zone) continue;
     const kills = b.totalKills ?? b.TotalKills ?? 0;
     const fame = b.totalFame ?? b.TotalFame ?? 0;
     const t = b.startTime ?? b.StartTime ?? null;
     const ts = t ? new Date(t).getTime() : 0;
-    const d = map[zone] || (map[zone] = { zone, score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0 });
+    const d = entry(zone);
     d.score += (kills + fame / 1000) * wmDangerDecay(t, now);
     d.kills += kills; d.fame += fame; d.count++;
     if (ts && now - ts < 2 * 36e5) d.battles2h++;
+    if (ts > d.lastAt) d.lastAt = ts;
+  }
+  /* asesinatos crudos de /events: llenan el vacío de las batallas (kills
+     sueltos, escaramuzas chicas) y anclan la actividad real a la zona */
+  for (const k of WM.kills) {
+    const zone = String(k.zone || '').toLowerCase();
+    if (!zone) continue;
+    const ts = k.ts ? new Date(k.ts).getTime() : 0;
+    const d = entry(zone);
+    d.score += (0.5 + (k.f || 0) / 20000) * wmDangerDecay(k.ts, now);
+    d.evKills++;
+    d.evFame += k.f || 0;
+    if (ts > d.lastKillAt) d.lastKillAt = ts;
     if (ts > d.lastAt) d.lastAt = ts;
   }
   WM.zoneDanger = map;
@@ -5791,12 +5958,97 @@ function wmDangerLevel(score){
   return WM_DANGER_LEVELS.find(l => score <= l.max) || WM_DANGER_LEVELS[WM_DANGER_LEVELS.length - 1];
 }
 function wmZoneDanger(zone){
-  return WM.zoneDanger[String(zone || '').toLowerCase()] || { zone: String(zone||'').toLowerCase(), score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0 };
+  return WM.zoneDanger[String(zone || '').toLowerCase()] || { zone: String(zone||'').toLowerCase(), score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0, evKills: 0, evFame: 0, lastKillAt: 0 };
 }
 function wmDangerBadge(zone){
   const d = wmZoneDanger(zone);
   const lv = wmDangerLevel(d.score);
   return `<span class="wm-dg-badge ${lv.cls}" title="Peligro ${lv.label} · score ${d.score.toFixed(1)} · ${d.battles2h} batalla(s) en 2 h">${lv.emoji}</span>`;
+}
+
+/* ---- ranking de actividad por zona (ordenado por cantidad de kills) ----
+   Es la respuesta a «¿dónde está más caliente cerca de mi mapa?»: kills de
+   /events si el proveedor respondió, y si no, los kills agregados de las
+   batallas (fuente degradada, menos fina). Desempate por fama. */
+function wmZoneRanking(zones){
+  const evOk = !!(WM.providers && WM.providers.events && WM.providers.events.ok);
+  const rows = (zones || []).map(z => {
+    const d = wmZoneDanger(z);
+    const kills = evOk ? (d.evKills || 0) : (d.kills || 0);
+    return {
+      zone: z,
+      kills,
+      evKills: d.evKills || 0,
+      battles: d.count || 0,
+      battleKills: d.kills || 0,
+      fame: evOk ? (d.evFame || 0) : (d.fame || 0),
+      lastAt: Math.max(d.lastKillAt || 0, d.lastAt || 0),
+      score: d.score,
+      evOk,
+    };
+  });
+  rows.sort((a, b) => b.kills - a.kills || b.fame - a.fame || b.battles - a.battles);
+  return rows;
+}
+
+/* ---- panel de proveedores: qué respondió cada fuente y qué tan al día ---- */
+function wmAgeMin(ts){
+  if (!ts) return null;
+  return Math.max(0, (Date.now() - ts) / 60e3);
+}
+function wmAgoText(ts){
+  const m = wmAgeMin(ts);
+  if (m == null) return 'sin datos';
+  if (m < 1) return 'ahora mismo';
+  if (m < 90) return 'hace ' + Math.round(m) + ' min';
+  return 'hace ' + (m / 60).toFixed(1) + ' h';
+}
+function wmProviderRow(emoji, name, ok, detail, newestTs, title){
+  const age = newestTs ? wmAgoText(newestTs) : null;
+  const stale = newestTs && wmAgeMin(newestTs) > 15;
+  return `<div class="wm-prov-row${ok ? '' : ' wm-prov-err'}" title="${title || ''}">
+    <span class="wm-prov-name">${emoji} ${name}</span>
+    <span class="muted micro">${ok ? detail : 'sin respuesta'}</span>
+    <span class="wm-prov-age${stale ? ' wm-prov-stale' : ''}">${ok && age ? 'último dato: ' + age : '—'}</span>
+  </div>`;
+}
+function wmProvidersHTML(){
+  const p = WM.providers;
+  if (!p) return '';
+  const rows = [];
+  rows.push(wmProviderRow('🏛', 'Killboard oficial · batallas', p.battles.ok,
+    p.battles.count + ' batallas (' + p.battles.pages + ' páginas)', p.battles.newest,
+    'Batallas agregadas del killboard oficial (gameinfo /battles, paginado). Una «batalla» exige ≥3 kills.'));
+  rows.push(wmProviderRow('💀', 'Killboard oficial · asesinatos', p.events.ok,
+    p.events.count + ' kills (' + p.events.pages + ' páginas)', p.events.newest,
+    'Asesinatos crudos (gameinfo /events): incluyen kills en solitario y lo último de los últimos minutos.'));
+  rows.push(wmProviderRow('🗡', 'Murderledger · AlbionOnline2D', p.murderledger.ok,
+    p.murderledger.ok ? p.murderledger.count + ' kills destacadas' : 'sin respuesta',
+    p.murderledger.newest || p.murderledger.lastUpdate,
+    'Base propia de Murderledger (sincroniza cada ~5 min). Sirve de testigo: si tiene datos más frescos que el oficial, el API del juego está atrasada.'));
+  /* veredicto de frescura global */
+  const newest = Math.max(p.battles.newest || 0, p.events.newest || 0, p.murderledger.newest || 0);
+  const offNewest = Math.max(p.battles.newest || 0, p.events.newest || 0);
+  let verdict = '';
+  if (!newest) {
+    verdict = '<div class="wm-prov-verdict wm-prov-warn">⚠️ Ningún proveedor trajo datos con fecha. Reintentá en unos segundos.</div>';
+  } else {
+    const age = wmAgeMin(newest);
+    if (age <= 10) verdict = `<div class="wm-prov-verdict">✅ Datos al día: lo último registrado fue ${wmAgoText(newest)}.</div>`;
+    else if (age <= 30) verdict = `<div class="wm-prov-verdict wm-prov-warn">🟡 Datos algo demorados: lo último registrado fue ${wmAgoText(newest)}.</div>`;
+    else verdict = `<div class="wm-prov-verdict wm-prov-bad">🔴 Proveedores con datos de ${wmAgoText(newest)}: la API del juego suele atrasarse en horas pico; los números son reales pero pueden faltar los kills más recientes.</div>`;
+    /* testigo Murderledger: si su kill más nuevo es >5 min más fresco que todo
+       lo oficial, el atraso es del API del juego y no de nuestra lectura */
+    if (p.murderledger.ok && p.murderledger.newest && offNewest && p.murderledger.newest - offNewest > 5 * 60e3) {
+      verdict += '<div class="wm-prov-verdict wm-prov-warn">↪ Murderledger ya registró kills más recientes que el killboard oficial: el feed oficial viene atrasado (se normaliza solo).</div>';
+    }
+  }
+  return `
+    <div class="wm-section wm-providers">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-bolt"/></svg> Fuentes de datos <span class="muted micro">(se consultan en paralelo y se cruzan)</span></div>
+      ${rows.join('')}
+      ${verdict}
+    </div>`;
 }
 
 async function wmLoadTracker(force){
@@ -5808,21 +6060,25 @@ async function wmLoadTracker(force){
   WM.tracker.loading = true;
   WM.tracker.error = null;
   const box = document.getElementById('wmTrackerContent');
-  if (box) box.innerHTML = '<div class="loading-cell">Rastreando asesinatos en ' + sgEsc(WM.selectedMap) + ' + conexiones…</div>';
+  if (box) box.innerHTML = '<div class="loading-cell">Rastreando asesinatos en ' + sgEsc(WM.selectedMap) + ' + conexiones… (killboard oficial + Murderledger)</div>';
   const btn = document.getElementById('wmTrackerBtn');
   if (btn) btn.disabled = true;
   const zones = [WM.selectedMap, ...WM.selectedNeighbors];
   const zoneSet = new Set(zones.map(z=>String(z).toLowerCase()));
-  // también incluir variaciones con market/bank? No, battles usan nombres exactos sin market
   try {
-    // battles recientes (oficial) - límite 100 para cubrir más zonas (con caché de 5 min)
+    /* FLUJO: conexiones del grafo → batallas (paginadas) + asesinatos crudos
+       (/events) + testigo de frescura Murderledger, todo en paralelo; después
+       se filtra por zona objetivo y se rankea la actividad por cantidad de
+       kills (mapa elegido + conectados). */
     const battles = await wmFetchBattles(force ? 0 : 5 * 60e3);
-    // Filtrar por clusterName en zonas objetivo
+    // 1 · batallas en las zonas objetivo
     const filtered = battles.filter(b=>{
       const cn = (b.clusterName || b.ClusterName || b.location || '').toString();
       if (!cn) return false;
       return zoneSet.has(cn.toLowerCase());
     });
+    // 2 · asesinatos crudos en las zonas objetivo (incluye kills sueltos)
+    const kills = WM.kills.filter(k=>zoneSet.has(String(k.zone || '').toLowerCase()));
     // Enriquecer con guilds participantes
     const guildStats = {};
     let totalFame = 0, totalKills = 0;
@@ -5876,6 +6132,8 @@ async function wmLoadTracker(force){
 
     WM.tracker.battles = battles; // todos
     WM.tracker.filtered = filtered;
+    WM.tracker.kills = kills; // asesinatos crudos en las zonas objetivo
+    WM.tracker.killsTotal = WM.kills.length; // en todo el feed traído
     WM.tracker.guilds = guildsSorted;
     WM.tracker.events = events;
     WM.tracker.zones = zones;
@@ -5886,6 +6144,7 @@ async function wmLoadTracker(force){
     if (btn) btn.disabled = false;
     wmRenderTracker();
     wmRenderMinimap(); // refrescar puntos rojos con datos nuevos
+    wmRenderSelInfo(); // el peligro de la zona cambió con los datos frescos
   } catch(err){
     WM.tracker.loading = false;
     WM.tracker.error = err && err.message ? err.message : String(err);
@@ -5916,28 +6175,63 @@ function wmRenderTracker(){
   }
   const zones = t.zones || [WM.selectedMap, ...WM.selectedNeighbors];
   const filtered = t.filtered || [];
+  const kills = t.kills || [];
   const guilds = t.guilds || [];
   const updated = t.lastUpdate ? new Date(t.lastUpdate).toLocaleTimeString('es-AR') : '—';
-  const totalFame = t.totalFame || 0;
-  const totalKills = t.totalKills || 0;
   const selDanger = wmZoneDanger(WM.selectedMap);
   const selLv = wmDangerLevel(selDanger.score);
+  const evOk = !!(WM.providers && WM.providers.events && WM.providers.events.ok);
+  const ranking = wmZoneRanking(zones);
 
   box.innerHTML = `
     <div class="stats wm-stats">
       <div class="stat"><div class="k">Zonas vigiladas</div><div class="v">${zones.length}</div><div class="s">${sgEsc(WM.selectedMap)} + ${WM.selectedNeighbors.length} conexiones</div></div>
-      <div class="stat"><div class="k">Batallas recientes</div><div class="v pos">${filtered.length}</div><div class="s">de ${t.battles?.length||0} últimas en servidor</div></div>
+      <div class="stat"><div class="k">Asesinatos en la zona</div><div class="v pos">${kills.length}</div><div class="s">de ${t.killsTotal ?? WM.kills.length ?? 0} en el feed · ${evOk ? '/events oficial' : 'feed de kills sin respuesta'}</div></div>
+      <div class="stat"><div class="k">Batallas en la zona</div><div class="v pos">${filtered.length}</div><div class="s">de ${t.battles?.length||0} en el servidor</div></div>
       <div class="stat"><div class="k">Peligro de la zona</div><div class="v">${selLv.emoji}</div><div class="s">${selLv.label} · score ${selDanger.score.toFixed(1)} · ${selDanger.battles2h} en 2 h</div></div>
-      <div class="stat"><div class="k">Actualizado</div><div class="v" style="font-size:1rem">${updated}</div><div class="s"><button class="btn micro-btn" id="wmTrackerBtnInner">↻ Actualizar</button> <button class="btn micro-btn" id="wmCsvBtn" title="Descargar las batallas filtradas en CSV">⬇ CSV</button></div></div>
+      <div class="stat"><div class="k">Actualizado</div><div class="v" style="font-size:1rem">${updated}</div><div class="s"><button class="btn micro-btn" id="wmTrackerBtnInner">↻ Actualizar</button> <button class="btn micro-btn" id="wmCsvBtn" title="Descargar las batallas filtradas en CSV">⬇ CSV</button> <button class="btn micro-btn" id="wmKillsCsvBtn" title="Descargar los asesinatos filtrados en CSV">⬇ Kills</button></div></div>
     </div>
+
+    ${wmProvidersHTML()}
 
     <div class="wm-section">
       <div class="cd-title"><svg class="title-ico"><use href="#i-shield"/></svg> Zonas objetivo</div>
       <div class="chip-group" style="padding:4px 0 8px; flex-wrap:wrap">
-        ${zones.map(z=>`<span class="chip ${z===WM.selectedMap?'active':''}" data-wm-zone="${sgEsc(z)}" title="Batallas (2 h): ${wmZoneDanger(z).battles2h} · score ${wmZoneDanger(z).score.toFixed(1)}">${wmDangerBadge(z)} ${sgEsc(z)}${z===WM.selectedMap?' <b>(sel)</b>':''}</span>`).join('')}
+        ${zones.map(z=>`<span class="chip ${z===WM.selectedMap?'active':''}" data-wm-zone="${sgEsc(z)}" title="Kills: ${wmZoneDanger(z).evKills} · Batallas (2 h): ${wmZoneDanger(z).battles2h} · score ${wmZoneDanger(z).score.toFixed(1)}">${wmDangerBadge(z)} ${sgEsc(z)}${z===WM.selectedMap?' <b>(sel)</b>':''}</span>`).join('')}
       </div>
       <div class="micro muted">Conexiones según world.xml oficial (ao-bin-dumps). ${WM.selectedNeighbors.length ? 'Mapas fronterizos: ' + WM.selectedNeighbors.map(n=>sgEsc(n)).join(', ') : 'Este mapa no tiene conexiones registradas o es aislado.'}</div>
     </div>
+
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-skull"/></svg> Actividad por zona <span class="muted micro">(ordenada por cantidad de asesinatos)</span></div>
+      ${ranking.length ? `
+      <div class="wm-rank">
+        ${ranking.map((r, i)=>{
+          const max = Math.max(1, ranking[0].kills);
+          const lv = wmDangerLevel(r.score);
+          const isSel = r.zone === WM.selectedMap;
+          return `<div class="wm-rank-row${isSel ? ' wm-rank-sel' : ''}" data-wm-goto="${sgEsc(r.zone)}" title="${sgEsc(r.zone)}: ${r.evKills} kill(s) registrados · ${r.battles} batalla(s) · score ${r.score.toFixed(1)}">
+            <span class="wm-rank-pos">${i + 1}</span>
+            <span class="wm-rank-name">${lv.emoji} <b>${sgEsc(r.zone)}</b>${isSel ? ' <span class="muted micro">(sel)</span>' : ''}</span>
+            <span class="wm-rank-bar"><i style="width:${r.kills ? Math.max(6, Math.round(r.kills / max * 100)) : 0}%"></i></span>
+            <span class="wm-rank-kills num">${r.kills} kill${r.kills === 1 ? '' : 's'}</span>
+            <span class="wm-rank-meta muted micro">${r.battles} batalla(s) · ${fmt(r.fame)} fama${r.lastAt ? ' · ' + wmAgoText(r.lastAt) : ''}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="micro muted">Kills = asesinatos registrados en ${evOk ? 'el feed de /events (incluye kills en solitario)' : 'las batallas (el feed de kills no respondió)'} dentro de la ventana traída. Tocá una zona para rastrearla.</div>` : '<div class="loading-cell">Sin zonas para rankear.</div>'}
+    </div>
+
+    ${kills.length ? `
+    <div class="wm-section">
+      <div class="cd-title"><svg class="title-ico"><use href="#i-sword"/></svg> Asesinatos recientes en la zona (${kills.length})</div>
+      <div class="table-wrap"><table class="ledger">
+        <thead><tr><th>Hace</th><th>Mapa</th><th>Víctima</th><th>Asesino</th><th class="num">Fama</th><th class="num">IP</th><th></th></tr></thead>
+        <tbody>${kills.slice(0,30).map(k=>wmKillRow(k)).join('')}</tbody>
+      </table></div>
+      <div class="micro muted" style="padding:4px 14px 0">Asesinatos crudos del killboard oficial${evOk ? '' : ' (ojo: el feed respondió a medias)'}. Cada kill trae enlaces a KillBoard#1, AlbionOnline2D y el killboard oficial para confirmar a mano que el dato es real.</div>
+    </div>` : `
+    <div class="wm-section"><div class="loading-cell">${evOk ? 'Sin asesinatos recientes en estas zonas. Probá otro mapa o tocá Actualizar.' : 'El feed de asesinatos (/events) no respondió: mostrando solo batallas.'}</div></div>`}
 
     ${filtered.length ? `
     <div class="wm-section">
@@ -5947,7 +6241,7 @@ function wmRenderTracker(){
         <tbody>${filtered.slice(0,25).map(b=>wmBattleRow(b)).join('')}</tbody>
       </table></div>
       <div class="micro muted" style="padding:4px 14px 0">Tocá una batalla para ver los participantes (equipo, IP, gremio).</div>
-    </div>` : '<div class="wm-section"><div class="loading-cell">Sin batallas recientes en estas zonas (últimas 100 del servidor). Probá otro mapa o tocá Actualizar.</div></div>'}
+    </div>` : '<div class="wm-section"><div class="loading-cell">Sin batallas recientes en estas zonas (se trajeron ' + (t.battles?.length || 0) + ' batallas del servidor, paginadas). Probá otro mapa o tocá Actualizar.</div></div>'}
 
     ${guilds.length ? `
     <div class="wm-section">
@@ -5962,12 +6256,14 @@ function wmRenderTracker(){
       <div class="wm-events-list">${t.events.map(e=>wmEventRow(e)).join('')}</div>
     </div>` : ''}
 
-    <div class="micro muted pad">Fuente: killboard oficial /battles (clusterName). Zonas objetivo = mapa seleccionado + vecinos según grafo de conexiones. Si un mapa tiene muchas conexiones (ciudad), verás más batallas. El peligro decae a la mitad cada 2 h.</div>
+    <div class="micro muted pad">Fuentes cruzadas: killboard oficial (/battles paginado + /events con asesinatos crudos) y Murderledger/AlbionOnline2D como testigo de frescura; KillBoard#1 enlaza cada kill para verificación manual. Zonas objetivo = mapa seleccionado + vecinos según world.xml. El peligro decae a la mitad cada 2 h.</div>
   `;
   const innerBtn = box.querySelector('#wmTrackerBtnInner');
   if (innerBtn) innerBtn.onclick = ()=>wmLoadTracker(true);
   const csvBtn = box.querySelector('#wmCsvBtn');
   if (csvBtn) csvBtn.onclick = ()=>wmExportCSV();
+  const killsCsvBtn = box.querySelector('#wmKillsCsvBtn');
+  if (killsCsvBtn) killsCsvBtn.onclick = ()=>wmExportKillsCSV();
   // click en chip de zona para cambiar mapa rápido
   box.querySelectorAll('[data-wm-zone]').forEach(ch=>{
     ch.style.cursor='pointer';
@@ -5975,6 +6271,54 @@ function wmRenderTracker(){
       wmSelectMap(ch.dataset.wmZone);
     };
   });
+}
+
+/* ---- fila de asesinato crudo (feed /events), con enlaces de verificación ---- */
+function wmKillLinks(k){
+  const links = [];
+  if (k.id) links.push(`<a href="https://killboard-1.com/us/event/${encodeURIComponent(k.id)}" target="_blank" rel="noopener" title="Ver en KillBoard#1 (sincroniza cada ~5 min)">KB#1</a>`);
+  if (k.id) links.push(`<a href="https://albiononline2d.com/en/scoreboard/events/${encodeURIComponent(k.id)}" target="_blank" rel="noopener" title="Ver en AlbionOnline2D">AO2D</a>`);
+  if (k.bid) links.push(`<a href="https://albiononline.com/killboard/battles/${encodeURIComponent(k.bid)}" target="_blank" rel="noopener" title="Ver la batalla en el killboard oficial">Oficial</a>`);
+  return links.join(' ');
+}
+function wmKillRow(k){
+  const when = k.ts ? new Date(k.ts) : null;
+  return `<tr>
+    <td class="muted micro" title="${when ? when.toLocaleString('es-AR') : ''}">${when ? wmTimeAgo(when) : '—'}</td>
+    <td><b>${sgEsc(k.zone || '—')}</b></td>
+    <td>${sgEsc(k.v || '?')}${k.vg ? ` <span class="muted micro">[${sgEsc(k.vg)}]</span>` : ''}</td>
+    <td>${sgEsc(k.k || '?')}${k.kg ? ` <span class="muted micro">[${sgEsc(k.kg)}]</span>` : ''}</td>
+    <td class="num pos">${fmt(k.f || 0)}</td>
+    <td class="num">${k.ip ? fmt(k.ip) : '—'}</td>
+    <td class="micro wm-kill-links">${wmKillLinks(k)}</td>
+  </tr>`;
+}
+
+/* ---- exportar los asesinatos filtrados a CSV ---- */
+function wmExportKillsCSV(){
+  const rows = WM.tracker.kills || [];
+  if (!rows.length) { waToast('⚠️ Sin datos', 'No hay asesinatos filtrados para exportar. Rastreá una zona primero.', 'err', ()=>wmOpenTrackerTab()); return; }
+  const head = ['fecha', 'mapa', 'victima', 'gremio_victima', 'asesino', 'gremio_asesino', 'fama', 'ip_victima', 'id_evento', 'link'].join(';');
+  const lines = rows.map(k => [
+    k.ts ? new Date(k.ts).toISOString() : '',
+    csvCell(k.zone || ''),
+    csvCell(k.v || ''),
+    csvCell(k.vg || ''),
+    csvCell(k.k || ''),
+    csvCell(k.kg || ''),
+    k.f || 0,
+    k.ip || 0,
+    csvCell(String(k.id ?? '')),
+    csvCell(k.id ? 'https://killboard-1.com/us/event/' + k.id : ''),
+  ].join(';'));
+  const csv = '\ufeff' + head + '\r\n' + lines.join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const slug = (WM.selectedMap || 'zona').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  a.download = 'kills-' + slug + '-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'') + '.csv';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  waToast('⬇ CSV exportado', rows.length + ' asesinatos de «' + (WM.selectedMap || '') + '» (separador ;).', '', ()=>wmOpenTrackerTab());
 }
 
 /* ---- exportar las batallas filtradas a CSV ---- */
@@ -6567,7 +6911,7 @@ function wmRenderRoute(){
       <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(safe)}</div>
     </div>`;
   }
-  html += '<div class="micro muted" style="margin-top:6px">Peligro por zona = Σ(kills + fama/1000) con decaimiento de 2 h, según las últimas 100 batallas del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
+  html += '<div class="micro muted" style="margin-top:6px">Peligro por zona = batallas (kills + fama/1000) + asesinatos crudos, con decaimiento de 2 h, según las últimas ~300 batallas y ~250 kills del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
   box.innerHTML = html;
 }
 
@@ -6629,13 +6973,13 @@ function wmTrackerRender() {
         <span><svg class="title-ico"><use href="#i-globe"/></svg> Tracker por zona real</span>
         <div class="wm-head-actions">
           <button class="btn" id="wmGoWarBtn" title="Ver los territorios y GvG de Spetsnaz Grail"><svg class="btn-ico"><use href="#i-shield"/></svg> Mapa de Guerra</button>
-          <button class="btn" id="wmTrackerRefreshBtn" title="Volver a pedir las últimas batallas del killboard">
-            <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar batallas
+          <button class="btn" id="wmTrackerRefreshBtn" title="Volver a pedir batallas, asesinatos y el testigo Murderledger (sin caché)">
+            <svg class="btn-ico"><use href="#i-refresh"/></svg> Actualizar datos
           </button>
         </div>
       </div>
       <div class="micro muted wm-intro">
-        Vigilá cualquier mapa real de Albion: filtramos /battles por clusterName ∈ [mapa + vecinos] del grafo oficial (world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas). Con minimapa, peligro por zona, rutas seguras y alertas.
+        Vigilá cualquier mapa real de Albion: cruzamos el killboard oficial (batallas paginadas + asesinatos crudos de /events) con Murderledger/AlbionOnline2D como testigo de frescura, filtrados por [mapa + vecinos] del grafo oficial (world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas). Con minimapa, peligro por zona, ranking de actividad, rutas seguras y alertas.
       </div>
 
       <div class="chip-group wm-type-chips" id="wmTypeChips">
@@ -7165,8 +7509,10 @@ async function wzTick(){
   wzStatus();
   try {
     // el ciclo de alertas fuerza datos frescos (ventana chica: solo deduplica
-    // ticks seguidos por reinicios); la caché de 5 min queda para la UI
-    const battles = await wmFetchBattles(45e3);
+    // ticks seguidos por reinicios); la caché de 5 min queda para la UI.
+    // light = 1 página de batallas + 1 de kills, sin Murderledger: el motor
+    // corre cada pocos minutos y no debe martillar el killboard.
+    const battles = await wmFetchBattles(45e3, { light: true });
     const seen = new Set(WZ.seen);
     const watch = new Set(WZ.zones.map(z=>z.toLowerCase()));
     const now = Date.now();

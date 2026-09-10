@@ -263,6 +263,21 @@ check(noOrigin.status === 200 && noOrigin.headers.get('x-content-type-options') 
 const twEvil = await wp.fetch(new Request('http://w.test/twitch/uptime/canal', { headers: { Origin: 'https://evil.example' } }));
 check(twEvil.status === 403, 'twitch: Origin ajeno → 403', 'twitch: Origin ajeno aceptado');
 
+/* ============ 8b · proxy Murderledger/AlbionOnline2D (testigo de frescura) ============ */
+console.log('\n— proxy /murderledger acotado —');
+const ml = p => wp.fetch(new Request('http://w.test' + p, { headers: { Origin: 'https://ayudantealbion.github.io' } }));
+check((await ml('/murderledger/home')).status === 200 && seen.at(-1) === 'https://murderledger.albiononline2d.com/api/home',
+  'murderledger /home se reenvía a la API de AlbionOnline2D', 'murderledger /home mal reenviado → ' + seen.at(-1));
+check((await ml('/murderledger/vod-events?take=20&battle_size=1v1')).status === 200
+  && seen.at(-1).includes('/vod-events') && seen.at(-1).includes('take=20') && seen.at(-1).includes('battle_size=1v1'),
+  'vod-events pasa con sus parámetros', 'vod-events mal → ' + seen.at(-1));
+check((await ml('/murderledger/players/x/events')).status === 404,
+  'ruta de murderledger no permitida → 404 (allowlist)', 'ruta ajena de murderledger reenviada');
+const mlBare = await ml('/murderledger');
+check(mlBare.status === 200 && seen.at(-1).endsWith('/api/home'), '/murderledger sin subruta → /home', 'murderledger sin subruta → ' + seen.at(-1));
+const mlEvil = await wp.fetch(new Request('http://w.test/murderledger/home', { headers: { Origin: 'https://evil.example' } }));
+check(mlEvil.status === 403, 'murderledger: Origin ajeno → 403', 'murderledger: Origin ajeno aceptado');
+
 /* gameinfo/twitch dependen de la red: tolerantes */
 try {
   const res = await w6.fetch(new Request('http://w.test/gameinfo/search?q=x'));
