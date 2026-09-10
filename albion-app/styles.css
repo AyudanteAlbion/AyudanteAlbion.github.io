@@ -1195,10 +1195,13 @@ img { max-width: 100%; }
 }
 .wm-prov-row:first-of-type { border-top: none; }
 .wm-prov-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.wm-prov-name a { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+.wm-prov-name a:hover { color: var(--accent); text-decoration-style: solid; }
 .wm-prov-row .muted { flex: 1; min-width: 0; }
 .wm-prov-age { color: var(--green); font-size: 0.74rem; white-space: nowrap; }
 .wm-prov-age.wm-prov-stale { color: var(--red); }
-.wm-prov-err .wm-prov-name { color: var(--muted); text-decoration: line-through; }
+.wm-prov-err .wm-prov-name { color: var(--muted); }
+.wm-prov-err .wm-prov-name a:hover { color: var(--accent); }
 .wm-prov-verdict { padding: 7px 14px; font-size: 0.8rem; color: var(--green); }
 .wm-prov-verdict.wm-prov-warn { color: var(--accent); }
 .wm-prov-verdict.wm-prov-bad { color: var(--red); }
