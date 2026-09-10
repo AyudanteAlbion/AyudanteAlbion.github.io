@@ -8,6 +8,7 @@ const errors = [], warns = [], oks = [];
 const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
 const { window } = dom;
 const PRICE = 1000; // precio simulado para todo
+const battleLimits = []; // regresión: gameinfo admite como máximo 51 por página
 
 window.fetch = (url) => {
   const u = String(url);
@@ -156,6 +157,15 @@ window.fetch = (url) => {
         },
       };
     } else if (u.includes('/gameinfo/battles')) {
+      /* gameinfo devuelve 400 si limit > 51; mantener este contrato en QA
+         evita que el tracker vuelva a romperse cuando cambie la paginación. */
+      const lm = u.match(/[?&]limit=(\d+)/);
+      const limit = lm ? Number(lm[1]) : 0;
+      battleLimits.push(limit);
+      if (limit > 51) {
+        return Promise.resolve({ ok: false, status: 400,
+          json: () => Promise.resolve({ errors: ['query param limit must be less than or equal to 51'] }) });
+      }
       /* últimas batallas del servidor (tracker por zona: clusterName ∈ mapa + vecinos) */
       data = [
         { id: 'qb1', startTime: new Date(Date.now() - 10 * 60e3).toISOString(), clusterName: 'Astolat',
@@ -903,6 +913,9 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
             'WM: puntos rojos de batallas recientes en el minimapa',
             'WM: sin puntos de batalla en el minimapa');
 
+          check(battleLimits.length > 0 && battleLimits.every(n => n > 0 && n <= 51),
+            'WZ: paginación de batallas respeta el máximo 51 de gameinfo (' + battleLimits.join(', ') + ')',
+            'WZ: pidió un limit inválido a gameinfo (' + battleLimits.join(', ') + ')');
           const trk = bodyOf('wmTrackerContent');
           check(trk.includes('Batallas en la zona') && trk.includes('Astolat'),
             'WM: tracker lista batallas de la zona seleccionada',
