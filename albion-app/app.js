@@ -865,6 +865,47 @@ function initFlipFilters() {
   }
 }
 initFlipFilters();
+
+/* ---- filtros del monitoreo: rama y encantamiento acotan la tabla de ítems
+   monitoreados (no el buscador). Ej.: Armas + .1 → solo armas .1 en la vista ---- */
+function flipFilterActive() {
+  return !!flipBranch.value || flipEnch.value !== 'all';
+}
+function flipFilterLabel() {
+  const parts = [];
+  if (flipBranch.value) parts.push(FLIP_BRANCHES[flipBranch.value] || flipBranch.value);
+  if (flipEnch.value !== 'all') parts.push('.' + flipEnch.value);
+  return parts.join(' · ');
+}
+let catalogIndex = null; // id → fila del catálogo; se arma al primer uso
+function catalogRow(baseId) {
+  if (!CATALOG) return null;
+  if (!catalogIndex) {
+    catalogIndex = new Map();
+    for (const row of CATALOG) catalogIndex.set(row[0], row);
+  }
+  return catalogIndex.get(baseId) || null;
+}
+// ¿el ítem monitoreado entra en el filtro vigente? La rama sale del catálogo
+// (columna 6) y el encantamiento, del sufijo @1..@4 del ID (sin sufijo = .0).
+function flipMatchesFilter(id) {
+  if (!flipFilterActive()) return true;
+  if (flipEnch.value !== 'all') {
+    const ench = id.includes('@') ? +id.split('@')[1] : 0;
+    if (ench !== +flipEnch.value) return false;
+  }
+  if (flipBranch.value) {
+    const row = catalogRow(id.split('@')[0]);
+    if (!row || row[5] !== flipBranch.value) return false;
+  }
+  return true;
+}
+function flipResetFilter() {
+  flipBranch.value = '';
+  flipEnch.value = 'all';
+  renderFlip();
+  flipSavePrefs();
+}
 let flipItems = [];
 let flipData = {};
 // Pool de ítems recomendados para llenar la lista de 50 (bolsos, capas, comida,
@@ -874,24 +915,18 @@ const flipUserAdded = new Set();
 
 function renderFlipSearch() {
   const q = flipSearch.value.trim().toLowerCase();
-  const branch = flipBranch.value;
-  const ench = flipEnch.value;
-  if ((!q && !branch && ench === 'all') || !CATALOG) { flipResults.classList.remove('open'); return; }
+  if (!q || !CATALOG) { flipResults.classList.remove('open'); return; }
   const hits = [];
-  for (const [id, es, en, tier, maxEnch, cat] of CATALOG) {
-    if (branch && cat !== branch) continue;
-    if (q && !(es.toLowerCase().includes(q) || en.toLowerCase().includes(q) || id.toLowerCase().includes(q))) continue;
-    // El catálogo declara el máximo real de encantamiento de cada ítem.
-    // No se filtran .1-.4 como texto: se generan como IDs de mercado @1..@4.
-    if (ench !== 'all' && +ench > +maxEnch) continue;
+  for (const [id, es, en, tier, maxEnch] of CATALOG) {
+    if (!(es.toLowerCase().includes(q) || en.toLowerCase().includes(q) || id.toLowerCase().includes(q))) continue;
     hits.push([id, es, en, tier, maxEnch]);
     if (hits.length >= 30) break;
   }
+  // El buscador filtra solo por texto: rama y encantamiento filtran el
+  // monitoreo (la tabla), no esta lista. Cada ítem ofrece todas sus
+  // versiones .0–.4 según el máximo real declarado en el catálogo.
   flipResults.innerHTML = hits.map(([id, es, en, tier, maxEnch]) => {
-    const requestedEnch = flipEnch.value;
-    const enchs = requestedEnch === 'all'
-      ? [''].concat(Array.from({ length: maxEnch }, (_, i) => '@' + (i + 1)))
-      : [+requestedEnch === 0 ? '' : '@' + requestedEnch];
+    const enchs = [''].concat(Array.from({ length: maxEnch }, (_, i) => '@' + (i + 1)));
     return enchs.map(suf =>
       `<div class="sr-item" data-id="${id}${suf}">
         ${iconImg(id + suf, 'item-icon sm')}
@@ -901,8 +936,10 @@ function renderFlipSearch() {
   flipResults.classList.toggle('open', hits.length > 0);
 }
 flipSearch.addEventListener('input', renderFlipSearch);
-flipBranch.addEventListener('change', renderFlipSearch);
-flipEnch.addEventListener('change', renderFlipSearch);
+/* rama y encantamiento filtran el monitoreo (la tabla), no el buscador */
+flipBranch.addEventListener('change', () => { renderFlip(); flipSavePrefs(); });
+flipEnch.addEventListener('change', () => { renderFlip(); flipSavePrefs(); });
+document.getElementById('flipFilterReset')?.addEventListener('click', flipResetFilter);
 flipResults.addEventListener('click', e => {
   const it = e.target.closest('.sr-item'); if (!it) return;
   flipResults.classList.remove('open');
@@ -913,6 +950,14 @@ flipResults.addEventListener('click', e => {
     loadFlipPrices([it.dataset.id]);
   } else {
     renderFlip();
+  }
+  // Si el filtro del monitoreo oculta lo recién agregado, avisarlo: sin esto
+  // parece que el clic no hizo nada. El toast limpia el filtro al tocarlo.
+  if (flipFilterActive() && !flipMatchesFilter(it.dataset.id)) {
+    waToast('👀 El filtro lo oculta', `«${catalogName(it.dataset.id)}» quedó en el monitoreo, pero el filtro ${flipFilterLabel()} no lo muestra en la tabla. Tocá acá para quitar el filtro.`, '', () => {
+      flipResetFilter();
+      gotoTab('flip');
+    });
   }
   flipSavePrefs();
 });
@@ -930,6 +975,8 @@ function flipSavePrefs() {
       to: document.getElementById('flipTo').value,
       premium: document.getElementById('flipPremium').checked,
       setup: document.getElementById('flipSetup').checked,
+      branch: flipBranch.value,
+      ench: flipEnch.value,
       user: [...flipUserAdded],
     }));
   } catch (e) {}
@@ -941,6 +988,9 @@ function flipRestorePrefs() {
   if (!p) return;
   if (p.premium != null) document.getElementById('flipPremium').checked = !!p.premium;
   if (p.setup != null) document.getElementById('flipSetup').checked = !!p.setup;
+  // filtro del monitoreo (rama + encantamiento): se retoma entre sesiones
+  if (FLIP_BRANCHES[p.branch]) flipBranch.value = p.branch;
+  if (['all', '0', '1', '2', '3', '4'].includes(p.ench)) flipEnch.value = p.ench;
   for (const id of (p.user || [])) {
     if (typeof id !== 'string' || !id || id.startsWith('__')) continue;
     if (!flipItems.includes(id)) flipItems.unshift(id);
@@ -1023,21 +1073,26 @@ function flipCalc(id) {
 function catalogName(fullId) {
   const base = fullId.split('@')[0];
   const suf = fullId.includes('@') ? ' .' + fullId.split('@')[1] : '';
-  const row = CATALOG?.find(x => x[0] === base);
+  const row = catalogRow(base);
   return row ? row[1] + suf : fullId;
 }
 
 function renderFlip() {
   const body = document.getElementById('flipBody');
+  const resetBtn = document.getElementById('flipFilterReset');
+  if (resetBtn) resetBtn.disabled = !flipFilterActive();
   if (!flipItems.length) {
     body.innerHTML = '<tr><td colspan="8" class="loading-cell">Buscá un ítem arriba para agregarlo.</td></tr>';
     return;
   }
   const all = flipItems.map(id => ({ id, f: flipCalc(id) }));
+  // Filtro del monitoreo (rama + encantamiento): acota la vista, no la lista.
+  // Ej.: Armas + .1 deja ver solo armas con encantamiento .1.
+  const filtered = flipFilterActive() ? all.filter(x => flipMatchesFilter(x.id)) : all;
   // Con precio primero: rentables de mayor a menor ganancia y, a continuación,
   // los de pérdida ordenados de menor a mayor pérdida (orden natural por profit desc)
-  const priced = all.filter(x => !isNaN(x.f.profit)).sort((a, b) => b.f.profit - a.f.profit);
-  const unpriced = all.filter(x => isNaN(x.f.profit));
+  const priced = filtered.filter(x => !isNaN(x.f.profit)).sort((a, b) => b.f.profit - a.f.profit);
+  const unpriced = filtered.filter(x => isNaN(x.f.profit));
 
   // Lista fija de 50: los agregados por el usuario siempre entran
   const shown = [];
@@ -1051,10 +1106,17 @@ function renderFlip() {
 
   const profitable = priced.filter(x => x.f.profit > 0);
   const best = profitable[0];
+  const filterOn = flipFilterActive();
   document.getElementById('flipStats').innerHTML = `
-    <div class="stat"><div class="k">Ítems monitoreados</div><div class="v">${all.length}</div><div class="s">mostrando ${shown.length} · en 7 ciudades</div></div>
+    <div class="stat"><div class="k">Ítems monitoreados</div><div class="v">${filterOn ? filtered.length : all.length}</div><div class="s">${filterOn ? 'filtro: ' + flipFilterLabel() + ' · mostrando ' + shown.length + ' de ' + all.length : 'mostrando ' + shown.length + ' · en 7 ciudades'}</div></div>
     <div class="stat"><div class="k">Flips rentables</div><div class="v ${profitable.length ? 'pos' : ''}">${profitable.length}</div><div class="s">tras impuestos</div></div>
     <div class="stat"><div class="k">Mejor flip</div><div class="v">${best ? catalogName(best.id) : '—'}</div><div class="s">${best ? '+' + fmt(best.f.profit) + ' plata/u (' + best.f.bestBuy.city + ' → ' + best.f.bestSell.city + ')' : ''}</div></div>`;
+
+  // el filtro no coincide con ningún ítem monitoreado: explicarlo en la tabla
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="8" class="loading-cell">Ningún ítem monitoreado coincide con el filtro (${flipFilterLabel()}). <button class="btn micro-btn" data-clear-filter>✕ Quitar filtro</button></td></tr>`;
+    return;
+  }
 
   const fixedFrom = document.getElementById('flipFrom').value;
   const fixedTo = document.getElementById('flipTo').value;
@@ -1085,6 +1147,8 @@ function renderFlip() {
 }
 
 document.getElementById('flipBody').addEventListener('click', e => {
+  const cf = e.target.closest('[data-clear-filter]');
+  if (cf) { flipResetFilter(); e.stopPropagation(); return; }
   const al = e.target.closest('[data-alert]');
   if (al) { waPrefillFlip(al.dataset.alert); e.stopPropagation(); return; }
   const rm = e.target.closest('[data-remove]');

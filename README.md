@@ -28,7 +28,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Alquimia | Pociones y tinturas hechas en Brecilien |
 | Encantado | Comprar vs. encantar con fragmentos; planificador con destino de venta independiente, incluido Black Market |
 | Granja | Cultivos y productos animales con bonos de isla por ciudad; mercado independiente, Premium, Foco y margen diario por parcela |
-| Flipping | Compra en 7 ciudades y venta en 8 destinos (incluido Black Market), con rutas netas de impuestos y preferencias guardadas |
+| Flipping | Compra en 7 ciudades y venta en 8 destinos (incluido Black Market), con rutas netas de impuestos, filtros de rama y encantamiento sobre los ítems monitoreados, y preferencias guardadas |
 | Alertas de precio | Vigilan un ítem mientras la app está abierta y avisan cuando conviene comprar, vender o flippear |
 | Transmutación | Costo de subir tier o encantamiento pagando plata, comparado contra comprar el destino |
 | Artefactos | Valor esperado del melding de fragmentos según la estrategia elegida |
