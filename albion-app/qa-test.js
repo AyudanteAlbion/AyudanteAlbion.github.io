@@ -881,6 +881,35 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
           const trackBtn = window.document.querySelector('#wmContent [data-wm-goto="Astolot"]');
           check(!!trackBtn, 'WM: cada territorio tiene su atajo 🎯 Rastrear', 'WM: falta el atajo al tracker desde el territorio');
           if (trackTabBtn) { trackTabBtn.click(); await sleep(400); }
+          // Avisos por entrada, independientes del render de datos.
+          const warningText = 'Función todavía en desarrollo. Los datos de esta herramienta no son 100% seguros. Usar teniendo eso en cuenta.';
+          for (const id of ['tracker', 'war']) {
+            const tabButton = window.document.querySelector(`[data-room-tab="${id}"]`);
+            const panel = $(id === 'war' ? 'sgRoomWar' : 'sgRoomTracker');
+            tabButton.click();
+            const notice = panel.querySelector('.sg-development-notice');
+            check(notice?.querySelector('p')?.textContent === warningText
+                && notice?.querySelector('button')?.textContent === 'De acuerdo',
+              `${id}: aviso exacto al entrar`, `${id}: falta aviso o texto incorrecto`);
+            if (notice) {
+              const confirm = notice.querySelector('button');
+              confirm.focus();
+              confirm.click();
+              check(!panel.querySelector('.sg-development-notice') && window.document.activeElement === tabButton,
+                `${id}: De acuerdo retira aviso y restaura foco`, `${id}: confirmación incorrecta`);
+              if (id === 'war') window.wmRender(); else window.wmTrackerRender();
+              check(!panel.querySelector('.sg-development-notice'),
+                `${id}: refrescar contenido no repone el aviso`, `${id}: aviso reaparece al refrescar`);
+            }
+            window.document.querySelector('[data-room-tab="summary"]').click();
+            check(!$('sgRoomSummary').querySelector('.sg-development-notice'),
+              'Resumen sin advertencia', 'Advertencia fuera de las herramientas');
+            tabButton.click();
+            tabButton.click();
+            check(panel.querySelectorAll('.sg-development-notice').length === 1,
+              `${id}: aviso vuelve al entrar sin duplicados`, `${id}: reentrada incorrecta`);
+          }
+          trackTabBtn.click();
           check(!!$('wmTrackerMount') && !$('sgRoomTracker').hidden
               && !!$('wmMinimapWrap') && !!$('wmRouteFrom') && !!$('wmWatchBox'),
             'WZ: panel propio del tracker con buscador, minimapa, rutas y zonas vigiladas',

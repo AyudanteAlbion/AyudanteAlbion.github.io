@@ -4708,6 +4708,31 @@ const SG_ROOM_TABS = {
   tracker: { panel: 'sgRoomTracker', render: () => wmTrackerRender() },
 };
 let sgRoomTab = 'summary';
+// Aviso por entrada a cada herramienta; no persiste la confirmación.
+function sgShowDevelopmentNotice(tabId) {
+  if (tabId !== 'war' && tabId !== 'tracker') return;
+  const panel = document.getElementById(SG_ROOM_TABS[tabId].panel);
+  if (!panel) return;
+  panel.querySelector('.sg-development-notice')?.remove();
+  const notice = document.createElement('div');
+  notice.className = 'sg-development-notice';
+  notice.setAttribute('role', 'note');
+  notice.setAttribute('aria-label', 'Advertencia de función en desarrollo');
+  const message = document.createElement('p');
+  message.textContent = 'Función todavía en desarrollo. Los datos de esta herramienta no son 100% seguros. Usar teniendo eso en cuenta.';
+  const confirm = document.createElement('button');
+  confirm.type = 'button';
+  confirm.className = 'btn';
+  confirm.textContent = 'De acuerdo';
+  confirm.addEventListener('click', () => {
+    // Al retirar el botón enfocado, devolver el foco a la pestaña activa.
+    const hadFocus = document.activeElement === confirm;
+    notice.remove();
+    if (hadFocus) document.querySelector('[data-room-tab="' + tabId + '"]')?.focus();
+  });
+  notice.append(message, confirm);
+  panel.prepend(notice);
+}
 function sgRoomContent() {
   const body = document.getElementById('sgRoomBody');
   if (!body) return;
@@ -4788,6 +4813,7 @@ function sgRoomContent() {
 
   /* renderizar el panel activo */
   const tab = SG_ROOM_TABS[sgRoomTab] || SG_ROOM_TABS.summary;
+  sgShowDevelopmentNotice(sgRoomTab);
   if (tab.render) tab.render();
 }
 
@@ -4991,6 +5017,7 @@ document.addEventListener('click', e => {
     const tab = SG_ROOM_TABS[sgRoomTab] || SG_ROOM_TABS.summary;
     const target = document.getElementById(tab.panel);
     if (target) target.hidden = false;
+    sgShowDevelopmentNotice(sgRoomTab);
     if (tab.render) tab.render();
     return;
   }
@@ -5911,8 +5938,10 @@ async function wmFetchBattles(maxAgeMs = 5 * 60e3, opts = {}){
    danger = Σ (kills·1 + fama/1000) · decaimiento(Δt) por batalla, más
    Σ (0.5 + fama/20000) · decaimiento(Δt) por asesinato crudo de /events.
    Decaimiento exponencial con vida media de 2 h. Umbrales orientativos. */
+// El feed es parcial: un score bajo nunca demuestra que un mapa sea seguro.
+const WM_DANGER_UNKNOWN = { max: 4, key: 'unknown', emoji: '⚪', label: 'No hay datus suficientes', cls: 'wm-dg-unknown' };
 const WM_DANGER_LEVELS = [
-  { max: 4, key: 'calm', emoji: '🟢', label: 'tranquilo', cls: 'wm-dg-calm' },
+  WM_DANGER_UNKNOWN,
   { max: 20, key: 'warm', emoji: '🟡', label: 'activo', cls: 'wm-dg-warm' },
   { max: Infinity, key: 'hot', emoji: '🔴', label: 'muy caliente', cls: 'wm-dg-hot' },
 ];
@@ -5933,6 +5962,7 @@ function wmBuildZoneDanger(){
     const fame = b.totalFame ?? b.TotalFame ?? 0;
     const t = b.startTime ?? b.StartTime ?? null;
     const ts = t ? new Date(t).getTime() : 0;
+    if (!Number.isFinite(ts) || ts <= 0 || ts > now) continue;
     const d = entry(zone);
     d.score += (kills + fame / 1000) * wmDangerDecay(t, now);
     d.kills += kills; d.fame += fame; d.count++;
@@ -5945,6 +5975,7 @@ function wmBuildZoneDanger(){
     const zone = String(k.zone || '').toLowerCase();
     if (!zone) continue;
     const ts = k.ts ? new Date(k.ts).getTime() : 0;
+    if (!Number.isFinite(ts) || ts <= 0 || ts > now) continue;
     const d = entry(zone);
     d.score += (0.5 + (k.f || 0) / 20000) * wmDangerDecay(k.ts, now);
     d.evKills++;
@@ -5956,14 +5987,26 @@ function wmBuildZoneDanger(){
   return map;
 }
 function wmDangerLevel(score){
+  if (!Number.isFinite(score) || score < 0) return WM_DANGER_UNKNOWN;
   return WM_DANGER_LEVELS.find(l => score <= l.max) || WM_DANGER_LEVELS[WM_DANGER_LEVELS.length - 1];
 }
 function wmZoneDanger(zone){
   return WM.zoneDanger[String(zone || '').toLowerCase()] || { zone: String(zone||'').toLowerCase(), score: 0, battles2h: 0, kills: 0, fame: 0, count: 0, lastAt: 0, evKills: 0, evFame: 0, lastKillAt: 0 };
 }
+// Solo se describe actividad si hay evidencia localizada en las últimas 2 h.
+// Es una ventana de observación, no una garantía de cobertura ni seguridad.
+function wmZoneDangerLevel(zone, now = Date.now()){
+  const d = wmZoneDanger(zone);
+  if (!Number.isFinite(d.lastAt) || d.lastAt <= 0 || d.lastAt > now || now - d.lastAt >= 2 * 36e5) return WM_DANGER_UNKNOWN;
+  return wmDangerLevel(d.score);
+}
+function wmRouteDangerLevel(path){
+  if (!path.length || path.some(z => wmZoneDangerLevel(z).key === 'unknown')) return WM_DANGER_UNKNOWN;
+  return wmDangerLevel(wmRouteDanger(path) / Math.max(1, path.length - 1));
+}
 function wmDangerBadge(zone){
   const d = wmZoneDanger(zone);
-  const lv = wmDangerLevel(d.score);
+  const lv = wmZoneDangerLevel(zone);
   return `<span class="wm-dg-badge ${lv.cls}" title="Peligro ${lv.label} · score ${d.score.toFixed(1)} · ${d.battles2h} batalla(s) en 2 h">${lv.emoji}</span>`;
 }
 
@@ -6191,7 +6234,7 @@ function wmRenderTracker(){
   const guilds = t.guilds || [];
   const updated = t.lastUpdate ? new Date(t.lastUpdate).toLocaleTimeString('es-AR') : '—';
   const selDanger = wmZoneDanger(WM.selectedMap);
-  const selLv = wmDangerLevel(selDanger.score);
+  const selLv = wmZoneDangerLevel(WM.selectedMap);
   const evOk = !!(WM.providers && WM.providers.events && WM.providers.events.ok);
   const ranking = wmZoneRanking(zones);
 
@@ -6220,14 +6263,14 @@ function wmRenderTracker(){
       <div class="wm-rank">
         ${ranking.map((r, i)=>{
           const max = Math.max(1, ranking[0].kills);
-          const lv = wmDangerLevel(r.score);
+          const lv = wmZoneDangerLevel(r.zone);
           const isSel = r.zone === WM.selectedMap;
           return `<div class="wm-rank-row${isSel ? ' wm-rank-sel' : ''}" data-wm-goto="${sgEsc(r.zone)}" title="${sgEsc(r.zone)}: ${r.evKills} kill(s) registrados · ${r.battles} batalla(s) · score ${r.score.toFixed(1)}">
             <span class="wm-rank-pos">${i + 1}</span>
             <span class="wm-rank-name">${lv.emoji} <b>${sgEsc(r.zone)}</b>${isSel ? ' <span class="muted micro">(sel)</span>' : ''}</span>
             <span class="wm-rank-bar"><i style="width:${r.kills ? Math.max(6, Math.round(r.kills / max * 100)) : 0}%"></i></span>
             <span class="wm-rank-kills num">${r.kills} kill${r.kills === 1 ? '' : 's'}</span>
-            <span class="wm-rank-meta muted micro">${r.battles} batalla(s) · ${fmt(r.fame)} fama${r.lastAt ? ' · ' + wmAgoText(r.lastAt) : ''}</span>
+            <span class="wm-rank-meta muted micro">${lv.label} · ${r.battles} batalla(s) · ${fmt(r.fame)} fama${r.lastAt ? ' · ' + wmAgoText(r.lastAt) : ''}</span>
           </div>`;
         }).join('')}
       </div>
@@ -6469,7 +6512,7 @@ function wmRenderSelInfo(){
   }
   const m = WM.mapList.find(x=>x.mapName===WM.selectedMap);
   const d = wmZoneDanger(WM.selectedMap);
-  const lv = wmDangerLevel(d.score);
+  const lv = wmZoneDangerLevel(WM.selectedMap);
   const watched = typeof wzHas === 'function' && wzHas(WM.selectedMap);
   box.innerHTML = `
     <div class="wm-sel-info">
@@ -6784,9 +6827,9 @@ function wmMinimapTipHTML(el){
   const name = el.dataset.wmNode || el.dataset.wmZone || '?';
   const m = WM.mapList.find(x=>x.mapName === name);
   const d = wmZoneDanger(name);
-  const lv = wmDangerLevel(d.score);
+  const lv = wmZoneDangerLevel(name);
   if (kind === 'battle') {
-    return `<b>${sgEsc(name)}</b> ${lv.emoji}<br>${d.count} batalla(s) reciente(s) · ${d.battles2h} en 2 h<br>${fmt(d.kills)} kills · ${fmt(d.fame)} fama<br><span class="muted">clic = seleccionar zona</span>`;
+    return `<b>${sgEsc(name)}</b> ${lv.emoji} ${lv.label}<br>${d.count} batalla(s) registrada(s) · ${d.battles2h} en 2 h<br>${fmt(d.kills)} kills · ${fmt(d.fame)} fama<br><span class="muted">clic = seleccionar zona</span>`;
   }
   if (kind === 'terr') {
     return `<b>${sgEsc(name)}</b> 🛡<br>Territorio de Spetsnaz Grail<br><span class="muted">clic = seleccionar zona</span>`;
@@ -6890,40 +6933,40 @@ async function wmRouteCalc(){
 function wmRouteChips(path){
   return path.map((z, i) => {
     const d = wmZoneDanger(z);
-    const lv = wmDangerLevel(d.score);
-    return `${i ? '<span class="wm-route-arrow">→</span>' : ''}<button class="chip wm-route-chip" data-wm-goto="${sgEsc(z)}" title="${d.battles2h} batalla(s) en 2 h · score ${d.score.toFixed(1)}">${lv.emoji} ${sgEsc(z)}${d.battles2h ? ` <b class="wm-route-b2h">${d.battles2h}</b>` : ''}</button>`;
+    const lv = wmZoneDangerLevel(z);
+    return `${i ? '<span class="wm-route-arrow">→</span>' : ''}<button class="chip wm-route-chip" data-wm-goto="${sgEsc(z)}" title="${lv.label} · ${d.battles2h} batalla(s) en 2 h · score ${d.score.toFixed(1)}">${lv.emoji} ${sgEsc(z)}${d.battles2h ? ` <b class="wm-route-b2h">${d.battles2h}</b>` : ''}</button>`;
   }).join(' ');
 }
 function wmRenderRoute(){
   const box = document.getElementById('wmRouteResult');
   if (!box) return;
   if (!WM.route){
-    box.innerHTML = '<div class="micro muted">Elegí origen y destino: calculamos la ruta más corta (BFS sobre el grafo de conexiones) y la más segura (evita zonas calientes según las batallas de las últimas 2 h).</div>';
+    box.innerHTML = '<div class="micro muted">Elegí origen y destino: calculamos la ruta más corta (BFS sobre el grafo de conexiones) y una alternativa con menor actividad registrada. No hay datus suficientes para garantizar la seguridad de una ruta.</div>';
     return;
   }
   const { from, to, short, safe } = WM.route;
   const same = short.join('||') === safe.join('||');
   const shortD = wmRouteDanger(short);
   const safeD = wmRouteDanger(safe);
-  const lvS = wmDangerLevel(shortD / Math.max(1, short.length - 1));
-  const lvSafe = wmDangerLevel(safeD / Math.max(1, safe.length - 1));
+  const lvS = wmRouteDangerLevel(short);
+  const lvSafe = wmRouteDangerLevel(safe);
   let html = '';
   if (same){
     html = `<div class="wm-route-res">
-      <div class="wm-route-head">📍 ${sgEsc(from)} → ${sgEsc(to)}: <b>${short.length - 1} salto${short.length - 1 === 1 ? '' : 's'}</b> ${lvS.emoji} peligro total ${shortD.toFixed(1)}</div>
+      <div class="wm-route-head">📍 ${sgEsc(from)} → ${sgEsc(to)}: <b>${short.length - 1} salto${short.length - 1 === 1 ? '' : 's'}</b> ${lvS.emoji} ${lvS.label} · score total ${shortD.toFixed(1)}</div>
       <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(short)}</div>
     </div>`;
   } else {
     html = `<div class="wm-route-res">
-      <div class="wm-route-head">⚡ Más corta: <b>${short.length - 1} salto${short.length - 1 === 1 ? '' : 's'}</b> ${lvS.emoji} peligro ${shortD.toFixed(1)}</div>
+      <div class="wm-route-head">⚡ Más corta: <b>${short.length - 1} salto${short.length - 1 === 1 ? '' : 's'}</b> ${lvS.emoji} ${lvS.label} · score ${shortD.toFixed(1)}</div>
       <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(short)}</div>
     </div>
     <div class="wm-route-res">
-      <div class="wm-route-head">🛡 Más segura: <b>${safe.length - 1} salto${safe.length - 1 === 1 ? '' : 's'}</b> ${lvSafe.emoji} peligro ${safeD.toFixed(1)} <span class="muted micro">(esquiva zonas calientes; penaliza cada punto de peligro)</span></div>
+      <div class="wm-route-head">🛡 Menor actividad registrada: <b>${safe.length - 1} salto${safe.length - 1 === 1 ? '' : 's'}</b> ${lvSafe.emoji} ${lvSafe.label} · score ${safeD.toFixed(1)} <span class="muted micro">(esquiva zonas calientes; penaliza cada punto de peligro)</span></div>
       <div class="chip-group" style="flex-wrap:wrap">${wmRouteChips(safe)}</div>
     </div>`;
   }
-  html += '<div class="micro muted" style="margin-top:6px">Peligro por zona = batallas (kills + fama/1000) + asesinatos crudos, con decaimiento de 2 h, según las últimas ~150 batallas y ~250 kills del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
+  html += '<div class="micro muted" style="margin-top:6px">La ausencia de registros no demuestra seguridad. ⚪ = No hay datus suficientes. Score por zona = batallas (kills + fama/1000) + asesinatos crudos, con decaimiento de 2 h, según las últimas ~150 batallas y ~250 kills del servidor. 🏵 = batallas en las últimas 2 h en esa zona. Tocá una zona para seleccionarla.</div>';
   box.innerHTML = html;
 }
 
@@ -6991,7 +7034,7 @@ function wmTrackerRender() {
         </div>
       </div>
       <div class="micro muted wm-intro">
-        Vigilá cualquier mapa real de Albion: cruzamos el killboard oficial (batallas paginadas + asesinatos crudos de /events) con Murderledger/AlbionOnline2D como testigo de frescura, filtrados por [mapa + vecinos] del grafo oficial (world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas). Con minimapa, peligro por zona, ranking de actividad, rutas seguras y alertas.
+        Vigilá cualquier mapa real de Albion: cruzamos el killboard oficial (batallas paginadas + asesinatos crudos de /events) con Murderledger/AlbionOnline2D como testigo de frescura, filtrados por [mapa + vecinos] del grafo oficial (world.xml, ${(() => { try { return WM.mapList.length || 800; } catch(e){ return 800; } })()} zonas). Con minimapa, actividad por zona, ranking, rutas y alertas. Sin evidencia suficiente: No hay datus suficientes. La ausencia de registros no significa que un mapa sea seguro.
       </div>
 
       <div class="chip-group wm-type-chips" id="wmTypeChips">
@@ -7007,7 +7050,7 @@ function wmTrackerRender() {
       <div id="wmMinimapWrap" class="wm-minimap"></div>
 
       <div class="wm-route-box">
-        <div class="cd-title"><svg class="title-ico"><use href="#i-globe"/></svg> Rutas seguras</div>
+        <div class="cd-title"><svg class="title-ico"><use href="#i-globe"/></svg> Rutas y actividad registrada</div>
         <div class="wm-route-form">
           <input type="search" id="wmRouteFrom" class="search" placeholder="Desde (vacío = mapa seleccionado)" value="${sgEsc(WM.route?.from || WM.selectedMap || '')}" autocomplete="off">
           <div class="search-wrap" style="position:relative; flex:1; min-width:150px">
