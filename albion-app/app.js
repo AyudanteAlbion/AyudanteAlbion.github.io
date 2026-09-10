@@ -6004,26 +6004,37 @@ function wmAgoText(ts){
   if (m < 90) return 'hace ' + Math.round(m) + ' min';
   return 'hace ' + (m / 60).toFixed(1) + ' h';
 }
-function wmProviderRow(emoji, name, ok, detail, newestTs, title){
+function wmProviderRow(emoji, nameHTML, ok, detail, newestTs, title){
   const age = newestTs ? wmAgoText(newestTs) : null;
   const stale = newestTs && wmAgeMin(newestTs) > 15;
   return `<div class="wm-prov-row${ok ? '' : ' wm-prov-err'}" title="${title || ''}">
-    <span class="wm-prov-name">${emoji} ${name}</span>
+    <span class="wm-prov-name">${emoji} ${nameHTML}</span>
     <span class="muted micro">${ok ? detail : 'sin respuesta'}</span>
     <span class="wm-prov-age${stale ? ' wm-prov-stale' : ''}">${ok && age ? 'último dato: ' + age : '—'}</span>
   </div>`;
+}
+/* URLs oficiales de cada proveedor: el nombre de la fila es un link para que
+   el usuario pueda contrastar el dato o explorar la fuente a gusto. */
+const WM_PROVIDER_URLS = {
+  battles: 'https://albiononline.com/killboard/battles',
+  kills: 'https://albiononline.com/killboard/',
+  murderledger: 'https://murderledger.albiononline2d.com/',
+  ao2d: 'https://albiononline2d.com/',
+};
+function wmProvLink(url, text){
+  return `<a href="${url}" target="_blank" rel="noopener" class="wm-prov-link" title="Abrir ${text} en una pestaña nueva ↗">${text}</a>`;
 }
 function wmProvidersHTML(){
   const p = WM.providers;
   if (!p) return '';
   const rows = [];
-  rows.push(wmProviderRow('🏛', 'Killboard oficial · batallas', p.battles.ok,
+  rows.push(wmProviderRow('🏛', wmProvLink(WM_PROVIDER_URLS.battles, 'Killboard oficial · batallas'), p.battles.ok,
     p.battles.count + ' batallas (' + p.battles.pages + ' páginas)', p.battles.newest,
     'Batallas agregadas del killboard oficial (gameinfo /battles, paginado). Una «batalla» exige ≥3 kills.'));
-  rows.push(wmProviderRow('💀', 'Killboard oficial · asesinatos', p.events.ok,
+  rows.push(wmProviderRow('💀', wmProvLink(WM_PROVIDER_URLS.kills, 'Killboard oficial · asesinatos'), p.events.ok,
     p.events.count + ' kills (' + p.events.pages + ' páginas)', p.events.newest,
     'Asesinatos crudos (gameinfo /events): incluyen kills en solitario y lo último de los últimos minutos.'));
-  rows.push(wmProviderRow('🗡', 'Murderledger · AlbionOnline2D', p.murderledger.ok,
+  rows.push(wmProviderRow('🗡', wmProvLink(WM_PROVIDER_URLS.murderledger, 'Murderledger') + ' · ' + wmProvLink(WM_PROVIDER_URLS.ao2d, 'AlbionOnline2D'), p.murderledger.ok,
     p.murderledger.ok ? p.murderledger.count + ' kills destacadas' : 'sin respuesta',
     p.murderledger.newest || p.murderledger.lastUpdate,
     'Base propia de Murderledger (sincroniza cada ~5 min). Sirve de testigo: si tiene datos más frescos que el oficial, el API del juego está atrasada.'));
