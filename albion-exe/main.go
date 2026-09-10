@@ -88,6 +88,44 @@ func main() {
 		_, _ = io.Copy(w, resp.Body)
 	})
 
+	// Proxy hacia Murderledger/AlbionOnline2D: testigo de frescura del
+	// Tracker por Zona (el killboard oficial puede atrasarse; Murderledger
+	// sincroniza su propia base cada ~5 min). Allowlist estricta, igual que
+	// el Worker de Cloudflare.
+	http.HandleFunc("/murderledger/", func(w http.ResponseWriter, r *http.Request) {
+		lastBeat.Store(time.Now().UnixNano())
+		sub := strings.TrimPrefix(r.URL.Path, "/murderledger")
+		if sub == "" {
+			sub = "/home"
+		}
+		if sub != "/home" && sub != "/vod-events" {
+			http.Error(w, "ruta no permitida", http.StatusNotFound)
+			return
+		}
+		url := "https://murderledger.albiononline2d.com/api" + sub
+		if r.URL.RawQuery != "" {
+			url += "?" + r.URL.RawQuery
+		}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadGateway)
+			return
+		}
+		req.Header.Set("User-Agent", browserUA)
+		req.Header.Set("Accept", "application/json, text/plain, */*")
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "murderledger no disponible", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	})
+
 	// Proxy hacia DecAPI: estado EN VIVO/OFFLINE de los canales de Twitch de
 	// los creadores. La app prueba el fetch directo primero; esto cubre los
 	// entornos donde el servicio no manda CORS (mismo truco que /gameinfo).

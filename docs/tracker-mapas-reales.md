@@ -149,3 +149,67 @@ herramientas se pisaban. Ahora son dos botones independientes del Salón:
 - `qa-test.js`: stubs de `/battles` y `/battles/:id`, territorio propio en zona real
   (Kindlegrass Steppe, adyacente a Astolat) y ~20 chequeos nuevos del tracker por zona.
 - `worker/selftest.mjs`: `/battles/:id` permitida y traversal bloqueado.
+
+---
+
+# Fase 3 (2026-09): multi-proveedor — datos al día y verificables
+
+## Diagnóstico: ¿las respuestas eran reales?
+Sí, pero incompletas y potencialmente atrasadas:
+- El tracker solo pedía `/battles?limit=100&offset=0`: las últimas **100 batallas de todo el
+  servidor**. Para una zona concreta eso suelen ser 0–2 batallas, y una «batalla» oficial exige
+  ≥3 kills: **los asesinatos en solitario jamás aparecían**.
+- El killboard oficial (gameinfo) sufre 502 intermitentes y períodos de caché/atraso conocidos
+  (hilos del foro de 2020, 2025, 2026): cuando el API se atrasa, todas las herramientas que se
+  alimentan de ella muestran datos viejos sin avisar.
+
+## Investigación de proveedores alternativos (pedido del usuario)
+- **Murderledger**: hoy vive bajo AlbionOnline2D (`murderledger.albiononline2d.com`, mismo
+  operador). Publica OpenAPI en `/api/openapi.json`. Sus endpoints de eventos (`/api/home`,
+  `/api/vod-events`, `/api/players/{name}/events`) traen kills con loadouts y época (`time`,
+  `last_update`, `sync_delay`) pero **sin zona**: no sirven para el filtrado geográfico, sí como
+  **testigo de frescura** (si su kill más nuevo es más reciente que el oficial, el API del juego
+  viene atrasada).
+- **AlbionOnline2D**: misma base que Murderledger; su scoreboard enlaza eventos por `EventId`
+  oficial → enlace de verificación por kill.
+- **KillBoard#1** (`killboard-1.com`): sincroniza cada ~5 min y sus páginas de evento están por
+  `EventId` oficial, pero **no expone API pública JSON** (solo rutas `/api/*` no documentadas que
+  devuelven 404). Se integra como enlace de verificación, no como fuente de datos.
+- Conclusión: toda killboard espeja el mismo feed oficial; la mejora real es **pedir más feed
+  (paginado), pedir el feed crudo (/events) y cruzar frescura** entre fuentes.
+
+## Implementación
+1. **Killboard oficial paginado**: `/battles` ahora se trae en 3 páginas de 100 (≈ un día de
+   batallas del servidor), con dedupe por id y tolerancia a páginas 502 (`pvFetchBattlePages`).
+2. **Asesinatos crudos**: `/events` en 5 páginas de 51 (`pvFetchEventPages`), normalizados a
+   `{id, ts, zone, v, vg, k, kg, f, ip, bid}` (`pvSlimEvent`). Zona desde `Victim.ZoneName`.
+3. **Murderledger vía proxy**: rutas nuevas `/murderledger/home` y `/murderledger/vod-events` en
+   el Worker (`ML_ROUTES`, allowlist + parámetros filtrados), `server.py` y `main.go` (exe).
+   La app intenta local primero y cae al Worker (`mlFetch`), igual que gameinfo.
+4. **Scoring de peligro extendido**: cada kill crudo suma `(0.5 + fama/20000) · decaimiento(2 h)`
+   al score de su zona; `wmZoneDanger` ahora expone `evKills`, `evFame`, `lastKillAt`.
+5. **Ranking «Actividad por zona»**: tabla ordenada por cantidad de asesinatos (kills de /events,
+   o kills de batallas si /events falló), con barra proporcional, batallas, fama y última
+   actividad. Clic en zona = rastrearla.
+6. **Feed «Asesinatos recientes en la zona»**: víctima, asesino, gremios, fama, IP y enlaces de
+   verificación por kill: KillBoard#1, AlbionOnline2D y batalla oficial.
+7. **Panel «Fuentes de datos»**: estado de cada proveedor (páginas OK, cantidad, último dato) y
+   veredicto de frescura global: ✅ ≤10 min · 🟡 ≤30 min · 🔴 atraso mayor; más aviso específico
+   cuando Murderledger ya registró kills más nuevas que el feed oficial.
+8. **Caché v2** (`wmTrackerCacheV2`): guarda batallas aligeradas + kills + estado de proveedores
+   (5 min); el ciclo de alertas `WZ` usa modo `light` (1 página de cada fuente, sin Murderledger).
+9. CSV nuevo de asesinatos filtrados (`wmExportKillsCSV`) junto al de batallas.
+
+## Degradación
+- `/events` caído → ranking usa kills de batallas, aviso en el feed.
+- Murderledger caído → panel lo marca «sin respuesta»; el resto sigue.
+- `/battles` totalmente caído → el tracker muestra el error (como antes).
+- Todo se prueba en `qa-test.js` (stub con zonas + Murderledger) y en un escenario degradado
+  manual (events/murderledger 502).
+
+## QA
+- `qa-test.js`: stubs de `/gameinfo/events` con `Victim.ZoneName` (3 kills en Astolat, 1 en
+  Kindlegrass Steppe) y de `/murderledger/home`; 8 chequeos nuevos (panel de fuentes, veredicto,
+  ranking ordenado por kills, feed con enlaces a KillBoard#1/AO2D, CSV de kills).
+- `worker/selftest.mjs`: sección 8b — `/murderledger/home` y `/vod-events` pasan, rutas ajenas
+  404, subruta vacía → /home, Origin ajeno 403.
