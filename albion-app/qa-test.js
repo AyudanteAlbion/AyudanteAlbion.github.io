@@ -7,6 +7,18 @@ const errors = [], warns = [], oks = [];
 
 const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
 const { window } = dom;
+// jsdom no expone Blob.text() en todas las versiones soportadas; el navegador
+// sí lo tiene. El polyfill mantiene la prueba independiente de esa diferencia.
+if (window.Blob && !window.Blob.prototype.text) {
+  window.Blob.prototype.text = function () {
+    return new Promise((resolve, reject) => {
+      const reader = new window.FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsText(this);
+    });
+  };
+}
 const PRICE = 1000; // precio simulado para todo
 const battleLimits = []; // regresión: gameinfo admite como máximo 51 por página
 

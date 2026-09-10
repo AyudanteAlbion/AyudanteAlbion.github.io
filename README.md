@@ -23,7 +23,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Módulo | Qué hace |
 |---|---|
 | Cocina | Rentabilidad de crafteo de comida en Caerleon con RRR, foco y especialización de ciudad |
-| Crafteo de equipo | Armas y armaduras por ciudad de especialización, con el diario de recetas disponible |
+| Crafteo de equipo | Armas y armaduras por ciudad de especialización, con el diario de recetas disponible y planeador de producción multiítem |
 | Refinamiento | Madera, mineral, piedra, piel y fibra, tiers completos |
 | Alquimia | Pociones y tinturas hechas en Brecilien |
 | Encantado | Comprar vs. encantar con fragmentos; planificador con destino de venta independiente, incluido Black Market |
@@ -32,7 +32,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Alertas de precio | Vigilan un ítem mientras la app está abierta y avisan cuando conviene comprar, vender o flippear |
 | Transmutación | Costo de subir tier o encantamiento pagando plata, comparado contra comprar el destino |
 | Artefactos | Valor esperado del melding de fragmentos según la estrategia elegida |
-| Buscador de precios | Cualquier ítem, todas las calidades, las 7 ciudades más el Mercado Negro, con historial |
+| Buscador de precios | Cualquier ítem, todas las calidades, las 7 ciudades más el Mercado Negro, historial de capturas, tendencia y oportunidades de flipping |
 | Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem y exportación CSV |
 | Perfil | Fama, kills y muertes del personaje real desde el killboard oficial, más el cálculo del costo de Foco según tus especializaciones |
 | SG → Spetsnaz Grail | Información del gremio, enlaces a su web y Discord, y creadores con estado EN VIVO / OFFLINE de Twitch |
@@ -54,6 +54,25 @@ La **ciudad de la isla** aplica el bono local de +10% nominal al producto corres
 El modelo distingue cultivos/hierbas, crías y productores de huevos/leche. No añade bonos a animales vivos ni monturas. Se corrigieron también las fórmulas relacionadas de cosecha, Premium, devolución de semillas y cuidados. Los resultados son estimaciones: no simulan el redondeo de cada cosecha; los márgenes de animales son antes de alimento y la carnicería no está incluida.
 
 Ver [distribución por ciudad, fuentes y fórmulas](docs/farming.md). Pruebas: `cd albion-app && node farm-test.js` (requiere `jsdom`).
+
+## Desarrollo local y pruebas
+
+Requiere Node.js 20 o superior. Desde la raíz del repositorio:
+
+```bash
+npm install
+npm test
+```
+
+La suite ejecuta las regresiones de Black Market, Granja, QA general, smoke
+test, Tracker por Zona y las pruebas del Worker. La app se puede abrir con
+`cd albion-app && python3 server.py`.
+
+La modularización del frontend se hará de forma incremental. `app.js` sigue
+siendo el punto de entrada mientras se extraen responsabilidades hacia
+`albion-app/js/`; el plan y las reglas están documentados en
+`albion-app/js/README.md`. Después de cada extracción se debe ejecutar
+`npm test`.
 
 ## Reportar errores
 
