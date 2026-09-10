@@ -261,7 +261,7 @@ document.getElementById('homeSlideNext').addEventListener('click', () => homeSho
    ==================================================================== */
 const FAV = { list: [] };
 try { FAV.list = JSON.parse(localStorage.getItem('favorites') || '[]'); } catch (e) {}
-const FAV_TABS = { food: 'Cocina', alch: 'Alquimia', refine: 'Refinamiento', gear: 'Crafteo', enchant: 'Encantado', farm: 'Granja', flip: 'Flipping', transmute: 'Transmutación' };
+const FAV_TABS = { food: 'Cocina', alch: 'Alquimia', refine: 'Refinamiento', gear: 'Crafteo', enchant: 'Encantar Item', farm: 'Granja', flip: 'Flipping', transmute: 'Transmutación' };
 function favSave() { localStorage.setItem('favorites', JSON.stringify(FAV.list)); favRenderHome(); }
 function favHas(tab, id) { return FAV.list.some(f => f.tab === tab && f.id === id); }
 function favBtnHtml(tab, id, name) {
@@ -336,7 +336,7 @@ function createCraftModule(cfg) {
   <div class="panel city-guide">
     <div class="cg-head">
       <div class="cd-title">Bonos de refinamiento por ciudad</div>
-      <div class="micro muted">Cada ciudad se especializa en un recurso: +40% además del +18% base → 58% de bono (RRR 36,7%; con Foco 53,9%). Hacé clic en una ciudad para configurarla.</div>
+      <div class="micro muted">Cada ciudad se especializa en un recurso, que recibe un bono de refinamiento. Haz clic en una ciudad para seleccionar su bono de refinamiento.</div>
     </div>
     <div class="cg-grid">
       ${cfg.cityGuide.map(g => `
@@ -456,7 +456,16 @@ function createCraftModule(cfg) {
         <tr><td colspan="7" class="loading-cell">Cargando precios del mercado…</td></tr>
       </tbody>
     </table>
-  </div>`;
+  </div>
+  ${cfg.planner ? `<div class="panel refine-planner">
+    <h3>Planeador de refinamiento</h3>
+    <div class="control-grid secondary">
+      <div class="control"><label>Producto a refinar</label><select id="${P}PlanItem"></select></div>
+      <div class="control"><label>Cantidad de lotes</label><input type="number" id="${P}PlanQty" value="1" min="1" step="1"></div>
+    </div>
+    <div class="stat-row" id="${P}PlanStats"></div>
+    <div id="${P}PlanMaterials" class="planner-materials"></div>
+  </div>` : ''}`;
 
   const $ = id => document.getElementById(P + id);
   const buySel = $('BuyCity'), sellSel = $('SellCity');
@@ -591,6 +600,22 @@ function createCraftModule(cfg) {
     }
   }
 
+  function updatePlanner() {
+    if (!cfg.planner || !m.DATA || !Object.keys(m.prices).length) return;
+    const sel = $('PlanItem');
+    const recipes = m.DATA.recipes;
+    if (!sel.options.length) sel.innerHTML = recipes.map(r => `<option value="${r.id}">${r.name_es || r.name_en || r.id} (T${r.tier}${r.ench ? '.' + r.ench : ''})</option>`).join('');
+    const r = recipes.find(x => x.id === sel.value) || recipes[0];
+    if (!r) return;
+    sel.value = r.id;
+    const qty = Math.max(1, parseInt($('PlanQty').value, 10) || 1);
+    const opts = getOpts(), c = calcRecipe(r, opts);
+    const totalOut = qty * r.amount;
+    const profit = c.profit * qty;
+    $('PlanStats').innerHTML = `<div class="stat"><div class="k">Producción</div><div class="v">${fmt(totalOut)} unidades</div><div class="s">${qty} lote${qty === 1 ? '' : 's'}</div></div><div class="stat"><div class="k">Costo materiales + estación</div><div class="v">${isNaN(c.totalCost) ? '—' : fmt(c.totalCost * qty)}</div><div class="s">precios actuales</div></div><div class="stat"><div class="k">Ganancia total</div><div class="v ${profit > 0 ? 'pos' : 'neg'}">${isNaN(profit) ? '—' : (profit > 0 ? '+' : '') + fmt(profit)}</div><div class="s">después de impuestos</div></div>`;
+    $('PlanMaterials').innerHTML = `<strong>Materiales a comprar</strong><div class="planner-material-list">${r.resources.map(res => `<span class="planner-material">${iconImg(res.id, 'item-icon sm', m.DATA.ingredients[res.id]?.name_es || res.id)} <b>${fmt(res.count * qty)}</b> ${m.DATA.ingredients[res.id]?.name_es || res.id}</span>`).join('')}</div>`;
+  }
+
   m.render = function () {
     updateRRRLabel();
     if (!m.DATA || !Object.keys(m.prices).length) return;
@@ -620,6 +645,7 @@ function createCraftModule(cfg) {
       const va = val(a), vb = val(b);
       return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * m.sortDir;
     });
+    updatePlanner();
 
     const priced = m.rows.filter(x => !isNaN(x.c.profit));
     const profitable = priced.filter(x => x.c.profit > 0);
@@ -658,6 +684,11 @@ function createCraftModule(cfg) {
       return mainRow + (expanded ? detailRow(r, c, opts) : '');
     }).join('');
   };
+
+  if (cfg.planner) {
+    $('PlanItem').addEventListener('change', m.render);
+    $('PlanQty').addEventListener('input', m.render);
+  }
 
   /* ---- detalle expandible con precios editables ---- */
   function detailRow(r, c, opts) {
@@ -816,7 +847,24 @@ function createCraftModule(cfg) {
 
 /* ---------- FLIPPING ---------- */
 const flipSearch = document.getElementById('flipSearch');
+const flipBranch = document.getElementById('flipBranch');
+const flipEnch = document.getElementById('flipEnch');
 const flipResults = document.getElementById('flipResults');
+const FLIP_BRANCHES = {
+  weapons: 'Armas', head: 'Cabeza', armors: 'Armaduras', shoes: 'Calzado',
+  offhands: 'Mano secundaria', capes: 'Capas', bags: 'Bolsos',
+  gathering: 'Recolección', consumables: 'Consumibles', mounts: 'Monturas',
+  crafting: 'Crafteo', farming: 'Granja', artefacts: 'Artefactos',
+  furniture: 'Muebles', other: 'Otros'
+};
+
+function initFlipFilters() {
+  for (const [value, label] of Object.entries(FLIP_BRANCHES)) {
+    const o = document.createElement('option'); o.value = value; o.textContent = label;
+    flipBranch.appendChild(o);
+  }
+}
+initFlipFilters();
 let flipItems = [];
 let flipData = {};
 // Pool de ítems recomendados para llenar la lista de 50 (bolsos, capas, comida,
@@ -824,18 +872,26 @@ let flipData = {};
 const DEFAULT_FLIPS = ["T4_BAG","T4_CAPE","T5_BAG","T5_CAPE","T6_BAG","T6_CAPE","T7_BAG","T7_CAPE","T8_BAG","T8_CAPE","T3_MEAL_SOUP","T4_MEAL_STEW","T5_MEAL_OMELETTE","T6_MEAL_SANDWICH","T8_MEAL_STEW","T7_MEAL_OMELETTE","T8_MEAL_SANDWICH","T4_POTION_HEAL","T6_POTION_HEAL","T4_POTION_ENERGY","T6_POTION_ENERGY","T3_POTION_REVIVE","T5_POTION_SLOWFIELD","T3_MOUNT_HORSE","T4_MOUNT_HORSE","T5_MOUNT_ARMORED_HORSE","T6_MOUNT_ARMORED_HORSE","T7_MOUNT_ARMORED_HORSE","T3_MOUNT_OX","T4_MOUNT_OX","T5_MOUNT_OX","T6_MOUNT_OX","T7_MOUNT_SWAMPDRAGON","T8_MOUNT_HORSE","T4_2H_BOW","T5_2H_BOW","T6_2H_BOW","T4_MAIN_SWORD","T5_MAIN_SWORD","T6_MAIN_SWORD","T4_2H_CLAYMORE","T5_2H_CLAYMORE","T4_MAIN_FIRESTAFF","T5_MAIN_FIRESTAFF","T4_MAIN_ARCANESTAFF","T4_2H_HOLYSTAFF","T5_2H_HOLYSTAFF","T4_MAIN_CURSEDSTAFF","T4_2H_HALBERD","T4_MAIN_AXE","T5_MAIN_AXE","T4_MAIN_DAGGER","T4_MAIN_MACE","T4_MAIN_HAMMER","T4_MAIN_SPEAR","T4_2H_QUARTERSTAFF","T4_MAIN_NATURESTAFF","T4_MAIN_FROSTSTAFF","T4_OFF_SHIELD","T4_OFF_TORCH","T4_OFF_BOOK","T4_ARMOR_PLATE_SET1","T4_HEAD_LEATHER_SET1","T4_SHOES_CLOTH_SET1","T4_ARMOR_LEATHER_SET1","T4_HEAD_CLOTH_SET1","T4_ARMOR_PLATE_SET2","T4_HEAD_LEATHER_SET2","T4_SHOES_CLOTH_SET2","T4_ARMOR_LEATHER_SET2","T4_HEAD_CLOTH_SET2","T4_ARMOR_PLATE_SET3","T4_HEAD_LEATHER_SET3","T4_SHOES_CLOTH_SET3","T4_ARMOR_LEATHER_SET3","T4_HEAD_CLOTH_SET3","T5_ARMOR_PLATE_SET1","T5_HEAD_LEATHER_SET1","T5_SHOES_CLOTH_SET1","T5_ARMOR_LEATHER_SET1","T5_HEAD_CLOTH_SET1","T5_ARMOR_PLATE_SET2","T5_HEAD_LEATHER_SET2","T5_SHOES_CLOTH_SET2","T5_ARMOR_LEATHER_SET2","T5_HEAD_CLOTH_SET2","T5_ARMOR_PLATE_SET3","T5_HEAD_LEATHER_SET3","T5_SHOES_CLOTH_SET3","T5_ARMOR_LEATHER_SET3","T5_HEAD_CLOTH_SET3","T6_ARMOR_PLATE_SET1","T6_HEAD_LEATHER_SET1","T6_SHOES_CLOTH_SET1","T6_ARMOR_LEATHER_SET1","T6_HEAD_CLOTH_SET1","T6_ARMOR_PLATE_SET2","T6_HEAD_LEATHER_SET2","T6_SHOES_CLOTH_SET2","T6_ARMOR_LEATHER_SET2","T6_HEAD_CLOTH_SET2","T6_ARMOR_PLATE_SET3","T6_HEAD_LEATHER_SET3","T6_SHOES_CLOTH_SET3","T6_ARMOR_LEATHER_SET3","T6_HEAD_CLOTH_SET3","T4_PLANKS","T4_METALBAR","T4_LEATHER","T4_CLOTH","T4_STONEBLOCK","T5_PLANKS","T5_METALBAR","T5_LEATHER","T5_CLOTH","T5_STONEBLOCK","T6_PLANKS","T6_METALBAR","T6_LEATHER","T6_CLOTH","T6_STONEBLOCK"];
 const flipUserAdded = new Set();
 
-flipSearch.addEventListener('input', () => {
+function renderFlipSearch() {
   const q = flipSearch.value.trim().toLowerCase();
-  if (q.length < 2 || !CATALOG) { flipResults.classList.remove('open'); return; }
+  const branch = flipBranch.value;
+  const ench = flipEnch.value;
+  if ((!q && !branch && ench === 'all') || !CATALOG) { flipResults.classList.remove('open'); return; }
   const hits = [];
-  for (const [id, es, en, tier, maxEnch] of CATALOG) {
-    if (es.toLowerCase().includes(q) || en.toLowerCase().includes(q) || id.toLowerCase().includes(q)) {
-      hits.push([id, es, en, tier, maxEnch]);
-      if (hits.length >= 30) break;
-    }
+  for (const [id, es, en, tier, maxEnch, cat] of CATALOG) {
+    if (branch && cat !== branch) continue;
+    if (q && !(es.toLowerCase().includes(q) || en.toLowerCase().includes(q) || id.toLowerCase().includes(q))) continue;
+    // El catálogo declara el máximo real de encantamiento de cada ítem.
+    // No se filtran .1-.4 como texto: se generan como IDs de mercado @1..@4.
+    if (ench !== 'all' && +ench > +maxEnch) continue;
+    hits.push([id, es, en, tier, maxEnch]);
+    if (hits.length >= 30) break;
   }
   flipResults.innerHTML = hits.map(([id, es, en, tier, maxEnch]) => {
-    const enchs = [''].concat(Array.from({ length: maxEnch }, (_, i) => '@' + (i + 1)));
+    const requestedEnch = flipEnch.value;
+    const enchs = requestedEnch === 'all'
+      ? [''].concat(Array.from({ length: maxEnch }, (_, i) => '@' + (i + 1)))
+      : [+requestedEnch === 0 ? '' : '@' + requestedEnch];
     return enchs.map(suf =>
       `<div class="sr-item" data-id="${id}${suf}">
         ${iconImg(id + suf, 'item-icon sm')}
@@ -843,7 +899,10 @@ flipSearch.addEventListener('input', () => {
       </div>`).join('');
   }).join('');
   flipResults.classList.toggle('open', hits.length > 0);
-});
+}
+flipSearch.addEventListener('input', renderFlipSearch);
+flipBranch.addEventListener('change', renderFlipSearch);
+flipEnch.addEventListener('change', renderFlipSearch);
 flipResults.addEventListener('click', e => {
   const it = e.target.closest('.sr-item'); if (!it) return;
   flipResults.classList.remove('open');
@@ -1494,7 +1553,7 @@ function buildGearUI() {
   root.innerHTML = `
   <div class="panel city-guide">
     <div class="cg-head">
-      <div class="micro muted">Cada ciudad bonifica ramas específicas. Hacé clic en una rama para seleccionarla y configurar su ciudad con bono.</div>
+
     </div>
     <div class="cg-grid gear-guide">
       ${Object.entries(D.cityBonuses).map(([city, fams]) => `
@@ -1759,6 +1818,7 @@ const REFINE_PLACES = [
   });
   const refine = createCraftModule({
     key: 'refine',
+    planner: true,
     dataUrl: 'data/refine_data.json',
     defaultCity: 'Fort Sterling',
     bonusCityNote: 'Ciudad especializada: madera Fort Sterling · mineral Thetford · piedra Bridgewatch · piel Martlock · fibra Lymhurst',
@@ -1801,8 +1861,14 @@ const REFINE_PLACES = [
   }
 
   // Crafteo es la pestaña inicial (carga bajo demanda); Cocina/Alquimia/Refinamiento
-  // cargan precios la primera vez que se abre cada pestaña
-  flipItems = [...DEFAULT_FLIPS];
+  // cargan precios la primera vez que se abre cada pestaña.
+  // El escaneo de flipping debe cubrir tanto el ítem plano (.0) como sus
+  // versiones encantadas. Los IDs de mercado usan @1..@4, según maxEnch.
+  flipItems = DEFAULT_FLIPS.flatMap(id => {
+    const row = CATALOG.find(r => r[0] === id);
+    const max = row ? +row[4] || 0 : 0;
+    return [id].concat(Array.from({ length: max }, (_, i) => id + '@' + (i + 1)));
+  });
   flipRestorePrefs();
   loadFlipPrices(flipItems);
   waRestart(); // retoma las alertas activas sin necesidad de abrir la pestaña
@@ -1912,9 +1978,7 @@ function renderTrans() {
   // Chip informativo del oro / descuento global
   const gi = document.getElementById('transGoldInfo');
   if (TRANS.gold) {
-    gi.innerHTML = `Oro: <b>${fmt(TRANS.gold)}</b> plata → descuento global sobre el costo base: <b>${(disc * 100).toFixed(1).replace('.', ',')}%</b>` +
-      (disc === 0 ? ' (se activa solo si el oro cotiza bajo 5.000).' : '.') +
-      ' Sin tasa de retorno ni Foco: conviene transmutar donde la tasa de estación sea baja.';
+    gi.innerHTML = '';
   }
 
   // Stats
@@ -1922,9 +1986,9 @@ function renderTrans() {
   const winners = withProfit.filter(x => x.profit > 0);
   const best = withProfit.length ? withProfit.reduce((a, b) => (b.profit > a.profit ? b : a)) : null;
   document.getElementById('transStats').innerHTML = `
-    <div class="stat"><div class="k">Rentables</div><div class="v ${winners.length ? 'pos' : ''}">${winners.length} / ${withProfit.length}</div><div class="s">con precios en ambas ciudades</div></div>
+    <div class="stat"><div class="k">Rentables</div><div class="v ${winners.length ? 'pos' : ''}">${winners.length} / ${withProfit.length}</div><div class="s"></div></div>
     <div class="stat"><div class="k">Mejor transmutación</div><div class="v ${best && best.profit > 0 ? 'pos' : 'neg'}">${best ? fmt(best.profit) : '—'}</div><div class="s">${best ? transName(best.r.type, best.r.ft, best.r.fe) + ' → ' + transName(best.r.type, best.r.tt, best.r.te) : 'sin datos'}</div></div>
-    <div class="stat"><div class="k">Descuento global</div><div class="v">${(disc * 100).toFixed(1).replace('.', ',')}%</div><div class="s">oro a ${TRANS.gold ? fmt(TRANS.gold) : '—'} plata</div></div>`;
+    <div class="stat"><div class="k">Descuento global</div><div class="v">${(disc * 100).toFixed(1).replace('.', ',')}%</div><div class="s"></div></div>`;
 
   if (!rows.length) {
     TR('Body').innerHTML = '<tr><td colspan="7" class="loading-cell">No hay transmutaciones con estos filtros.</td></tr>';
@@ -2877,7 +2941,10 @@ function enRender() {
   const sale = saleQuote(EN.prices[sellId]?.[sellCity], sellCity);
   const sellP = sellCity === city ? toP : { value: sellKey in manualPrices ? manualPrices[sellKey] : sale.price, manual: sellKey in manualPrices };
   const tax = document.getElementById('enPremium').checked ? 0.04 : 0.08;
-  const sellNet = sellP.value ? sellP.value * (1 - tax - (sellCity === BLACK_MARKET ? 0 : 0.025)) : null; // impuesto + tasa de publicación
+  // Solo se paga publicación al vender mediante orden de venta. La venta
+  // directa a la mejor orden de compra (incluido Black Market) no la paga.
+  const setup = document.getElementById('enSetup').checked && sellKind === 'sell' ? 0.025 : 0;
+  const sellNet = sellP.value ? sellP.value * (1 - tax - setup) : null; // impuesto + tasa de publicación
   const planProfit = (planCost != null && sellNet != null) ? sellNet - planCost : null;
 
   const jumpOpts = sel => [0, 1, 2, 3].map(l =>
@@ -2996,6 +3063,7 @@ function enRender() {
   });
   document.getElementById('enCity').addEventListener('change', () => { if (EN.item) enLoad(); });
   document.getElementById('enPremium').addEventListener('change', () => { if (EN.item) enRender(); });
+  document.getElementById('enSetup').addEventListener('change', () => { if (EN.item) enRender(); });
   document.getElementById('enRefresh').addEventListener('click', enLoad);
 
   /* precios editables dentro del resultado: guardar override manual y recalcular */
