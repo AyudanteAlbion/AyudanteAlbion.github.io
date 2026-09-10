@@ -1163,26 +1163,44 @@ img { max-width: 100%; }
 /* ====================================================================
    Mapa de Guerra (WM)
    ==================================================================== */
-.wm-section { margin-bottom: 24px; }
-.wm-section .cd-title { margin-bottom: 10px; }
+.wm-panel { padding-bottom: 8px; }
+.wm-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 14px 14px 0;
+}
+.wm-intro { padding: 8px 14px 4px; }
+.wm-stats { padding: 8px 14px 4px; }
+.wm-filters { padding: 4px 14px 10px; flex-wrap: wrap; }
+
+.wm-section { margin-bottom: 20px; }
+.wm-section .cd-title { margin-bottom: 10px; padding: 0 14px; }
 
 .wm-terr-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 10px;
-  padding: 8px 14px;
+  padding: 4px 14px 8px;
 }
 .wm-terr-card {
   padding: 12px 14px;
   border: 1px solid rgba(255,255,255,.08);
   border-radius: 10px;
   background: rgba(255,255,255,.02);
-  transition: all .15s;
+  transition: background .15s, border-color .15s;
 }
 .wm-terr-card:hover { background: rgba(255,255,255,.04); }
-.wm-terr-card.wm-attacked {
-  border-color: rgba(239,68,68,.4);
-  background: rgba(239,68,68,.08);
+.wm-terr-card.wm-owned {
+  border-color: rgba(20,185,138,.35);
+  background: rgba(20,185,138,.06);
+}
+.wm-terr-card.wm-threatened {
+  border-color: rgba(245,158,11,.45);
+  background: rgba(245,158,11,.08);
+}
+.wm-terr-card.wm-lost {
+  border-color: rgba(239,68,68,.3);
+  background: rgba(239,68,68,.05);
+  opacity: .92;
 }
 .wm-terr-name {
   font-weight: 600;
@@ -1191,13 +1209,30 @@ img { max-width: 100%; }
 }
 .wm-terr-meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   font-size: .8rem;
 }
 
-.wm-enemy-list { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; }
+.wm-match-list { padding: 0 14px; display: flex; flex-direction: column; gap: 6px; }
+.wm-match-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+  font-size: .85rem;
+}
+.wm-match-row.wm-win { border-color: rgba(20,185,138,.3); background: rgba(20,185,138,.05); }
+.wm-match-row.wm-lose { border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.05); }
+.wm-match-when { color: var(--muted); font-size: .8rem; }
+.wm-match-terr { font-weight: 600; margin-bottom: 2px; }
+.wm-match-teams { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.wm-enemy-list { padding: 4px 14px; display: flex; flex-direction: column; gap: 8px; }
 .wm-enemy-card {
   display: flex;
   align-items: center;
@@ -1211,7 +1246,7 @@ img { max-width: 100%; }
 .wm-enemy-stats { text-align: right; font-size: .85rem; }
 
 .wm-events-list {
-  padding: 8px 14px;
+  padding: 4px 14px 10px;
   max-height: 400px;
   overflow-y: auto;
 }
@@ -1231,4 +1266,14 @@ img { max-width: 100%; }
   padding-left: 10px;
   border-radius: 6px;
   margin: 2px 0;
+}
+.wm-event-row.wm-sg-killer {
+  background: rgba(20,185,138,.06);
+  padding-left: 10px;
+  border-radius: 6px;
+  margin: 2px 0;
+}
+@media (max-width: 640px) {
+  .wm-match-row { grid-template-columns: 1fr; gap: 4px; }
+  .wm-event-row { grid-template-columns: 1fr; gap: 2px; }
 }
