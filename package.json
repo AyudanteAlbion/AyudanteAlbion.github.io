@@ -5,7 +5,8 @@
   "description": "Pruebas y herramientas de desarrollo para Ayudante Albion",
   "scripts": {
     "test": "npm run test:app && npm run test:worker",
-    "test:app": "cd albion-app && npm run test:black-market && npm run test:farm && npm run test:qa && npm run test:smoke && npm run test:tracker",
+    "test:app": "cd albion-app && npm run test:modules && npm run test:black-market && npm run test:farm && npm run test:qa && npm run test:smoke && npm run test:tracker",
+    "test:modules": "cd albion-app && node modules-test.js",
     "test:black-market": "cd albion-app && node black-market-test.js",
     "test:farm": "cd albion-app && node farm-test.js",
     "test:qa": "cd albion-app && node qa-test.js",

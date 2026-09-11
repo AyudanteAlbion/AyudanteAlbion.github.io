@@ -64,13 +64,24 @@ npm install
 npm test
 ```
 
-La suite ejecuta las regresiones de Black Market, Granja, QA general, smoke
-test, Tracker por Zona y las pruebas del Worker. La app se puede abrir con
+La suite ejecuta las pruebas unitarias de los módulos, las regresiones de
+Black Market, Granja, QA general, smoke test, Tracker por Zona y las pruebas
+del Worker. La app se puede abrir con
 `cd albion-app && python3 server.py`.
 
-La modularización del frontend se hará de forma incremental. `app.js` sigue
+La suite arranca por `modules-test.js`, que prueba cada módulo extraído por
+separado en un contexto sin DOM.
+
+La modularización del frontend avanza de forma incremental. `app.js` sigue
 siendo el punto de entrada mientras se extraen responsabilidades hacia
-`albion-app/js/`; el plan y las reglas están documentados en
+`albion-app/js/`. Las **ocho etapas planificadas ya están completas**:
+almacenamiento, formato, API, navegación, historial de mercado, cálculo de
+crafteo, perfil y builds. Cada punto de consumo conserva su fallback, así que
+`app.js` sigue funcionando aislado.
+
+Quedan por extraer las herramientas grandes que todavía viven enteras en
+`app.js` (flipping, granja, encantado, transmutación, artefactos, tracker por
+zona y el Salón). El plan, las reglas y el estado están en
 `albion-app/js/README.md`. Después de cada extracción se debe ejecutar
 `npm test`.
 
@@ -184,6 +195,7 @@ Si alguna variable falta, la app no se rompe: el Salón muestra las herramientas
 ### Probar sin tocar Discord
 
 ```bash
+cd albion-app && node modules-test.js  # módulos del frontend, sin DOM
 node worker/selftest.mjs           # OAuth, verificación de sesión, /sync sobre un KV simulado y allowlist del proxy, Discord simulado
 cd albion-app && python3 server.py # server local con simulador de consentimiento de Discord (miembro / no miembro)
 cd albion-app && node qa-test.js   # QA completa, incluye la Sala, el Mapa de Guerra y la sincronización
