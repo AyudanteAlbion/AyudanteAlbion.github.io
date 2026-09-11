@@ -14,7 +14,8 @@ vez en el dashboard.
 |---|---|
 | Worker en producción | `ayudantealbion.josemesina21.workers.dev` |
 | Acceso Discord (Salón) | **Activo** desde 2026-09-09 (`/discord/config` → `configured:true`) |
-| Mapa de Guerra (GvG) | Requiere re-deploy del código con rutas `guildmatches/*` y `events` |
+| Sincronización (KV `AA_SYNC`) | **Activa** (`/discord/config` → `sync:true`) |
+| Mapa de Guerra (GvG) | **Activo**: `guildmatches/*` y `events` responden en producción |
 | Web (GitHub Pages) | Se publica al mergear a `main` (workflow «Publicar en la web») |
 
 ## Checklist rápido (lo que tenés que tener en Cloudflare)
@@ -86,9 +87,9 @@ Dashboard → **Workers & Pages** → `ayudantealbion` → **Settings** → **Bu
 `keep_vars = true` evita que cada deploy borre variables de tipo Text del
 dashboard. Aun así, **preferí Secrets** para Client ID / Secret / Session Key.
 
-### D · Redeploy del Mapa de Guerra (este cambio)
+### D · Rutas del killboard que el proxy permite
 
-El Mapa de Guerra necesita que el Worker permita:
+La allowlist de `worker/index.js` habilita solo lo que la app usa:
 
 | Ruta | Para qué |
 |---|---|
@@ -98,15 +99,15 @@ El Mapa de Guerra necesita que el Worker permita:
 | `GET /gameinfo/events?guildId=…` | Kills del gremio y rivales |
 | `GET /gameinfo/battles` | Batallas (opcional) |
 
-`/guilds/:id/territories` **no existe** en el killboard y el Worker sigue
-respondiendo 404 a propósito.
+`/guilds/:id/territories` **no existe** en el killboard y el Worker responde
+`ruta no permitida` a propósito.
 
-**Cómo publicarlo:**
+Todas están publicadas y respondiendo en producción. Si en el futuro se suma
+una ruta nueva, hay que agregarla a la allowlist y volver a desplegar:
 
-1. Mergear a `main` la rama con los cambios de `worker/index.js` (y la app).
+1. Mergear a `main` los cambios de `worker/index.js`.
 2. Esperar ~1 min: **Workers Builds** publica solo (Deployments en el dashboard).
-3. GitHub Pages publica la web en paralelo.
-4. Verificar con el bloque de curls de abajo.
+3. Verificar con el bloque de curls de abajo.
 
 Si Workers Builds no está conectado o falló, deploy manual desde tu máquina
 (con sesión de Cloudflare ya hecha una vez con `npx wrangler login`):
@@ -223,3 +224,21 @@ cd albion-app && node qa-test.js   # QA completa (requiere jsdom)
 `server.py` no usa la allowlist del Worker: en local el Mapa de Guerra ya habla
 directo con el killboard. Cloudflare solo hace falta para la web pública y el
 ejecutable cuando no hay server local.
+
+## Qué se publica en la web
+
+El workflow «Publicar en la web» arma `_site` con `index.html`, `app.js`,
+`styles.css`, los módulos de `js/`, y las carpetas `data/`, `icons/` e `img/`.
+El servidor local sirve el árbol entero, así que **una carpeta que falte en el
+workflow funciona en desarrollo y falla solo en producción**.
+
+Para que eso no se repita, `albion-app/assets-test.js` corre sobre `_site`
+antes de subir el artefacto: compara cada `src`/`href` local de `index.html`
+contra los archivos presentes y corta el deploy si falta alguno. `build.sh`
+hace la misma verificación sobre `albion-exe/app/` antes de compilar el `.exe`.
+
+> Ocurrió de verdad: `index.html` cargaba los ocho módulos de `js/`, pero ni
+> `pages.yml` ni `build.sh` copiaban la carpeta. La web y el ejecutable
+> pedían los ocho archivos, recibían 404 y la app corría con los fallbacks de
+> `app.js`. Como los fallbacks devuelven los mismos números, no hubo error
+> visible — solo ocho 404 en la consola.

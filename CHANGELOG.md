@@ -35,6 +35,13 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
   plazos y alcance.
 - `docs/sincronizacion.md` y `docs/deploy-worker.md`.
 - `package.json` en la raíz con la suite unificada de pruebas (`jsdom`).
+- Dos pruebas nuevas que cubren el hueco por el que se coló el fallo de los
+  módulos: `assets-test.js` comprueba que todo archivo referenciado por
+  `index.html` exista en el artefacto publicado (corre en el workflow de Pages
+  antes de subirlo y en `build.sh` antes de compilar el `.exe`), e
+  `integration-test.js` carga `app.js` **con** los módulos, como el navegador,
+  y compara cada fórmula contra su fallback para que las dos copias no se
+  separen.
 - Contrato de `/sync` replicado en `server.py` con un almacén en memoria, para
   probar el flujo completo sin Cloudflare.
 
@@ -53,6 +60,13 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 
 ### Corregido
 
+- **Los módulos del frontend ahora sí llegan al navegador.** `index.html`
+  cargaba los ocho archivos de `js/`, pero ni el workflow de GitHub Pages ni
+  `build.sh` copiaban esa carpeta: la web y el `.exe` pedían los ocho, recibían
+  404 y la app corría con los fallbacks de `app.js`. Los cálculos eran
+  correctos —módulo y fallback devuelven lo mismo, ahora verificado por
+  prueba—, pero la modularización nunca se había ejecutado fuera del servidor
+  de desarrollo.
 - **Duplicar un build ya no pisa el original**: la copia compartía el objeto
   `items` con el build de origen.
 - **El ranking del gremio ya no lo encabeza quien nunca murió**: sin muertes, el
@@ -62,8 +76,8 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 
 ### Validación
 
-QA 250 · Worker 95 · Módulos 54 · Black Market 39 · Granja 38 · evidencia del
-Tracker y prueba de humo, todo sin errores.
+QA 250 · Worker 95 · Módulos 54 · Recursos 31 · Integración 19 · Black Market 39 ·
+Granja 38 · evidencia del Tracker y prueba de humo, todo sin errores.
 
 ---
 
