@@ -6,9 +6,9 @@
 
 Calculadora de mercado y crafteo para **Albion Online** (servidor West), hecha para el gremio **Spetsnaz Grail**.
 
-<a href="https://spetsnazgrail.com" title="Gremio Spetsnaz Grail — sitio web oficial"><img src="docs/sg_badge.png" width="320" alt="Escudo y nombre de Spetsnaz Grail — spetsnazgrail.com"></a>
+<a href="https://spetsnazgrail.com" title="Gremio Spetsnaz Grail — sitio web oficial"><img src="docs/sg_badge.png" width="240" alt="Escudo y nombre de Spetsnaz Grail — spetsnazgrail.com"></a>
 
-<a href="https://discord.gg/FH3RzqMPA4" title="Unite al servidor de Discord de Ayudante Albion"><img src="docs/discord_badge.svg" width="106" alt="Discord de la comunidad Ayudante Albion"></a>
+<a href="https://discord.gg/FH3RzqMPA4" title="Unite al servidor de Discord de Ayudante Albion"><img src="docs/discord_badge.svg" width="300" alt="Discord de la comunidad Ayudante Albion"></a>
 
 </div>
 
