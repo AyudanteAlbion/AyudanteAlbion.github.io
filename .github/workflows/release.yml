@@ -74,6 +74,16 @@ jobs:
           node farm-test.js
         working-directory: albion-app
 
+      # Los módulos de js/, los recursos que index.html referencia y la
+      # integración real (app.js con los módulos cargados, como el navegador).
+      # El build vuelve a verificar el artefacto ya armado en albion-exe/app/.
+      - name: Módulos, recursos e integración
+        run: |
+          node modules-test.js
+          node assets-test.js
+          node integration-test.js
+        working-directory: albion-app
+
       - name: Build (sintaxis + smoke + exe + zip)
         run: |
           GO_BIN="$(command -v go)" ./build.sh

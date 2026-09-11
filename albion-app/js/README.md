@@ -104,10 +104,30 @@ Después de cada paso hay que ejecutar `npm test` antes de continuar.
 
 ## Pruebas
 
-`albion-app/modules-test.js` prueba cada módulo **solo**, en un contexto sin
-DOM. Si un módulo empieza a depender del documento, esa prueba falla y avisa
-que dejó de ser lógica pura. Corre primero en la suite (`npm run test:modules`),
-antes de la QA con jsdom.
+| Prueba | Qué cubre |
+|---|---|
+| `modules-test.js` | Cada módulo **solo**, sin DOM. Si uno empieza a depender del documento, falla y avisa que dejó de ser lógica pura. |
+| `assets-test.js` | Que todo archivo que `index.html` referencia exista en el artefacto publicado (`_site`, `albion-exe/app/`). |
+| `integration-test.js` | `app.js` **con** los módulos cargados, como el navegador, y que cada fórmula dé lo mismo por el módulo y por su fallback. |
+
+Corren al principio de la suite (`npm test`), antes de la QA con jsdom.
+
+### Por qué existen las dos últimas
+
+Los módulos estuvieron escritos, probados y cargados desde `index.html`… pero
+sin llegar nunca al navegador: ni `pages.yml` ni `build.sh` copiaban la carpeta
+`js/`. La web y el `.exe` pedían los ocho archivos, recibían 404 y la app
+funcionaba con los fallbacks de `app.js`.
+
+No se notó porque ninguna prueba miraba el camino real:
+
+- `modules-test.js` carga los módulos **sin** `app.js`.
+- `qa-test.js` y `smoke-test.js` cargan `app.js` **sin** los módulos.
+
+O sea que la combinación que corre en producción no la ejercitaba nadie.
+`assets-test.js` verifica que los archivos lleguen al artefacto e
+`integration-test.js` verifica que esa combinación funcione y que las dos
+copias de cada fórmula no se separen.
 
 ## Regla de migración
 
@@ -118,6 +138,11 @@ antes de la QA con jsdom.
   estén listos para pasar a ES modules.
 - No cargar archivos de esta carpeta desde producción hasta que tengan pruebas
   y estén conectados explícitamente desde `index.html`.
+- **Un módulo nuevo se agrega en tres lugares a la vez**: el `<script>` de
+  `index.html`, la copia de `pages.yml` y la de `build.sh`. La carpeta se copia
+  entera, así que agregar un archivo dentro de `js/` ya queda cubierto; lo que
+  hay que revisar es cualquier carpeta nueva fuera de ella. `assets-test.js`
+  falla si algo referenciado no llegó al artefacto.
 - Los módulos son **lógica pura**: sin DOM, sin `fetch` y sin leer estado
   global. Lo que necesiten llega por parámetro (por ejemplo, la función de
   precios que recibe `crafting/recipe.js`).
