@@ -10,10 +10,10 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
 
 ---
 
-## [v1.2.12] — sin publicar
+## [v1.3.0] — sin publicar
 
-Notas completas: [`docs/releases/v1.2.12.md`](docs/releases/v1.2.12.md) ·
-README de la versión: [`docs/releases/v1.2.12-README.md`](docs/releases/v1.2.12-README.md)
+Notas completas: [`docs/releases/v1.3.0.md`](docs/releases/v1.3.0.md) ·
+README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-README.md)
 
 ### Añadido
 
@@ -323,7 +323,7 @@ Primera versión pública.
 
 ---
 
-[v1.2.12]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/compare/v1.2.11...main
+[v1.3.0]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/compare/v1.2.11...main
 [v1.2.11]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases/tag/v1.2.11
 [v1.2.10]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases/tag/v1.2.10
 [v1.2.9]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/blob/main/docs/releases/v1.2.9.md
