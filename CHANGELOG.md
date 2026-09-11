@@ -51,6 +51,12 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
   cada carga: cada tanto hay que volver a tocar «Ingresar con Discord».
 - README reescrito para quien usa la app: herramientas agrupadas por propósito,
   lenguaje en presente e índice de documentación (236 → 176 líneas).
+- Encabezado del README renovado: el escudo y el nombre de **Spetsnaz Grail**
+  pasan a una insignia enmarcada que enlaza a spetsnazgrail.com
+  (`docs/sg_badge.png`), el Discord de la app baja de banner de 520 px a una
+  insignia discreta (`docs/discord_badge.svg`) y se retiran el banner
+  `docs/boton_discord.png`, las citas a `docs/sincronizacion.md` y
+  `docs/deploy-worker.md`, y la sección **Desarrollo**.
 - Allowlist más estricta en Worker, `server.py` y ejecutable; `/battles/{id}`
   acotado por expresión regular.
 - El ejecutable valida el header `Host` (anti DNS rebinding) y suma cabeceras de
