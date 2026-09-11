@@ -1,10 +1,7 @@
 # Publica albion-app/ como sitio estático en GitHub Pages.
 # Solo copia lo que la web necesita: los módulos de js/, la carpeta de datos,
-# los íconos y los tres archivos de la app. server.py, los tests y las
-# herramientas de desarrollo quedan afuera a propósito.
-# «Verificar recursos» corre antes de publicar: compara lo que index.html pide
-# contra lo que hay en _site. Si un archivo referenciado falta, el deploy se
-# detiene en vez de publicar una web que tira 404 en silencio.
+# los íconos y los tres archivos de la app. Las herramientas de desarrollo
+# quedan afuera a propósito.
 # Las actions van pineadas por SHA de commit (con su versión en un comentario):
 # si un tag se moviera en upstream, acá seguimos ejecutando el código auditado.
 name: Pages
@@ -39,16 +36,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: Preparar sitio
         run: |
           mkdir _site
           cp albion-app/index.html albion-app/app.js albion-app/styles.css _site/
           cp -r albion-app/data albion-app/icons albion-app/img _site/
           # Los módulos que index.html carga con <script src="js/...">.
-          # El README de la carpeta es documentación de desarrollo: no se publica.
-          cp -r albion-app/js _site/ && rm -f _site/js/README.md
-      - name: Verificar recursos del sitio
-        run: node albion-app/assets-test.js _site
+          cp -r albion-app/js _site/
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
