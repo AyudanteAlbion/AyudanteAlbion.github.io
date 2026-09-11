@@ -66,4 +66,3 @@ Fuera de alcance:
 - La **sesión SG** es un token firmado con HMAC que la app siempre revalida con
   el Worker (`/discord/verify`); dura 7 días y los secretos viven solo en el
   Worker de Cloudflare.
-
