@@ -141,6 +141,8 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`albion-app/js/README.md`](albion-app/js/README.md) | Arquitectura del frontend y reglas de contribución |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
+| [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |
+| [`docs/releases/`](docs/releases/) | Notas publicadas de cada versión |
 
 ---
 
