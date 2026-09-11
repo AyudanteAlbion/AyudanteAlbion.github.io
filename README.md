@@ -4,9 +4,11 @@
 
 # Ayudante Albion
 
-Calculadora de mercado y crafteo para **Albion Online** (servidor West), hecha para el gremio <img src="docs/sg_logo.png" width="30" alt="Escudo de Spetsnaz Grail"> **Spetsnaz Grail**
+Calculadora de mercado y crafteo para **Albion Online** (servidor West), hecha para el gremio **Spetsnaz Grail**.
 
-<a href="https://discord.gg/FH3RzqMPA4" title="Unite al servidor de Discord de Ayudante Albion"><img src="docs/boton_discord.png" width="520" alt="Unite a nuestro Discord: servidor de la comunidad Ayudante Albion"></a>
+<a href="https://spetsnazgrail.com" title="Gremio Spetsnaz Grail — sitio web oficial"><img src="docs/sg_badge.png" width="320" alt="Escudo y nombre de Spetsnaz Grail — spetsnazgrail.com"></a>
+
+<a href="https://discord.gg/FH3RzqMPA4" title="Unite al servidor de Discord de Ayudante Albion"><img src="docs/discord_badge.svg" width="106" alt="Discord de la comunidad Ayudante Albion"></a>
 
 </div>
 
@@ -97,8 +99,6 @@ Los miembros de Spetsnaz Grail que ingresan con Discord pueden guardar una copia
 
 Se sincronizan registro, favoritos, precios manuales, alertas, planes de crafteo, preferencias y perfil. La sesión de Discord nunca se sincroniza.
 
-> Detalle técnico y contrato del servicio: [`docs/sincronizacion.md`](docs/sincronizacion.md)
-
 ---
 
 ## Acceso de miembros SG
@@ -112,8 +112,6 @@ La app es pública, pero el **Salón de miembros** está reservado a Spetsnaz Gr
 La sesión dura 7 días y se revalida en cada carga. «Cerrar sesión» está en el menú de tu avatar. Si cancelás en Discord, la app avisa y no pasa nada más.
 
 La app nunca confía en una sesión hasta que el servidor confirma su firma y su vigencia; una sesión alterada se descarta.
-
-> Configuración y mantenimiento del servicio: [`docs/deploy-worker.md`](docs/deploy-worker.md)
 
 ---
 
@@ -143,33 +141,6 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |
 | [`docs/releases/`](docs/releases/) | Notas publicadas de cada versión |
-
----
-
-## Desarrollo
-
-Requiere **Node.js 20 o superior**.
-
-```bash
-npm install
-npm test                              # suite completa
-cd albion-app && python3 server.py    # app en http://localhost:3000
-```
-
-La suite cubre los módulos del frontend, los recursos del artefacto publicado, la integración de `app.js` con los módulos cargados, las regresiones de Mercado Negro y Granja, la QA general con jsdom, el smoke test, el Tracker por Zona y el Worker (OAuth, sesiones, sincronización y allowlist del proxy). El servidor local incluye simuladores de Discord y de la nube, así que se puede probar todo el flujo sin configurar Cloudflare.
-
-Ojo con una diferencia del entorno local: `server.py` sirve la carpeta entera, mientras que la web y el `.exe` publican solo lo que sus scripts de deploy copian. Por eso `assets-test.js` corre sobre el artefacto ya armado, en el workflow de Pages y en `build.sh`, y corta el proceso si `index.html` referencia algo que no llegó.
-
-Las reglas de arquitectura y el estado de la modularización están en [`albion-app/js/README.md`](albion-app/js/README.md). Después de cada cambio hay que ejecutar `npm test`.
-
-### Seguridad
-
-- **CSP estricta**: solo se ejecuta el código propio, sin scripts inline ni de terceros, y la red queda acotada a las APIs que la app realmente usa.
-- Todo dato externo (Discord, killboard) se escapa antes de mostrarse.
-- Las sesiones se aceptan únicamente después de que el servidor confirma su firma.
-- El proxy reenvía solo las rutas del killboard que la app necesita, y solo desde sus propios orígenes.
-- Los CSV neutralizan celdas que podrían ejecutarse como fórmula; respaldo y sincronización mueven únicamente claves conocidas.
-- El servidor local escucha solo en `127.0.0.1`.
 
 ---
 
