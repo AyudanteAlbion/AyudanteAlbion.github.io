@@ -144,13 +144,18 @@ const fetchPrices = window.AAApi ? ((itemIds, locations) => AAApi.fetchPrices(it
 window.fetchPrices = fetchPrices;
 
 /* ---------- fórmulas ---------- */
+/* La aritmética de crafteo vive en js/crafting/recipe.js (etapa 6 de la
+   modularización). Acá quedan los alias que ya usaba el resto de la app y
+   un fallback para las pruebas que evalúan app.js de forma aislada. */
 // RRR = bono / (1 + bono)
-function returnRate(bonus) { return bonus / (1 + bonus); }
+const returnRate = window.AACrafting ? AACrafting.returnRate : function (bonus) {
+  return bonus / (1 + bonus);
+};
 // FCE: espec ×250 + maestría ×30 ; cada 10.000 FCE reduce el focus a la mitad
-function focusCost(baseFocus, mastery, spec) {
+const focusCost = window.AACrafting ? AACrafting.focusCost : function (baseFocus, mastery, spec) {
   const fce = spec * 250 + mastery * 30;
   return baseFocus * Math.pow(0.5, fce / 10000);
-}
+};
 
 const ageBadge = window.AAFormat ? AAFormat.ageBadge : function (dateStr) {
   if (!dateStr || dateStr.startsWith('0001')) return '';
@@ -516,16 +521,27 @@ function createCraftModule(cfg) {
     if (dailyOn.checked) bonus += (parseFloat(dailyVal.value) || 0) / 100;
     return bonus;
   }
+  /* estado del bono diario, tal como lo espera AACrafting */
+  function dailyState() {
+    return { on: dailyOn.checked, value: parseFloat(dailyVal.value) || 0 };
+  }
   // Extra que se suma al stack (bono diario + Foco)
   function extraBonus(useFocus) {
+    if (window.AACrafting) return AACrafting.extraBonus(useFocus, dailyState());
     return (useFocus ? 0.59 : 0) + (dailyOn.checked ? (parseFloat(dailyVal.value) || 0) / 100 : 0);
   }
   // Bono por receta: si hay Ciudad de crafteo elegida, solo los ítems
   // bonificados en esa ciudad reciben el bono especial; el resto, ciudad real (+18%)
   function bonusFor(r, useFocus) {
     const cc = $('CraftCity').value;
-    if (!cc) return getPlaceBonus() + (useFocus ? 0.59 : 0);
     const bCity = cfg.bonusCityOf ? cfg.bonusCityOf(r) : null;
+    if (window.AACrafting) {
+      return AACrafting.recipeBonus({
+        craftCity: cc, bonusCity: bCity, baseBonus: cc ? 0 : getPlaceBonus(),
+        specialBonus: cfg.specialBonus, useFocus, daily: dailyState(),
+      });
+    }
+    if (!cc) return getPlaceBonus() + (useFocus ? 0.59 : 0);
     return (bCity === cc ? (cfg.specialBonus ?? 0.33) : 0.18) + extraBonus(useFocus);
   }
   function getOpts() {
@@ -554,9 +570,17 @@ function createCraftModule(cfg) {
     return { value: (kind === 'buy' ? p?.buy : p?.sell) || 0, manual: false };
   }
 
+  /* La aritmética vive en js/crafting/recipe.js; acá solo se arma el
+     contexto (RRR de esta receta, precios efectivos) y se agrega la fecha
+     del precio de venta, que es dato de presentación. */
   function calcRecipe(r, opts) {
-    let matCost = 0, itemValue = 0, missing = false;
     const rrr = opts.rrrFor ? opts.rrrFor(r) : opts.rrr;
+    const sellDate = m.prices[r.id]?.[opts.sellCity]?.sellDate;
+    if (window.AACrafting) {
+      const c = AACrafting.calcRecipe(r, { ...opts, rrr }, effPrice, m.DATA.ingredients);
+      return { ...c, sellDate };
+    }
+    let matCost = 0, itemValue = 0, missing = false;
     for (const res of r.resources) {
       const kind = opts.useBuy ? 'buy' : 'sell';
       let ep = effPrice(res.id, opts.buyCity, kind);
@@ -569,7 +593,6 @@ function createCraftModule(cfg) {
     const stationFee = itemValue * 0.1125 * (opts.usageFee / 100);
     const spE = effPrice(r.id, opts.sellCity, 'sell');
     const sellPrice = spE.value, sellManual = spE.manual;
-    const sellDate = m.prices[r.id]?.[opts.sellCity]?.sellDate;
     const taxRate = (opts.premium ? 0.04 : 0.08) + (opts.setup ? 0.025 : 0);
     const revenue = r.amount * sellPrice * (1 - taxRate);
     const totalCost = matCost + stationFee;
@@ -3467,7 +3490,9 @@ let pfSpecs = {};
 try { pfSpecs = JSON.parse(localStorage.getItem('pfSpecs') || '{}'); } catch (e) {}
 function pfSaveSpecs() { localStorage.setItem('pfSpecs', JSON.stringify(pfSpecs)); }
 
-const PF_BRANCHES = [
+/* las ramas y el recorte de valores viven en js/profile/specs.js (etapa 7);
+   el fallback mantiene las pruebas que evalúan app.js de forma aislada */
+const PF_BRANCHES = window.AAProfile ? AAProfile.BRANCHES : [
   { key: 'food',   label: 'Cocina',             specMax: 120 },
   { key: 'alch',   label: 'Alquimia',           specMax: 120 },
   { key: 'refine', label: 'Refinamiento',       specMax: 120 },
@@ -3493,8 +3518,8 @@ function pfRenderSpecs() {
       <thead><tr><th>Rama</th><th class="num">Especialización (0–120)</th><th class="num">Maestría (0–100)</th><th class="num">Eficiencia (FCE)</th><th class="num">Foco: reducción</th></tr></thead>
       <tbody>${PF_BRANCHES.map(b => {
         const s = pfSpecs[b.key] || { spec: 0, mastery: 0 };
-        const fce = (s.spec || 0) * 250 + (s.mastery || 0) * 30;
-        const mult = Math.pow(0.5, fce / 10000);
+        const fce = window.AAProfile ? AAProfile.efficiency(s) : (s.spec || 0) * 250 + (s.mastery || 0) * 30;
+        const mult = window.AAProfile ? AAProfile.focusMultiplier(s) : Math.pow(0.5, fce / 10000);
         return `<tr>
           <td><b>${b.label}</b></td>
           <td class="num"><input type="number" class="price-edit" style="width:90px" min="0" max="${b.specMax}" value="${s.spec || 0}" data-spec="${b.key}"></td>
@@ -3632,7 +3657,7 @@ function pfRender(d, kills, deaths, guild) {
   const ls = d.LifetimeStatistics || {};
   const pve = ls.PvE || {};
   const gat = (ls.Gathering || {}).All || {};
-  const ratio = d.DeathFame > 0 ? d.KillFame / d.DeathFame : null;
+  const ratio = window.AAProfile ? AAProfile.fameRatio(d) : (d.DeathFame > 0 ? d.KillFame / d.DeathFame : null);
 
   const pveRows = [
     ['Total PvE', pve.Total], ['Zonas reales', pve.Royal], ['Outlands', pve.Outlands],
@@ -3857,8 +3882,16 @@ function pfRender(d, kills, deaths, guild) {
     if (!sp && !ma) return;
     const key = (sp || ma).dataset.spec || (sp || ma).dataset.mast;
     if (!pfSpecs[key]) pfSpecs[key] = { spec: 0, mastery: 0 };
-    if (sp) pfSpecs[key].spec = Math.max(0, Math.min(120, parseInt(sp.value) || 0));
-    if (ma) pfSpecs[key].mastery = Math.max(0, Math.min(100, parseInt(ma.value) || 0));
+    if (sp) pfSpecs[key].spec = sp.value;
+    if (ma) pfSpecs[key].mastery = ma.value;
+    /* el recorte al rango válido lo hace el módulo: estos valores los tipea
+       el usuario y un número absurdo desfiguraba el Foco en cuatro pestañas */
+    if (window.AAProfile) {
+      pfSpecs[key] = AAProfile.normalize(key, pfSpecs[key]) || { spec: 0, mastery: 0 };
+    } else {
+      pfSpecs[key].spec = Math.max(0, Math.min(120, parseInt(pfSpecs[key].spec) || 0));
+      pfSpecs[key].mastery = Math.max(0, Math.min(100, parseInt(pfSpecs[key].mastery) || 0));
+    }
     pfSaveSpecs();
     pfRenderSpecs();
     pfApplySpecs();
@@ -4928,6 +4961,9 @@ function sgCharBoxHTML() {
 }
 
 function sgSortedMembers() {
+  if (window.AAProfile) {
+    return AAProfile.sortMembers(SG.room.members, SG.room.sort, SG.room.dir, SG.room.filter);
+  }
   const list = (SG.room.members || []).filter(m =>
     !SG.room.filter || (m.Name || '').toLowerCase().includes(SG.room.filter));
   const k = SG.room.sort, dir = SG.room.dir;
@@ -4947,8 +4983,11 @@ function sgRankTableHTML() {
   const rows = sgSortedMembers();
   if (!rows.length) return `<div class="loading-cell">Ningún miembro coincide con la búsqueda.</div>`;
   const arrow = k => SG.room.sort === k ? (SG.room.dir < 0 ? ' ▾' : ' ▴') : '';
-  const base = [...(SG.room.members || [])].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
-  const pos = {}; base.forEach((m, i) => { pos[m.Id] = i + 1; });
+  const pos = window.AAProfile ? AAProfile.positions(SG.room.members) : (() => {
+    const base = [...(SG.room.members || [])].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
+    const out = {}; base.forEach((m, i) => { out[m.Id] = i + 1; });
+    return out;
+  })();
   return `
   <div class="table-wrap"><table class="ledger">
     <thead><tr>
@@ -5139,7 +5178,8 @@ const BD = {
 try { BD.list = JSON.parse(localStorage.getItem('sgBuilds') || '[]'); } catch (e) {}
 function bdSave() { localStorage.setItem('sgBuilds', JSON.stringify(BD.list)); }
 
-const BD_SLOTS = [
+/* slots y aritmética de builds: js/builds/build.js (etapa 8) */
+const BD_SLOTS = window.AABuilds ? AABuilds.SLOTS : [
   { key: 'mainHand', label: 'Mano Principal', icon: 'i-sword' },
   { key: 'offHand', label: 'Mano Secundaria', icon: 'i-shield' },
   { key: 'head', label: 'Cabeza', icon: 'i-user' },
@@ -5151,6 +5191,7 @@ const BD_SLOTS = [
 ];
 
 function bdNewItem() {
+  if (window.AABuilds) return AABuilds.emptyItems();
   return BD_SLOTS.reduce((acc, s) => { acc[s.key] = null; return acc; }, {});
 }
 
@@ -5170,7 +5211,8 @@ function bdRender() {
         <div id="bdList">${bdListHTML()}</div>
       </div>`;
     document.getElementById('bdNewBtn').onclick = () => {
-      BD.current = { id: Date.now(), name: 'Nueva Build', items: bdNewItem(), createdAt: Date.now() };
+      BD.current = window.AABuilds ? AABuilds.create('Nueva Build')
+        : { id: Date.now(), name: 'Nueva Build', items: bdNewItem(), createdAt: Date.now() };
       bdRender();
     };
   } else {
@@ -5265,7 +5307,7 @@ function catalogItem(id) {
 function bdCalcCost() {
   if (BD.loading) return;
   const b = BD.current;
-  const ids = BD_SLOTS.map(s => b.items[s.key]).filter(Boolean);
+  const ids = window.AABuilds ? AABuilds.itemIds(b) : BD_SLOTS.map(s => b.items[s.key]).filter(Boolean);
   if (!ids.length) {
     waToast('⚠️ Build vacía', 'Agregá al menos un ítem para calcular costos.', 'err');
     return;
@@ -5275,6 +5317,8 @@ function bdCalcCost() {
   const box = document.getElementById('bdCostBox');
   box.innerHTML = '<div class="loading-cell">Cargando precios…</div>';
   
+  /* se piden también los bids del Black Market para mostrarlos, pero el
+     costo de la build solo usa ciudades reales: ahí no se compra equipo */
   fetchPrices(ids, [...CITIES, BLACK_MARKET]).then(prices => {
     BD.prices = prices;
     BD.loading = false;
@@ -5288,15 +5332,17 @@ function bdCalcCost() {
 function bdRenderCost() {
   const box = document.getElementById('bdCostBox');
   const b = BD.current;
-  const rows = BD_SLOTS.map(s => {
-    const id = b.items[s.key];
-    if (!id) return null;
-    const p = BD.prices[id] || {};
-    const best = bdBestPrice(p);
-    return { slot: s, id, price: best };
-  }).filter(Boolean);
-  
-  const total = rows.reduce((sum, r) => sum + (r.price.value || 0), 0);
+  const costed = window.AABuilds ? AABuilds.cost(b, BD.prices, CITIES) : (() => {
+    const rs = BD_SLOTS.map(s => {
+      const id = b.items[s.key];
+      if (!id) return null;
+      return { slot: s, id, price: bdBestPrice(BD.prices[id] || {}) };
+    }).filter(Boolean);
+    return { rows: rs, total: rs.reduce((sum, r) => sum + (r.price.value || 0), 0),
+      missing: rs.filter(r => !r.price.value).length };
+  })();
+  const rows = costed.rows;
+  const total = costed.total;
   
   box.innerHTML = `
     <div class="bd-cost-table">
@@ -5329,6 +5375,7 @@ function bdRenderCost() {
 }
 
 function bdBestPrice(p) {
+  if (window.AABuilds) return AABuilds.bestPrice(p, CITIES);
   let best = { value: 0, city: '' };
   for (const city of CITIES) {
     const v = p[city] ? p[city].sell : 0;
@@ -5339,7 +5386,8 @@ function bdBestPrice(p) {
 
 function bdCreateAlert(currentCost) {
   const b = BD.current;
-  const threshold = Math.round(currentCost * 0.9); // alerta cuando baja 10%
+  // alerta cuando baja 10% (AABuilds.ALERT_DROP)
+  const threshold = window.AABuilds ? AABuilds.alertThreshold(currentCost) : Math.round(currentCost * 0.9);
   const alert = {
     uid: 'bd-' + b.id,
     id: b.items.mainHand || b.items.chest || 'build',
@@ -5377,7 +5425,10 @@ document.addEventListener('click', e => {
     const id = +dup.dataset.bdDup;
     const orig = BD.list.find(b => b.id === id);
     if (orig) {
-      const copy = { ...orig, id: Date.now(), name: orig.name + ' (copia)', createdAt: Date.now() };
+      /* AABuilds.duplicate clona los slots: antes copia y original
+         compartían el mismo objeto items y editar una pisaba la otra */
+      const copy = window.AABuilds ? AABuilds.duplicate(orig)
+        : { ...orig, items: { ...orig.items }, id: Date.now(), name: orig.name + ' (copia)', createdAt: Date.now() };
       BD.list.push(copy);
       bdSave();
       bdRender();
