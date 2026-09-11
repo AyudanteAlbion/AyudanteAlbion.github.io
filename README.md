@@ -156,7 +156,9 @@ npm test                              # suite completa
 cd albion-app && python3 server.py    # app en http://localhost:3000
 ```
 
-La suite cubre los módulos del frontend, las regresiones de Mercado Negro y Granja, la QA general con jsdom, el smoke test, el Tracker por Zona y el Worker (OAuth, sesiones, sincronización y allowlist del proxy). El servidor local incluye simuladores de Discord y de la nube, así que se puede probar todo el flujo sin configurar Cloudflare.
+La suite cubre los módulos del frontend, los recursos del artefacto publicado, la integración de `app.js` con los módulos cargados, las regresiones de Mercado Negro y Granja, la QA general con jsdom, el smoke test, el Tracker por Zona y el Worker (OAuth, sesiones, sincronización y allowlist del proxy). El servidor local incluye simuladores de Discord y de la nube, así que se puede probar todo el flujo sin configurar Cloudflare.
+
+Ojo con una diferencia del entorno local: `server.py` sirve la carpeta entera, mientras que la web y el `.exe` publican solo lo que sus scripts de deploy copian. Por eso `assets-test.js` corre sobre el artefacto ya armado, en el workflow de Pages y en `build.sh`, y corta el proceso si `index.html` referencia algo que no llegó.
 
 Las reglas de arquitectura y el estado de la modularización están en [`albion-app/js/README.md`](albion-app/js/README.md). Después de cada cambio hay que ejecutar `npm test`.
 

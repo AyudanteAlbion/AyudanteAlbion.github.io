@@ -28,9 +28,16 @@ echo "── 3/5 · Sincronizando albion-exe/app/"
 mkdir -p albion-exe/app
 cp albion-app/index.html albion-exe/app/index.html
 cp albion-app/app.js albion-app/styles.css albion-exe/app/
+# Módulos del frontend: index.html los carga con <script src="js/...">. Sin
+# esta copia el .exe los pide y recibe 404, y la app cae a los fallbacks.
+# El README de la carpeta es documentación de desarrollo: no se embebe.
+rm -rf albion-exe/app/js && cp -r albion-app/js albion-exe/app/ && rm -f albion-exe/app/js/README.md
 rm -rf albion-exe/app/data && cp -r albion-app/data albion-exe/app/
 rm -rf albion-exe/app/icons && cp -r albion-app/icons albion-exe/app/
 cp -r albion-app/img albion-exe/app/ && rm -rf albion-exe/app/img/logo-opts
+# Verificación del artefacto embebido: si index.html referencia algo que no
+# está en albion-exe/app/, el build aborta antes de compilar el .exe.
+node albion-app/assets-test.js albion-exe/app
 echo "   OK"
 
 echo "── 4/5 · Compilando AyudanteAlbion.exe"
