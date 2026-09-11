@@ -1,4 +1,4 @@
-name: 🏗️ Build y publicar release
+name: Release
 
 # Con un tag v*, un release publicado o una ejecución manual: verifica las regresiones,
 # compila el .exe de Windows y genera el .zip, y publica todo como Release.

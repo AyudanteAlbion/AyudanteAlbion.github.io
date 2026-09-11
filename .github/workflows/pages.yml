@@ -7,7 +7,7 @@
 # detiene en vez de publicar una web que tira 404 en silencio.
 # Las actions van pineadas por SHA de commit (con su versión en un comentario):
 # si un tag se moviera en upstream, acá seguimos ejecutando el código auditado.
-name: Publicar en la web
+name: Pages
 on:
   push:
     branches: [main]
