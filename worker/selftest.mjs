@@ -399,3 +399,4 @@ try {
 
 console.log(`\n${RESULTS.ok} OK · ${RESULTS.err} errores`);
 process.exit(RESULTS.err ? 1 : 0);
+
