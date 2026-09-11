@@ -1457,3 +1457,18 @@ img { max-width: 100%; }
   #wmMinimap { height: 300px; }
   .wm-route-form .search { min-width: 100%; }
 }
+
+/* ---- sincronización entre dispositivos (Registro de operaciones) ---- */
+.sync-box {
+  margin: 14px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--panel-2);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.sync-box.sync-off { opacity: .78; }
+.sync-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.sync-title { font-weight: 600; font-size: .88rem; }
+.sync-state { color: var(--muted); font-size: .78rem; flex: 1; min-width: 0; }
+.sync-box .toggles.inline:empty { display: none; }
+@media (max-width: 720px) {
+  .sync-head { flex-direction: column; gap: 2px; }
+}
