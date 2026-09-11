@@ -278,6 +278,119 @@ check(mlBare.status === 200 && seen.at(-1).endsWith('/api/home'), '/murderledger
 const mlEvil = await wp.fetch(new Request('http://w.test/murderledger/home', { headers: { Origin: 'https://evil.example' } }));
 check(mlEvil.status === 403, 'murderledger: Origin ajeno → 403', 'murderledger: Origin ajeno aceptado');
 
+/* ============ 9 · /sync — copia en la nube de los datos del usuario ============ */
+console.log('\n— /sync (Workers KV) —');
+
+/* KV falso: mismo contrato que Cloudflare (get/put/delete + 'json') */
+function kvMock() {
+  const store = new Map();
+  return {
+    store,
+    async get(k, type) {
+      const v = store.get(k);
+      if (v === undefined) return null;
+      return type === 'json' ? JSON.parse(v) : v;
+    },
+    async put(k, v) { store.set(k, String(v)); },
+    async delete(k) { store.delete(k); },
+  };
+}
+
+const KV = kvMock();
+const ENV_KV = { ...ENV, AA_SYNC: KV };
+const wkv = createWorker(ENV_KV, netSpy);
+const APP_ORIGIN = 'https://ayudantealbion.github.io';
+const sy = (method, tok, body) => wkv.fetch(new Request('http://w.test/sync?s=' + encodeURIComponent(tok), {
+  method,
+  headers: { Origin: APP_ORIGIN, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+  ...(body ? { body: JSON.stringify(body) } : {}),
+}));
+
+/* sesiones firmadas de verdad, como las que emite el callback */
+const mkSession = async (id, member) => {
+  const pl = b64url({ u: { i: id, n: 'Tester', a: '' }, m: member, t: Date.now(), e: Date.now() + 86400e3 });
+  return pl + '.' + (await hmac(SESSION_KEY, pl));
+};
+const tokMember = await mkSession('42', true);
+const tokOther = await mkSession('77', true);
+const tokNotMember = await mkSession('88', false);
+
+/* /discord/config avisa si la nube está disponible */
+const cfgKv = await (await wkv.fetch(new Request('http://w.test/discord/config'))).json();
+check(cfgKv.sync === true, 'config: sync=true cuando el binding KV está vinculado', 'config: sync → ' + cfgKv.sync);
+const cfgNoKv = await (await createWorker(ENV).fetch(new Request('http://w.test/discord/config'))).json();
+check(cfgNoKv.sync === false, 'config: sync=false sin binding KV (la app oculta el botón)', 'config sin KV: sync → ' + cfgNoKv.sync);
+
+/* sin KV la ruta responde 503 y la app sigue trabajando local */
+const wNoKv = createWorker(ENV, netSpy);
+const noKv = await wNoKv.fetch(new Request('http://w.test/sync?s=' + encodeURIComponent(tokMember), { headers: { Origin: APP_ORIGIN } }));
+check(noKv.status === 503 && (await noKv.json()).error === 'no-configurado',
+  'sync sin binding KV → 503 no-configurado (no rompe la app)', 'sync sin KV → ' + noKv.status);
+
+/* control de acceso */
+const noSess = await sy('GET', 'basura.invalida');
+check(noSess.status === 401 && (await noSess.json()).error === 'sesion', 'sync: sesión inválida → 401', 'sync: sesión inválida → ' + noSess.status);
+const forgedSync = await sy('GET', b64url({ u: { i: '666', n: 'x', a: '' }, m: true, t: Date.now(), e: Date.now() + 86400e3 }) + '.' + 'a'.repeat(64));
+check(forgedSync.status === 401, 'sync: sesión forjada → 401 (el KV nunca se toca)', 'sync: aceptó sesión forjada → ' + forgedSync.status);
+const expiredTokPl = b64url({ u: { i: '42', n: 'x', a: '' }, m: true, t: 0, e: Date.now() - 1000 });
+const expiredTok = expiredTokPl + '.' + (await hmac(SESSION_KEY, expiredTokPl));
+check((await sy('GET', expiredTok)).status === 401, 'sync: sesión vencida → 401', 'sync: aceptó sesión vencida');
+const notMember = await sy('GET', tokNotMember);
+check(notMember.status === 403 && (await notMember.json()).error === 'no-miembro',
+  'sync: sesión válida pero no miembro de SG → 403', 'sync: no-miembro aceptado → ' + notMember.status);
+const evilSync = await wkv.fetch(new Request('http://w.test/sync?s=' + encodeURIComponent(tokMember), { headers: { Origin: 'https://evil.example' } }));
+check(evilSync.status === 403, 'sync: Origin ajeno → 403', 'sync: Origin ajeno aceptado → ' + evilSync.status);
+const badMethod = await wkv.fetch(new Request('http://w.test/sync?s=' + encodeURIComponent(tokMember), { method: 'POST', headers: { Origin: APP_ORIGIN } }));
+check(badMethod.status === 405, 'sync: POST → 405 (solo GET/PUT/DELETE)', 'sync: POST → ' + badMethod.status);
+const pre = await wkv.fetch(new Request('http://w.test/sync', { method: 'OPTIONS', headers: { Origin: APP_ORIGIN } }));
+check(pre.status === 204 && (pre.headers.get('access-control-allow-methods') || '').includes('PUT'),
+  'sync: preflight OPTIONS permite PUT', 'sync: preflight → ' + pre.status + ' / ' + pre.headers.get('access-control-allow-methods'));
+
+/* vacío al principio */
+const empty = await (await sy('GET', tokMember)).json();
+check(empty.ok === true && empty.data === null && empty.updated === 0, 'sync: sin copia previa → {ok, data:null}', 'sync vacío → ' + JSON.stringify(empty));
+
+/* subida y bajada de ida y vuelta */
+const payload = { tradeLog: JSON.stringify([{ id: 1, item: 'T4_BAG' }]), favorites: JSON.stringify(['T4_BAG']), dailyBonus_Caerleon: '3' };
+const put1 = await sy('PUT', tokMember, { updated: Date.now(), data: payload });
+const put1j = await put1.json();
+check(put1.status === 200 && put1j.ok === true && put1j.keys === 3, 'sync PUT: guarda 3 claves', 'sync PUT → ' + JSON.stringify(put1j));
+const get1 = await (await sy('GET', tokMember)).json();
+check(get1.ok && get1.data && get1.data.tradeLog === payload.tradeLog && get1.data.dailyBonus_Caerleon === '3',
+  'sync GET: devuelve tal cual lo guardado (ida y vuelta)', 'sync GET → ' + JSON.stringify(get1.data));
+check(get1.updated === put1j.updated, 'sync: la marca de tiempo sobrevive', 'sync updated → ' + get1.updated + ' vs ' + put1j.updated);
+const acao = (await sy('GET', tokMember)).headers.get('access-control-allow-origin');
+check(acao === APP_ORIGIN, 'sync: responde con el Origin concreto (no *) porque lleva datos del usuario', 'sync CORS → ' + acao);
+
+/* aislamiento entre usuarios: la clave del KV es el ID de Discord */
+const otherGet = await (await sy('GET', tokOther)).json();
+check(otherGet.ok === true && otherGet.data === null,
+  'sync: otro usuario no ve la copia ajena (clave por ID de Discord)', 'sync: fuga entre usuarios → ' + JSON.stringify(otherGet.data));
+
+/* validación del contenido */
+const badKey = await sy('PUT', tokMember, { data: { aaDiscordSession: '"robada"', proxyUrl: '"http://evil"' } });
+check(badKey.status === 400 && (await badKey.json()).error === 'vacio',
+  'sync PUT: la sesión y el proxy nunca se guardan (claves fuera de la lista)', 'sync PUT guardó claves prohibidas → ' + badKey.status);
+const mixed = await sy('PUT', tokMember, { data: { favorites: '[]', aaDiscordSession: '"robada"' } });
+check(mixed.status === 200 && (await (await sy('GET', tokMember)).json()).data.aaDiscordSession === undefined,
+  'sync PUT: descarta las claves prohibidas y guarda el resto', 'sync PUT: se coló la sesión en el KV');
+const badVal = await sy('PUT', tokMember, { data: { favorites: 'esto no es json' } });
+check(badVal.status === 400 && (await badVal.json()).error === 'valor', 'sync PUT: valor que no es JSON → 400', 'sync PUT: aceptó JSON inválido → ' + badVal.status);
+const badShape = await sy('PUT', tokMember, { data: ['a'] });
+check(badShape.status === 400, 'sync PUT: data que no es objeto → 400', 'sync PUT: aceptó un arreglo');
+const huge = await wkv.fetch(new Request('http://w.test/sync?s=' + encodeURIComponent(tokMember), {
+  method: 'PUT', headers: { Origin: APP_ORIGIN, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ data: { tradeLog: JSON.stringify(['x'.repeat(600 * 1024)]) } }),
+}));
+check(huge.status === 413 && (await huge.json()).error === 'tamano', 'sync PUT: por encima del límite → 413', 'sync PUT: aceptó un payload gigante → ' + huge.status);
+const futureDate = await (await sy('PUT', tokMember, { updated: Date.now() + 10 * 365 * 24 * 3600e3, data: { favorites: '[]' } })).json();
+check(futureDate.updated <= Date.now() + 61e3, 'sync PUT: fecha futura absurda → se acota a ahora', 'sync PUT: aceptó fecha del futuro → ' + futureDate.updated);
+
+/* borrado */
+const del = await (await sy('DELETE', tokMember)).json();
+check(del.ok === true && del.deleted === true, 'sync DELETE: borra la copia', 'sync DELETE → ' + JSON.stringify(del));
+check((await (await sy('GET', tokMember)).json()).data === null, 'sync: después del borrado no queda nada', 'sync: la copia sobrevivió al borrado');
+
 /* gameinfo/twitch dependen de la red: tolerantes */
 try {
   const res = await w6.fetch(new Request('http://w.test/gameinfo/search?q=x'));

@@ -32,6 +32,23 @@ Cargarlas **todas como Secret** (así ningún deploy las borra):
 | `DISCORD_CLIENT_SECRET` | **Secret** | Misma pantalla → Client Secret (Reset si no lo tenés) |
 | `AA_SESSION_KEY` | **Secret** | `openssl rand -hex 32` (≥32 chars, **distinta** del Client Secret) |
 | `SG_DISCORD_GUILD_ID` | ya en `wrangler.toml` | `998772435048472628` (público; no hace falta en el dashboard) |
+| `AA_SYNC` | ya en `wrangler.toml` | Binding de Workers KV para la sincronización entre dispositivos (ver más abajo) |
+
+#### Binding KV de sincronización (`AA_SYNC`)
+
+Ya está declarado en `wrangler.toml` y apunta al namespace
+`28610fd64c05426781845c40b2686601`. Si hubiera que recrearlo:
+
+```bash
+npx wrangler kv namespace create AA_SYNC     # devuelve el id nuevo
+# pegar ese id en el bloque [[kv_namespaces]] de wrangler.toml y desplegar
+npx wrangler deploy --dry-run                # debe listar env.AA_SYNC
+```
+
+Sin el binding la app no se rompe: `/sync` responde `503 no-configurado`,
+`/discord/config` informa `sync:false` y el bloque de nube del Registro de
+operaciones explica que la sincronización no está habilitada. Todo lo demás
+sigue funcionando contra `localStorage`.
 
 Generar la clave de sesión:
 
@@ -166,6 +183,10 @@ En el navegador (https://ayudantealbion.github.io, Ctrl+F5):
    - Si el Worker viejo sigue arriba, las peticiones a `guildmatches` fallan y
      el mapa queda vacío o con error: mirar la pestaña Network.
 4. Recargar: la sesión Discord sigue activa (`/discord/verify`).
+5. **Registro de operaciones** → bloque «☁️ Sincronizar entre dispositivos»:
+   los tres botones aparecen y «Subir a la nube» responde con la fecha de la
+   copia. `curl https://ayudantealbion.josemesina21.workers.dev/discord/config`
+   debe traer `"sync":true`.
 
 ## Si algo sale mal
 
@@ -179,6 +200,9 @@ En el navegador (https://ayudantealbion.github.io, Ctrl+F5):
 | «No pudimos confirmar la sesión» | Deploy en curso o `/discord/verify` caído → Deployments. |
 | Mapa de Guerra vacío / 404 en Network a `guildmatches` | Worker **sin** el código nuevo. Merge a `main` o `npx wrangler deploy`. |
 | Mapa con error del killboard (502) | Albion/gameinfo saturado; «Actualizar» en unos segundos. |
+| Botones de nube ocultos / «sincronización no habilitada» | El binding KV no llegó al deploy: `npx wrangler deploy --dry-run` debe listar `env.AA_SYNC`, y `/discord/config` responder `sync:true`. |
+| `/sync` → 403 `no-miembro` | La sesión es válida pero Discord no ve a esa persona en el servidor de SG: «Volver a verificar» en el Salón. |
+| `/sync` → 413 `tamano` | Los datos del usuario pasan los 512 KB: vaciar historial de precios o registro viejo antes de subir. |
 | Rollback | Dashboard → `ayudantealbion` → **Deployments** → Rollback. Web: `git revert` en `main`. |
 
 ## Diagnóstico histórico (2026-09-09)
@@ -191,7 +215,7 @@ lo borró. Se recargó como **Secret** y se agregó `keep_vars = true` +
 ## Pruebas locales (sin tocar Cloudflare)
 
 ```bash
-node worker/selftest.mjs           # OAuth + verify + allowlist del proxy (sin red)
+node worker/selftest.mjs           # OAuth + verify + /sync (KV simulado) + allowlist del proxy (sin red)
 cd albion-app && python3 server.py # http://127.0.0.1:3000 — proxy gameinfo abierto + Discord simulado
 cd albion-app && node qa-test.js   # QA completa (requiere jsdom)
 ```

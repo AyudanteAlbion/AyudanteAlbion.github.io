@@ -33,7 +33,7 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 | Transmutación | Costo de subir tier o encantamiento pagando plata, comparado contra comprar el destino |
 | Artefactos | Valor esperado del melding de fragmentos según la estrategia elegida |
 | Buscador de precios | Cualquier ítem, todas las calidades, las 7 ciudades más el Mercado Negro, historial de capturas, tendencia y oportunidades de flipping |
-| Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem y exportación CSV |
+| Registro de operaciones | Diario personal de compras y ventas con P&L, resumen por ítem, exportación CSV, respaldo en archivo y **sincronización entre dispositivos** para miembros SG |
 | Perfil | Fama, kills y muertes del personaje real desde el killboard oficial, más el cálculo del costo de Foco según tus especializaciones |
 | SG → Spetsnaz Grail | Información del gremio, enlaces a su web y Discord, y creadores con estado EN VIVO / OFFLINE de Twitch |
 | SG → Salón de miembros | Ingreso con Discord; los miembros verificados desbloquean ranking, top semanal, vínculo de personaje, exportación CSV, compositor de builds, **Mapa de Guerra** (territorios reconstruidos desde GvG del killboard, próximos ataques y rivales) y **Tracker por Zona** (actividad PvP por mapa real: minimapa del mundo, peligro por zona, rutas seguras, alertas de zona y detalle de batallas). Son botones separados en el Salón |
@@ -45,7 +45,7 @@ Comportamientos comunes a las herramientas de cálculo:
 
 - Todo precio es editable a mano por ítem, ciudad y calidad, con un botón para volver al valor de la API.
 - Cada receta o ítem se puede marcar como favorito y aparece agrupado en la pantalla de inicio.
-- Filtros, rutas, favoritos y registros se guardan en `localStorage` del navegador; desde el Registro de operaciones se exportan o importan como un único JSON de respaldo.
+- Filtros, rutas, favoritos y registros se guardan en `localStorage` del navegador; desde el Registro de operaciones se exportan o importan como un único JSON de respaldo, o se sincronizan con la nube si ingresaste con Discord (ver «Sincronización entre dispositivos»).
 
 ## Bonos de Granja / Islas
 
@@ -85,6 +85,36 @@ El usuario revisa y envía el reporte desde su cuenta de GitHub; los issues son 
 El botón de arriba lleva al **servidor de Discord de Ayudante Albion** (https://discord.gg/FH3RzqMPA4): ahí se comparten novedades, avisos de versiones, bugs y pedidos de funciones de la app. Dentro de la app el mismo destino está en el **Inicio**, en la pastilla «Únete a nuestra comunidad», justo debajo del crédito del gremio.
 
 Es un servidor separado del del gremio — para jugar con Spetsnaz Grail hay que pasar por su Discord (https://discord.gg/TCNWUUA7UY), que además es el que verifica el acceso al Salón de miembros.
+
+## Sincronización entre dispositivos
+
+Toda la app vive en el `localStorage` del navegador: cambiar de PC, de navegador o reinstalar el ejecutable dejaba el registro de operaciones, los favoritos y los precios manuales atrás. Los **miembros de SG que ingresaron con Discord** ahora pueden guardar una copia en la nube y bajarla en otro dispositivo, desde el bloque **☁️ Sincronizar entre dispositivos** del *Registro de operaciones*.
+
+- **Subir a la nube**: guarda los datos de este dispositivo y reemplaza la copia anterior.
+- **Bajar de la nube**: trae la copia y sobreescribe los datos locales.
+- **Borrar copia**: elimina lo guardado en el servidor; los datos locales no se tocan.
+
+Nada es automático. Subir y bajar son dos botones explícitos, cada uno pide confirmación y muestra la fecha de la copia remota: pisar el registro de operaciones de alguien sin avisar no es aceptable.
+
+Se sincronizan las mismas claves que el respaldo en archivo (registro, favoritos, precios manuales, alertas, planes de crafteo, preferencias de flipping y granja, historial de precios, perfil y bonos diarios). **Nunca** viajan la sesión de Discord ni la URL del proxy: sincronizar la sesión permitiría que un dispositivo robe el ingreso de otro.
+
+### Cómo funciona (técnico)
+
+El Worker expone `/sync` con tres métodos, todos atados a la sesión firmada:
+
+| Método | Qué hace |
+|---|---|
+| `GET /sync?s=<sesión>` | `{ok, updated, data, bytes}` — la copia del usuario |
+| `PUT /sync?s=<sesión>` | Guarda `{updated, data}` del cuerpo JSON |
+| `DELETE /sync?s=<sesión>` | Borra la copia |
+
+Es la única ruta del Worker que acepta métodos de escritura. Antes de tocar el KV valida, en este orden: origen permitido, firma HMAC y vigencia de la sesión (idéntica comprobación que `/discord/verify`), y **membresía de SG**. La clave del KV es `u:<id de Discord>`, así que nadie puede leer ni pisar los datos de otro sin su sesión firmada — una sesión forjada devuelve 401 sin llegar al almacenamiento.
+
+Los límites protegen el namespace: 512 KB por usuario, 64 claves, 256 KB por clave, allowlist de nombres de clave y cada valor debe ser JSON válido (una copia corrupta no puede dejar sin abrir la app de otro dispositivo). La copia caduca a los 180 días sin uso. El cliente vuelve a filtrar y validar lo que baja, no solo el servidor.
+
+`GET /discord/config` ahora informa `sync: true|false` según esté vinculado el binding KV. Si no lo está, `/sync` responde `503 no-configurado`, la app oculta los botones y explica el motivo en vez de romperse: todo sigue funcionando contra `localStorage` como antes.
+
+Para probarlo sin Cloudflare, `server.py` incluye el mismo contrato con un almacén en memoria, junto al simulador de Discord.
 
 ## Black Market: solo destino de venta
 
@@ -143,6 +173,7 @@ Todo vive en Cloudflare → Workers & Pages → `ayudantealbion` → Settings �
 | `DISCORD_CLIENT_SECRET` | Secret | Client Secret de la misma pantalla (si se perdió: *Reset Secret*) |
 | `AA_SESSION_KEY` | Secret | Clave HMAC de sesiones: `openssl rand -hex 32` (≥32 caracteres, distinta del Client Secret) |
 | `SG_DISCORD_GUILD_ID` | `[vars]` en `wrangler.toml` | `998772435048472628` (ID del servidor de Spetsnaz Grail; es público) |
+| `AA_SYNC` | `[[kv_namespaces]]` en `wrangler.toml` | Namespace de Workers KV `28610fd64c05426781845c40b2686601` para la sincronización entre dispositivos |
 
 En el Developer Portal, OAuth2 → Redirects debe tener exactamente `https://ayudantealbion.josemesina21.workers.dev/discord/callback`. No hace falta bot.
 
@@ -153,9 +184,9 @@ Si alguna variable falta, la app no se rompe: el Salón muestra las herramientas
 ### Probar sin tocar Discord
 
 ```bash
-node worker/selftest.mjs           # OAuth, verificación de sesión y allowlist del proxy (incl. Mapa de Guerra), Discord simulado
+node worker/selftest.mjs           # OAuth, verificación de sesión, /sync sobre un KV simulado y allowlist del proxy, Discord simulado
 cd albion-app && python3 server.py # server local con simulador de consentimiento de Discord (miembro / no miembro)
-cd albion-app && node qa-test.js   # QA completa, incluye la Sala y el Mapa de Guerra
+cd albion-app && node qa-test.js   # QA completa, incluye la Sala, el Mapa de Guerra y la sincronización
 ```
 
 ## Ejecutable
@@ -177,7 +208,7 @@ El server local incluye un simulador del consentimiento de Discord (`/discord/lo
 - Todo dato que llega de fuera (Discord, killboard) se escapa antes de pintarse; los toasts usan texto plano.
 - La sesión de Discord solo se acepta después de que el Worker confirme su firma (`/discord/verify`).
 - El proxy del Worker reenvía únicamente las rutas del killboard que usa la app y solo a los orígenes de la app (GitHub Pages y localhost).
-- Los CSV neutralizan celdas que empiezan como fórmula; el respaldo solo exporta/importa claves de datos conocidas (nunca la sesión ni la configuración del proxy).
+- Los CSV neutralizan celdas que empiezan como fórmula; el respaldo y la sincronización solo mueven claves de datos conocidas (nunca la sesión ni la configuración del proxy).
 - `server.py` escucha solo en `127.0.0.1`.
 
 ## Precios

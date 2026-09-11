@@ -4547,6 +4547,9 @@ async function sgSaveSession(raw) {
   try { localStorage.setItem(SG_KEYS.sess, String(raw)); } catch (e) {}
   sgPaintAccount();
   sgRoomRender();
+  /* recién con sesión de miembro tiene sentido preguntar por la copia */
+  syPaint();
+  syRefresh(true);
   return 'ok';
 }
 
@@ -4556,6 +4559,8 @@ function sgLogout() {
   sgToggleMenu(false);
   sgPaintAccount();
   sgRoomRender();
+  /* la copia en la nube sigue existiendo; este dispositivo deja de verla */
+  SY.remote = null; SY.checked = false; syPaint();
   waToast('🔐 Sesión cerrada', 'Seguís pudiendo usar toda la app pública.');
 }
 
@@ -4584,6 +4589,10 @@ async function sgRefreshConfig() {
     SG.configured = cfg.configured;
     SG.loginUrl = cfg.loginUrl;
     SG.configMissing = cfg.missing || [];
+    /* el Worker informa si el binding KV de sincronización está vinculado */
+    const syBefore = SY.available;
+    SY.available = cfg.sync === true;
+    if (SY.available !== syBefore) { syPaint(); if (SY.available) syRefresh(true); }
     if (changed) {
       sgPaintAccount();
       const p = document.getElementById('tab-sg');
@@ -7835,7 +7844,11 @@ function sgInit() {
     SG.configured = cfg.configured;
     SG.loginUrl = cfg.loginUrl;
     SG.configMissing = cfg.missing || [];
+    /* el servidor dice si la copia en la nube está habilitada (binding KV) */
+    SY.available = cfg.sync === true;
     sgPaintAccount();
+    syPaint();
+    if (SY.available) syRefresh(true);
     const p = document.getElementById('tab-sg');
     if (p && p.classList.contains('active')) sgRoomRender();
     if (!cfg.configured && cfg.missing && cfg.missing.length) {
@@ -7854,7 +7867,7 @@ async function sgFetchConfig() {
     const r = await fetch('/discord/config', { cache: 'no-store' });
     if (r && r.ok) {
       const c = await r.json();
-      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login', missing: [] };
+      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login', missing: [], sync: c.sync !== false };
     }
   } catch (e) {}
   if (WORKER_URL) {
@@ -7864,14 +7877,211 @@ async function sgFetchConfig() {
         const c = await r.json();
         if (c && typeof c === 'object' && !Array.isArray(c)) {
           const missing = Array.isArray(c.missing) ? c.missing.map(String).slice(0, 8) : [];
-          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login'), missing };
+          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login'), missing, sync: c.sync === true };
         }
       }
     } catch (e) {}
   }
-  return { configured: false, loginUrl: '', missing: [] };
+  return { configured: false, loginUrl: '', missing: [], sync: false };
 }
+
+/* ====================================================================
+   ☁️ SINCRONIZACIÓN ENTRE DISPOSITIVOS
+   La app guarda todo en localStorage: cambiar de PC, de navegador o
+   reinstalar el ejecutable dejaba los datos atrás. Los miembros de SG
+   que ingresaron con Discord pueden subir esa misma información a una
+   copia en la nube (Workers KV) y bajarla en otro dispositivo.
+
+   Reglas conscientes:
+     · exactamente las mismas claves que el respaldo en archivo (SY_KEYS),
+       nunca la sesión de Discord ni la URL del proxy;
+     · el servidor valida la firma de la sesión: sin ingreso no hay nube;
+     · nada es automático — subir y bajar son dos botones explícitos, con
+       la fecha de cada lado a la vista, porque pisar el registro de
+       operaciones de alguien sin avisar es imperdonable.
+   ==================================================================== */
+const SY = { available: false, busy: false, remote: null, checked: false };
+/* misma lista que el respaldo en archivo (BK_KEYS), sin la sesión */
+const SY_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
+  'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory',
+  'tradeLog', 'aaSGChar', 'aaSGGuild'];
+const syKeyOk = k => typeof k === 'string' && (SY_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
+const SY_MAX_BYTES = 512 * 1024;
+
+function syToken() {
+  try { return localStorage.getItem(SG_KEYS.sess) || ''; } catch (e) { return ''; }
+}
+/* la nube requiere sesión verificada de miembro: el mismo criterio que el
+   Salón, para no ofrecer un botón que el servidor va a rechazar */
+function syEnabled() { return !!(SY.available && sgIsMember() && syToken()); }
+
+/* Igual que el resto del proxy: primero el server local (exe / server.py),
+   después el Worker. Devuelve la respuesta JSON o lanza. */
+async function syFetch(method, body) {
+  const q = '/sync?s=' + encodeURIComponent(syToken());
+  const init = { method, cache: 'no-store' };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+    init.headers = { 'Content-Type': 'application/json' };
+  }
+  const tryUrl = async u => {
+    const r = await fetch(u, init);
+    const j = await r.json().catch(() => null);
+    if (!j || typeof j !== 'object') return null;
+    return { status: r.status, json: j };
+  };
+  let out = null;
+  try { out = await tryUrl(q); } catch (e) {}
+  /* 503 = ese servidor no tiene la nube habilitada: vale la pena reintentar
+     con el Worker antes de dar la sincronización por caída */
+  if ((!out || out.status === 503 || out.status === 404) && WORKER_URL) {
+    try { const w = await tryUrl(WORKER_URL + q); if (w) out = w; } catch (e) {}
+  }
+  if (!out) throw new Error('sin respuesta del servidor');
+  if (!out.json.ok) throw new Error(syErrMsg(out.json.error, out.json));
+  return out.json;
+}
+
+function syErrMsg(code, j) {
+  switch (code) {
+    case 'sesion': return 'Tu sesión de Discord venció. Volvé a ingresar.';
+    case 'no-miembro': return 'La nube es solo para miembros verificados de Spetsnaz Grail.';
+    case 'no-configurado': return 'La sincronización todavía no está habilitada en el servidor.';
+    case 'tamano': return 'Tus datos superan el límite de ' + Math.round((j.max || SY_MAX_BYTES) / 1024) + ' KB. Vaciá historial o registro viejo.';
+    case 'claves': return 'Demasiadas claves para sincronizar.';
+    case 'valor': case 'formato': case 'json': return 'Los datos locales no tienen un formato válido.';
+    case 'vacio': return 'No hay datos para subir todavía.';
+    default: return 'No se pudo sincronizar. Probá de nuevo en un momento.';
+  }
+}
+
+/* recoge del navegador exactamente lo que se sincroniza */
+function syCollect() {
+  const data = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (syKeyOk(k)) data[k] = localStorage.getItem(k);
+    }
+  } catch (e) {}
+  return data;
+}
+
+function syFmtDate(ms) {
+  if (!ms) return 'nunca';
+  try { return new Date(ms).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch (e) { return new Date(ms).toISOString().slice(0, 16).replace('T', ' '); }
+}
+
+async function syRefresh(silent) {
+  if (!syEnabled()) { SY.remote = null; syPaint(); return; }
+  try {
+    const j = await syFetch('GET');
+    SY.remote = j.data ? { updated: j.updated || 0, keys: Object.keys(j.data).length, bytes: j.bytes || 0 } : null;
+    SY.checked = true;
+  } catch (e) {
+    SY.remote = null;
+    if (!silent) waToast('☁️ Sincronización', e.message, 'err', () => gotoTab('ledger'));
+  }
+  syPaint();
+}
+
+async function syUpload() {
+  if (SY.busy) return;
+  const data = syCollect();
+  const n = Object.keys(data).length;
+  if (!n) { waToast('☁️ Sincronización', 'Todavía no hay datos para subir.', 'err', () => gotoTab('ledger')); return; }
+  if (SY.remote && SY.remote.updated) {
+    if (!confirm(`En la nube hay una copia del ${syFmtDate(SY.remote.updated)}.\n¿Reemplazarla con los datos de este dispositivo (${n} claves)?`)) return;
+  }
+  SY.busy = true; syPaint();
+  try {
+    const j = await syFetch('PUT', { updated: Date.now(), data });
+    SY.remote = { updated: j.updated, keys: j.keys, bytes: j.bytes };
+    waToast('☁️ Datos guardados', `${j.keys} claves en la nube · ${Math.round((j.bytes || 0) / 1024)} KB`, '', () => gotoTab('ledger'));
+  } catch (e) {
+    waToast('☁️ No se pudo subir', e.message, 'err', () => gotoTab('ledger'));
+  }
+  SY.busy = false; syPaint();
+}
+
+async function syDownload() {
+  if (SY.busy) return;
+  SY.busy = true; syPaint();
+  try {
+    const j = await syFetch('GET');
+    if (!j.data || !Object.keys(j.data).length) {
+      waToast('☁️ Sin copia', 'Todavía no subiste datos desde ningún dispositivo.', 'err', () => gotoTab('ledger'));
+      SY.busy = false; syPaint(); return;
+    }
+    /* mismo filtro que el respaldo por archivo: lo que baja de la nube se
+       valida acá también, no solo en el servidor */
+    const entries = Object.entries(j.data).filter(([k, v]) => syKeyOk(k) && typeof v === 'string');
+    for (const [, v] of entries) JSON.parse(v);
+    if (!entries.length) throw new Error('La copia de la nube no tiene datos utilizables.');
+    if (!confirm(`Copia del ${syFmtDate(j.updated)} con ${entries.length} claves.\n¿Traerla? Se sobreescribirán los datos de ESTE dispositivo.`)) {
+      SY.busy = false; syPaint(); return;
+    }
+    for (const [k, v] of entries) localStorage.setItem(k, v);
+    alert('Datos restaurados desde la nube. La página se recargará para aplicarlos.');
+    location.reload();
+  } catch (e) {
+    waToast('☁️ No se pudo bajar', e.message || 'Error al leer la copia.', 'err', () => gotoTab('ledger'));
+  }
+  SY.busy = false; syPaint();
+}
+
+async function syDelete() {
+  if (SY.busy) return;
+  if (!confirm('¿Borrar tu copia en la nube? Los datos de este dispositivo no se tocan.')) return;
+  SY.busy = true; syPaint();
+  try {
+    await syFetch('DELETE');
+    SY.remote = null;
+    waToast('☁️ Copia borrada', 'Ya no queda nada tuyo en el servidor.', '', () => gotoTab('ledger'));
+  } catch (e) {
+    waToast('☁️ No se pudo borrar', e.message, 'err', () => gotoTab('ledger'));
+  }
+  SY.busy = false; syPaint();
+}
+
+/* Pinta el bloque del Registro de operaciones. Si la nube no está
+   disponible (Worker sin KV, o el usuario no ingresó) explica por qué,
+   en vez de esconder el botón sin motivo. */
+function syPaint() {
+  const box = document.getElementById('syncBox');
+  if (!box) return;
+  const btns = ['syUp', 'syDown', 'syDel'];
+  const state = document.getElementById('syState');
+  const on = syEnabled();
+  box.classList.toggle('sync-off', !on);
+  for (const id of btns) {
+    const b = document.getElementById(id);
+    if (b) { b.disabled = !on || SY.busy; b.hidden = !on; }
+  }
+  if (!state) return;
+  if (!SG.configured) state.textContent = 'El ingreso con Discord no está activo en el servidor de la app.';
+  else if (!SG.session) state.textContent = 'Ingresá con Discord (barra superior) para guardar tus datos en la nube.';
+  else if (!sgIsMember()) state.textContent = 'La copia en la nube es un beneficio de los miembros de Spetsnaz Grail.';
+  else if (!SY.available) state.textContent = 'La sincronización todavía no está habilitada en el servidor.';
+  else if (SY.busy) state.textContent = 'Sincronizando…';
+  else if (SY.remote) state.textContent = `Última copia en la nube: ${syFmtDate(SY.remote.updated)} · ${SY.remote.keys} claves · ${Math.round((SY.remote.bytes || 0) / 1024)} KB`;
+  else state.textContent = SY.checked ? 'Todavía no hay ninguna copia tuya en la nube.' : 'Consultando la nube…';
+}
+
+function syInit() {
+  const up = document.getElementById('syUp');
+  if (!up) return;
+  up.addEventListener('click', syUpload);
+  document.getElementById('syDown').addEventListener('click', syDownload);
+  document.getElementById('syDel').addEventListener('click', syDelete);
+  syPaint();
+  syRefresh(true);
+}
+/* sgInit() va después del bloque de sincronización: al restaurar la sesión
+   guardada llama a syPaint(), y las constantes de arriba tienen que existir. */
 sgInit();
+syInit();
 
 /* ====================================================================
    🗺️ arranque del tracker: alertas de zona + enlace compartible ?map=
