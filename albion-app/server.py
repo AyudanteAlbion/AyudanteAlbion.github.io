@@ -46,6 +46,22 @@ GAMEINFO_ROUTES = [
 ]
 GAMEINFO_PARAMS = {'q', 'range', 'limit', 'offset', 'sort', 'guildId'}
 
+# --- sincronización simulada: mismas reglas que el Worker (worker/index.js) ---
+SYNC_STORE = {}                      # id de Discord -> copia (solo en memoria)
+SYNC_MAX_BYTES = 512 * 1024
+SYNC_MAX_KEYS = 64
+SYNC_MAX_VALUE = 256 * 1024
+SYNC_KEYS = {
+    'alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
+    'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory',
+    'marketHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild',
+}
+_DAILY_RE = re.compile(r'^dailyBonus_[A-Za-z_]{1,40}$')
+
+
+def _sync_key_ok(k):
+    return isinstance(k, str) and (k in SYNC_KEYS or bool(_DAILY_RE.match(k)))
+
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/gameinfo/'):
@@ -62,7 +78,110 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             return self.discord_callback()
         if self.path.startswith('/discord/verify'):
             return self.discord_verify()
+        if self.path.startswith('/sync'):
+            return self.sync_get()
         return super().do_GET()
+
+    def do_PUT(self):
+        if self.path.startswith('/sync'):
+            return self.sync_put()
+        return self.send_error(405)
+
+    def do_DELETE(self):
+        if self.path.startswith('/sync'):
+            return self.sync_delete()
+        return self.send_error(405)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, PUT, DELETE, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', '*')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    # ---------- sincronización simulada (KV en memoria) ----------
+    # En producción esto vive en Workers KV (binding AA_SYNC). Acá alcanza con
+    # un dict de proceso para probar el flujo completo de la app sin Cloudflare.
+
+    def _sync_session(self):
+        """Devuelve la sesión del simulador o None. Misma regla que el Worker:
+        firma válida, no vencida y miembro de SG."""
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        raw = (q.get('s') or [''])[0]
+        try:
+            pl, sig = raw.split('.', 1)
+            if sig != 'dev-sin-firma':
+                return None
+            pad = '=' * (-len(pl) % 4)
+            p = json.loads(base64.urlsafe_b64decode(pl + pad))
+            if p.get('e', 0) <= int(time.time() * 1000):
+                return None
+            if p.get('m') is not True or not p.get('u', {}).get('i'):
+                return None
+            return p
+        except Exception:
+            return None
+
+    def _sync_json(self, obj, status=200):
+        body = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def sync_get(self):
+        s = self._sync_session()
+        if not s:
+            return self._sync_json({'ok': False, 'error': 'sesion'}, 401)
+        rec = SYNC_STORE.get(s['u']['i'])
+        if not rec:
+            return self._sync_json({'ok': True, 'updated': 0, 'data': None})
+        return self._sync_json({'ok': True, 'updated': rec['updated'], 'data': rec['data'],
+                                'bytes': rec['bytes']})
+
+    def sync_put(self):
+        s = self._sync_session()
+        if not s:
+            return self._sync_json({'ok': False, 'error': 'sesion'}, 401)
+        n = int(self.headers.get('Content-Length') or 0)
+        if n > SYNC_MAX_BYTES:
+            return self._sync_json({'ok': False, 'error': 'tamano', 'max': SYNC_MAX_BYTES}, 413)
+        try:
+            body = json.loads(self.rfile.read(n) or b'{}')
+        except Exception:
+            return self._sync_json({'ok': False, 'error': 'json'}, 400)
+        data = body.get('data')
+        if not isinstance(data, dict):
+            return self._sync_json({'ok': False, 'error': 'formato'}, 400)
+        entries = {k: v for k, v in data.items()
+                   if _sync_key_ok(k) and isinstance(v, str) and len(v) <= SYNC_MAX_VALUE}
+        if not entries:
+            return self._sync_json({'ok': False, 'error': 'vacio'}, 400)
+        if len(entries) > SYNC_MAX_KEYS:
+            return self._sync_json({'ok': False, 'error': 'claves', 'max': SYNC_MAX_KEYS}, 400)
+        for v in entries.values():
+            try:
+                json.loads(v)
+            except Exception:
+                return self._sync_json({'ok': False, 'error': 'valor'}, 400)
+        updated = body.get('updated')
+        now = int(time.time() * 1000)
+        updated = updated if isinstance(updated, (int, float)) and 0 < updated <= now + 60000 else now
+        size = len(json.dumps({'v': 1, 'updated': updated, 'data': entries}))
+        SYNC_STORE[s['u']['i']] = {'updated': int(updated), 'data': entries, 'bytes': size}
+        return self._sync_json({'ok': True, 'updated': int(updated),
+                                'keys': len(entries), 'bytes': size})
+
+    def sync_delete(self):
+        s = self._sync_session()
+        if not s:
+            return self._sync_json({'ok': False, 'error': 'sesion'}, 401)
+        SYNC_STORE.pop(s['u']['i'], None)
+        return self._sync_json({'ok': True, 'deleted': True})
 
     # ---------- acceso SG: simulador de Discord (solo desarrollo) ----------
     # En producción el flujo real lo resuelven Discord y el Worker de
@@ -84,7 +203,7 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path, '', ''))
 
     def discord_config(self):
-        body = json.dumps({'configured': True, 'loginUrl': '/discord/login'}).encode()
+        body = json.dumps({'configured': True, 'loginUrl': '/discord/login', 'sync': True}).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))

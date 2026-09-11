@@ -20,15 +20,49 @@ if (window.Blob && !window.Blob.prototype.text) {
   };
 }
 const PRICE = 1000; // precio simulado para todo
+/* claves que el servidor acepta sincronizar (espejo de SYNC_KEYS del Worker) */
+const SYNC_QA_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
+  'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory',
+  'tradeLog', 'aaSGChar', 'aaSGGuild'];
 const battleLimits = []; // regresión: gameinfo admite como máximo 51 por página
 
-window.fetch = (url) => {
+/* KV simulado del Worker: la QA ejercita el cliente de sincronización de
+   punta a punta (subir, bajar y borrar) sin depender de Cloudflare. */
+const SYNC_KV = { rec: null, calls: [] };
+window.fetch = (url, init) => {
   const u = String(url);
   let data = [];
   try {
+    if (u.includes('/sync')) {
+      const method = ((init && init.method) || 'GET').toUpperCase();
+      const tok = decodeURIComponent(u.split('s=')[1] || '');
+      SYNC_KV.calls.push(method);
+      /* mismas reglas que el Worker: firma '.sig' válida y miembro de SG */
+      let sess = null;
+      try {
+        const [pl, sig] = tok.split('.');
+        if (sig === 'sig') {
+          const p = JSON.parse(Buffer.from(pl.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+          if (p.e > Date.now() && p.m === true) sess = p;
+        }
+      } catch (e) {}
+      if (!sess) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ ok: false, error: 'sesion' }) });
+      if (method === 'DELETE') { SYNC_KV.rec = null; return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, deleted: true }) }); }
+      if (method === 'PUT') {
+        const body = JSON.parse((init && init.body) || '{}');
+        const entries = Object.entries(body.data || {}).filter(([k, v]) => typeof v === 'string'
+          && (SYNC_QA_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k)));
+        if (!entries.length) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ ok: false, error: 'vacio' }) });
+        SYNC_KV.rec = { updated: body.updated || Date.now(), data: Object.fromEntries(entries) };
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, updated: SYNC_KV.rec.updated, keys: entries.length, bytes: 1024 }) });
+      }
+      const r = SYNC_KV.rec;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
+        r ? { ok: true, updated: r.updated, data: r.data, bytes: 1024 } : { ok: true, updated: 0, data: null }) });
+    }
     if (u.includes('/discord/config')) {
       // worker: acceso de miembros SG configurado
-      data = { configured: true, loginUrl: 'http://worker.test/discord/login' };
+      data = { configured: true, loginUrl: 'http://worker.test/discord/login', sync: true };
     } else if (u.includes('/discord/verify')) {
       // worker: solo confirma los tokens firmados con '.sig' (los de esta QA);
       // cualquier otro (p. ej. forjado) se rechaza como haría el HMAC real
@@ -824,6 +858,48 @@ const check = (cond, okMsg, errMsg) => cond ? oks.push(okMsg) : errors.push(errM
       'SG: stats del gremio (fama)', 'SG: stats del gremio ausentes');
     check(room.includes('EnemigoZvZ'), 'SG: mejores asesinatos de la semana', 'SG: top semanal ausente');
     check(rowsIn('sgRankTable') >= 4, `SG: ${rowsIn('sgRankTable')} filas en el ranking (3 miembros + encabezado)`, 'SG: tabla del ranking sin filas');
+
+    // ── SINCRONIZACIÓN ENTRE DISPOSITIVOS ──
+    // Con sesión de miembro verificada, el Registro ofrece la copia en la nube.
+    try {
+      window.eval(`gotoTab('ledger')`); await sleep(200);
+      await window.eval(`syRefresh(true)`); await sleep(150);
+      check($('syncBox') && !$('syUp').hidden && !$('syDown').hidden && !$('syDel').hidden,
+        'Sync: miembro verificado ve los botones de nube', 'Sync: botones ocultos con sesión de miembro');
+      check(($('syState').textContent || '').includes('Todavía no hay ninguna copia'),
+        'Sync: sin copia previa el estado lo dice', 'Sync: estado inicial → ' + ($('syState').textContent || ''));
+      // subir: la sesión de Discord nunca puede viajar a la nube
+      window.localStorage.setItem('favorites', JSON.stringify(['T4_BAG']));
+      window.confirm = () => true;
+      $('syUp').click(); await sleep(300);
+      check(SYNC_KV.rec && SYNC_KV.rec.data.tradeLog && SYNC_KV.rec.data.favorites,
+        'Sync: subir guarda registro y favoritos', 'Sync: la subida no guardó los datos');
+      check(SYNC_KV.rec && !('aaDiscordSession' in SYNC_KV.rec.data) && !('aaProxy' in SYNC_KV.rec.data),
+        'Sync: la sesión de Discord y el proxy nunca se suben', 'Sync: se subió la sesión o el proxy');
+      check(($('syState').textContent || '').includes('Última copia'),
+        'Sync: el estado muestra la fecha de la copia', 'Sync: estado tras subir → ' + ($('syState').textContent || ''));
+      // bajar: valida y pide confirmación antes de pisar lo local
+      SYNC_KV.rec.data.favorites = JSON.stringify(['T8_BAG']);
+      /* jsdom no permite reemplazar location.reload; alcanza con verificar
+         que los datos bajados quedaron aplicados en el almacenamiento */
+      $('syDown').click(); await sleep(400);
+      check(window.localStorage.getItem('favorites') === JSON.stringify(['T8_BAG']),
+        'Sync: bajar restaura los datos de la nube', 'Sync: la bajada no aplicó los datos → ' + window.localStorage.getItem('favorites'));
+      // una copia con valores corruptos no se aplica
+      const antes = window.localStorage.getItem('favorites');
+      SYNC_KV.rec.data.favorites = 'esto no es json';
+      $('syDown').click(); await sleep(300);
+      check(window.localStorage.getItem('favorites') === antes,
+        'Sync: una copia con JSON inválido se rechaza entera', 'Sync: aplicó una copia corrupta');
+      SYNC_KV.rec.data.favorites = JSON.stringify(['T8_BAG']);
+      // borrar
+      $('syDel').click(); await sleep(300);
+      check(SYNC_KV.rec === null && ($('syState').textContent || '').includes('Todavía no hay ninguna copia'),
+        'Sync: borrar elimina la copia del servidor', 'Sync: la copia sobrevivió al borrado');
+      check(window.localStorage.getItem('favorites') === JSON.stringify(['T8_BAG']),
+        'Sync: borrar la nube no toca los datos locales', 'Sync: el borrado remoto se llevó los datos locales');
+      window.eval(`gotoTab('sg', 'members')`); await sleep(150);
+    } catch (e) { errors.push('Sync: ' + e.message); }
 
     // ── MAPA DE GUERRA ──
     // Antes pedía /guilds/:id/territories (no existe) y el worker lo bloqueaba:
