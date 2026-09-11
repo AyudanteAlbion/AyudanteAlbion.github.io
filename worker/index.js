@@ -23,6 +23,10 @@
      GET /discord/verify?s=       -> {valid, member, user} — comprueba la firma
                                      y la vigencia de una sesión (la app no
                                      confía en ninguna sesión sin este visto bueno)
+     GET    /sync?s=<sesión>      -> {ok, updated, data} — copia en la nube de
+                                     los datos del usuario (KV AA_SYNC)
+     PUT    /sync?s=<sesión>      -> guarda {updated, data} (body JSON)
+     DELETE /sync?s=<sesión>      -> borra la copia del usuario
    Configuración (Dashboard de Cloudflare → Workers → ajustes →
    Variables y secretos del worker «ayudantealbion»):
      DISCORD_CLIENT_ID     (texto)   — Client ID de la app de Discord
@@ -31,6 +35,9 @@
      AA_SESSION_KEY        (secreto) — clave HMAC de las sesiones (≥32 chars,
                                        distinta del Client Secret). Obligatoria:
                                        sin ella el acceso SG queda desactivado
+     AA_SYNC               (KV)      — namespace de Workers KV declarado en
+                                       wrangler.toml. Sin él /sync responde
+                                       503 y la app sigue funcionando local
    En la app de Discord hay que registrar como «Redirect URI»:
      https://ayudantealbion.josemesina21.workers.dev/discord/callback
    El resto de la app sigue siendo público: nada se guarda del usuario,
@@ -104,10 +111,25 @@ function corsOrigin(request) {
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET',
+  /* GET para todo el proxy de solo lectura; PUT/DELETE existen únicamente
+     para /sync (la copia en la nube de los datos del propio usuario). */
+  'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': '*',
   'Access-Control-Max-Age': '86400',
 };
+
+/* ---------------- sincronización entre dispositivos (KV) ----------------
+   Guarda una copia de los datos de la app (registro, favoritos, precios
+   manuales, preferencias) por usuario de Discord. Reglas:
+     · solo con sesión verificada por firma HMAC y vigente
+     · solo miembros de SG (la clave del KV es el ID de Discord)
+     · claves y tamaños acotados: el Worker nunca guarda algo arbitrario
+     · nunca se guarda la sesión ni la configuración del proxy            */
+const SYNC_MAX_BYTES = 512 * 1024;   // ~0.5 MB por usuario
+const SYNC_MAX_KEYS = 64;
+const SYNC_MAX_VALUE = 256 * 1024;   // por clave
+const SYNC_TTL = 180 * 24 * 3600;    // la copia caduca a los 180 días sin uso
+const SYNC_KEY_RE = /^[A-Za-z0-9_]{1,48}$/;
 
 /* ---------- creación del worker (inyectable para el selftest) ---------- */
 /* createWorker(env, fetchImpl): env trae las variables de Cloudflare y
@@ -127,10 +149,14 @@ export default {
 
 async function handle(request, env, net) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-  if (request.method !== 'GET') return plain('solo GET', 405);
 
   const url = new URL(request.url);
   const path = url.pathname;
+
+  /* /sync es la única ruta que acepta métodos de escritura */
+  if (path === '/sync') return syncHandle(request, url, env);
+
+  if (request.method !== 'GET') return plain('solo GET', 405);
 
   if (path === '/' || path === '/health') return plain('ok');
 
@@ -176,7 +202,13 @@ async function handle(request, env, net) {
     const dc = discordConfig(env);
     /* `missing` nombra las variables que faltan (nunca sus valores): sirve
        para saber desde la app o con curl qué quedó sin cargar en Cloudflare */
-    return json({ configured: dc.ok, loginUrl: dc.ok ? url.origin + '/discord/login' : null, missing: dc.ok ? [] : dc.missing });
+    return json({
+      configured: dc.ok,
+      loginUrl: dc.ok ? url.origin + '/discord/login' : null,
+      missing: dc.ok ? [] : dc.missing,
+      /* la app oculta el botón de nube si el binding KV no está vinculado */
+      sync: !!syncKv(env),
+    });
   }
 
   if (path === '/discord/login') return discordLogin(request, url, env);
@@ -348,23 +380,29 @@ async function discordCallback(request, url, env, net) {
 /* Verifica una sesión emitida por el callback: firma HMAC con comparación
    en tiempo constante, estructura y vencimiento. Devuelve solo lo que la
    app necesita pintar; nunca un motivo detallado del rechazo. */
-async function discordVerify(url, env) {
+async function readSession(raw, env) {
   const dc = discordConfig(env);
-  const invalid = () => json({ valid: false }, 200);
-  if (!dc.ok) return invalid();
-  const raw = url.searchParams.get('s') || '';
-  if (raw.length > 4096) return invalid();
+  if (!dc.ok) return null;
+  raw = String(raw || '');
+  if (raw.length > 4096) return null;
   const dot = raw.indexOf('.');
-  if (dot <= 0) return invalid();
+  if (dot <= 0) return null;
   const payload = raw.slice(0, dot);
   const sig = raw.slice(dot + 1);
-  if (!/^[A-Za-z0-9_-]+$/.test(payload) || !/^[0-9a-f]{64}$/.test(sig)) return invalid();
+  if (!/^[A-Za-z0-9_-]+$/.test(payload) || !/^[0-9a-f]{64}$/.test(sig)) return null;
   const expect = await hmac(dc.sessionKey, payload);
-  if (!timingSafeEqual(sig, expect)) return invalid();
+  if (!timingSafeEqual(sig, expect)) return null;
   let s;
-  try { s = fromB64url(payload); } catch (e) { return invalid(); }
-  if (!s || typeof s !== 'object' || !s.u || typeof s.u.i !== 'string') return invalid();
-  if (typeof s.e !== 'number' || s.e < Date.now()) return invalid();
+  try { s = fromB64url(payload); } catch (e) { return null; }
+  if (!s || typeof s !== 'object' || !s.u || typeof s.u.i !== 'string') return null;
+  if (typeof s.e !== 'number' || s.e < Date.now()) return null;
+  return s;
+}
+
+async function discordVerify(url, env) {
+  const invalid = () => json({ valid: false }, 200);
+  const s = await readSession(url.searchParams.get('s') || '', env);
+  if (!s) return invalid();
   return json({
     valid: true,
     member: s.m === true,
@@ -382,6 +420,97 @@ function timingSafeEqual(a, b) {
 
 function backWith(redirect, errCode) {
   return Response.redirect(redirect + '#aa_error=' + errCode, 302);
+}
+
+/* ================= sincronización entre dispositivos (KV) ================= */
+/* La app estática no puede guardar nada del usuario fuera del navegador. Esta
+   ruta le da una copia en la nube, atada a su cuenta de Discord:
+     GET    /sync?s=<sesión>  → {ok, updated, data, bytes}
+     PUT    /sync?s=<sesión>  → body {updated, data} → {ok, updated, bytes}
+     DELETE /sync?s=<sesión>  → {ok, deleted}
+   El Worker es el único que puede validar la firma de la sesión, así que un
+   token forjado no llega al KV. La clave es `u:<id de Discord>`: nadie puede
+   leer ni pisar los datos de otro sin su sesión firmada. */
+
+/* Claves de la app que se sincronizan. Es la misma lista del respaldo del
+   navegador MENOS la sesión y la configuración del proxy: sincronizar la
+   sesión permitiría que un dispositivo robe el ingreso de otro. */
+const SYNC_KEYS = new Set([
+  'alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
+  'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory',
+  'marketHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild',
+]);
+const syncKeyOk = k => typeof k === 'string' && SYNC_KEY_RE.test(k)
+  && (SYNC_KEYS.has(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
+
+function syncKv(env) {
+  const kv = env && env.AA_SYNC;
+  return (kv && typeof kv.get === 'function' && typeof kv.put === 'function') ? kv : null;
+}
+
+async function syncHandle(request, url, env) {
+  const method = request.method;
+  if (method !== 'GET' && method !== 'PUT' && method !== 'DELETE') {
+    return json({ ok: false, error: 'metodo' }, 405);
+  }
+  const origin = corsOrigin(request);
+  if (!origin) return json({ ok: false, error: 'origen' }, 403);
+
+  const kv = syncKv(env);
+  /* sin binding KV la app no se rompe: avisa que la nube no está disponible
+     y sigue trabajando contra localStorage como siempre */
+  if (!kv) return json({ ok: false, error: 'no-configurado', msg: 'La sincronización no está habilitada en el servidor.' }, 503, origin);
+
+  const s = await readSession(url.searchParams.get('s') || '', env);
+  if (!s) return json({ ok: false, error: 'sesion' }, 401, origin);
+  /* la nube es un beneficio del Salón: solo miembros verificados de SG */
+  if (s.m !== true) return json({ ok: false, error: 'no-miembro' }, 403, origin);
+
+  const key = 'u:' + String(s.u.i);
+
+  if (method === 'DELETE') {
+    await kv.delete(key);
+    return json({ ok: true, deleted: true }, 200, origin);
+  }
+
+  if (method === 'GET') {
+    let stored = null;
+    try { stored = await kv.get(key, 'json'); } catch (e) { stored = null; }
+    if (!stored || typeof stored !== 'object' || !stored.data) {
+      return json({ ok: true, updated: 0, data: null }, 200, origin);
+    }
+    return json({ ok: true, updated: Number(stored.updated) || 0, data: stored.data, bytes: Number(stored.bytes) || 0 }, 200, origin);
+  }
+
+  /* PUT: validar tamaño, forma y claves antes de tocar el KV */
+  const raw = await request.text().catch(() => '');
+  if (raw.length > SYNC_MAX_BYTES) return json({ ok: false, error: 'tamano', max: SYNC_MAX_BYTES }, 413, origin);
+  let body;
+  try { body = JSON.parse(raw); } catch (e) { return json({ ok: false, error: 'json' }, 400, origin); }
+  if (!body || typeof body !== 'object' || !body.data || typeof body.data !== 'object' || Array.isArray(body.data)) {
+    return json({ ok: false, error: 'formato' }, 400, origin);
+  }
+  const entries = Object.entries(body.data)
+    .filter(([k, v]) => syncKeyOk(k) && typeof v === 'string' && v.length <= SYNC_MAX_VALUE);
+  if (!entries.length) return json({ ok: false, error: 'vacio' }, 400, origin);
+  if (entries.length > SYNC_MAX_KEYS) return json({ ok: false, error: 'claves', max: SYNC_MAX_KEYS }, 400, origin);
+  /* cada valor debe ser JSON válido: así una copia corrupta no vuelve al
+     navegador de otro dispositivo y lo deja sin poder abrir la app */
+  for (const [, v] of entries) {
+    try { JSON.parse(v); } catch (e) { return json({ ok: false, error: 'valor' }, 400, origin); }
+  }
+
+  const data = Object.fromEntries(entries);
+  const updated = Number.isFinite(body.updated) && body.updated > 0 ? Math.min(body.updated, Date.now() + 60e3) : Date.now();
+  const payload = JSON.stringify({ v: 1, updated, data });
+  if (payload.length > SYNC_MAX_BYTES) return json({ ok: false, error: 'tamano', max: SYNC_MAX_BYTES }, 413, origin);
+  const record = JSON.stringify({ v: 1, updated, bytes: payload.length, data });
+  try {
+    await kv.put(key, record, { expirationTtl: SYNC_TTL });
+  } catch (e) {
+    return json({ ok: false, error: 'kv' }, 502, origin);
+  }
+  return json({ ok: true, updated, keys: entries.length, bytes: payload.length }, 200, origin);
 }
 
 /* ============================ firmas y base64 ============================ */
@@ -438,11 +567,15 @@ async function forward(target, ttlByStatus, extraHeaders, net, origin = '*') {
   return new Response(noBody ? null : res.body, { status: res.status, headers });
 }
 
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
+function json(obj, status = 200, origin) {
+  const headers = { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+  /* /sync responde con el origen concreto (y Vary) porque lleva datos del
+     usuario: no debe quedar cacheable ni compartido entre orígenes */
+  if (origin && origin !== '*') {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers.Vary = 'Origin';
+  }
+  return new Response(JSON.stringify(obj), { status, headers });
 }
 
 function plain(msg, status = 200) {

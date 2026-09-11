@@ -144,13 +144,18 @@ const fetchPrices = window.AAApi ? ((itemIds, locations) => AAApi.fetchPrices(it
 window.fetchPrices = fetchPrices;
 
 /* ---------- fórmulas ---------- */
+/* La aritmética de crafteo vive en js/crafting/recipe.js (etapa 6 de la
+   modularización). Acá quedan los alias que ya usaba el resto de la app y
+   un fallback para las pruebas que evalúan app.js de forma aislada. */
 // RRR = bono / (1 + bono)
-function returnRate(bonus) { return bonus / (1 + bonus); }
+const returnRate = window.AACrafting ? AACrafting.returnRate : function (bonus) {
+  return bonus / (1 + bonus);
+};
 // FCE: espec ×250 + maestría ×30 ; cada 10.000 FCE reduce el focus a la mitad
-function focusCost(baseFocus, mastery, spec) {
+const focusCost = window.AACrafting ? AACrafting.focusCost : function (baseFocus, mastery, spec) {
   const fce = spec * 250 + mastery * 30;
   return baseFocus * Math.pow(0.5, fce / 10000);
-}
+};
 
 const ageBadge = window.AAFormat ? AAFormat.ageBadge : function (dateStr) {
   if (!dateStr || dateStr.startsWith('0001')) return '';
@@ -516,16 +521,27 @@ function createCraftModule(cfg) {
     if (dailyOn.checked) bonus += (parseFloat(dailyVal.value) || 0) / 100;
     return bonus;
   }
+  /* estado del bono diario, tal como lo espera AACrafting */
+  function dailyState() {
+    return { on: dailyOn.checked, value: parseFloat(dailyVal.value) || 0 };
+  }
   // Extra que se suma al stack (bono diario + Foco)
   function extraBonus(useFocus) {
+    if (window.AACrafting) return AACrafting.extraBonus(useFocus, dailyState());
     return (useFocus ? 0.59 : 0) + (dailyOn.checked ? (parseFloat(dailyVal.value) || 0) / 100 : 0);
   }
   // Bono por receta: si hay Ciudad de crafteo elegida, solo los ítems
   // bonificados en esa ciudad reciben el bono especial; el resto, ciudad real (+18%)
   function bonusFor(r, useFocus) {
     const cc = $('CraftCity').value;
-    if (!cc) return getPlaceBonus() + (useFocus ? 0.59 : 0);
     const bCity = cfg.bonusCityOf ? cfg.bonusCityOf(r) : null;
+    if (window.AACrafting) {
+      return AACrafting.recipeBonus({
+        craftCity: cc, bonusCity: bCity, baseBonus: cc ? 0 : getPlaceBonus(),
+        specialBonus: cfg.specialBonus, useFocus, daily: dailyState(),
+      });
+    }
+    if (!cc) return getPlaceBonus() + (useFocus ? 0.59 : 0);
     return (bCity === cc ? (cfg.specialBonus ?? 0.33) : 0.18) + extraBonus(useFocus);
   }
   function getOpts() {
@@ -554,9 +570,17 @@ function createCraftModule(cfg) {
     return { value: (kind === 'buy' ? p?.buy : p?.sell) || 0, manual: false };
   }
 
+  /* La aritmética vive en js/crafting/recipe.js; acá solo se arma el
+     contexto (RRR de esta receta, precios efectivos) y se agrega la fecha
+     del precio de venta, que es dato de presentación. */
   function calcRecipe(r, opts) {
-    let matCost = 0, itemValue = 0, missing = false;
     const rrr = opts.rrrFor ? opts.rrrFor(r) : opts.rrr;
+    const sellDate = m.prices[r.id]?.[opts.sellCity]?.sellDate;
+    if (window.AACrafting) {
+      const c = AACrafting.calcRecipe(r, { ...opts, rrr }, effPrice, m.DATA.ingredients);
+      return { ...c, sellDate };
+    }
+    let matCost = 0, itemValue = 0, missing = false;
     for (const res of r.resources) {
       const kind = opts.useBuy ? 'buy' : 'sell';
       let ep = effPrice(res.id, opts.buyCity, kind);
@@ -569,7 +593,6 @@ function createCraftModule(cfg) {
     const stationFee = itemValue * 0.1125 * (opts.usageFee / 100);
     const spE = effPrice(r.id, opts.sellCity, 'sell');
     const sellPrice = spE.value, sellManual = spE.manual;
-    const sellDate = m.prices[r.id]?.[opts.sellCity]?.sellDate;
     const taxRate = (opts.premium ? 0.04 : 0.08) + (opts.setup ? 0.025 : 0);
     const revenue = r.amount * sellPrice * (1 - taxRate);
     const totalCost = matCost + stationFee;
@@ -3467,7 +3490,9 @@ let pfSpecs = {};
 try { pfSpecs = JSON.parse(localStorage.getItem('pfSpecs') || '{}'); } catch (e) {}
 function pfSaveSpecs() { localStorage.setItem('pfSpecs', JSON.stringify(pfSpecs)); }
 
-const PF_BRANCHES = [
+/* las ramas y el recorte de valores viven en js/profile/specs.js (etapa 7);
+   el fallback mantiene las pruebas que evalúan app.js de forma aislada */
+const PF_BRANCHES = window.AAProfile ? AAProfile.BRANCHES : [
   { key: 'food',   label: 'Cocina',             specMax: 120 },
   { key: 'alch',   label: 'Alquimia',           specMax: 120 },
   { key: 'refine', label: 'Refinamiento',       specMax: 120 },
@@ -3493,8 +3518,8 @@ function pfRenderSpecs() {
       <thead><tr><th>Rama</th><th class="num">Especialización (0–120)</th><th class="num">Maestría (0–100)</th><th class="num">Eficiencia (FCE)</th><th class="num">Foco: reducción</th></tr></thead>
       <tbody>${PF_BRANCHES.map(b => {
         const s = pfSpecs[b.key] || { spec: 0, mastery: 0 };
-        const fce = (s.spec || 0) * 250 + (s.mastery || 0) * 30;
-        const mult = Math.pow(0.5, fce / 10000);
+        const fce = window.AAProfile ? AAProfile.efficiency(s) : (s.spec || 0) * 250 + (s.mastery || 0) * 30;
+        const mult = window.AAProfile ? AAProfile.focusMultiplier(s) : Math.pow(0.5, fce / 10000);
         return `<tr>
           <td><b>${b.label}</b></td>
           <td class="num"><input type="number" class="price-edit" style="width:90px" min="0" max="${b.specMax}" value="${s.spec || 0}" data-spec="${b.key}"></td>
@@ -3632,7 +3657,7 @@ function pfRender(d, kills, deaths, guild) {
   const ls = d.LifetimeStatistics || {};
   const pve = ls.PvE || {};
   const gat = (ls.Gathering || {}).All || {};
-  const ratio = d.DeathFame > 0 ? d.KillFame / d.DeathFame : null;
+  const ratio = window.AAProfile ? AAProfile.fameRatio(d) : (d.DeathFame > 0 ? d.KillFame / d.DeathFame : null);
 
   const pveRows = [
     ['Total PvE', pve.Total], ['Zonas reales', pve.Royal], ['Outlands', pve.Outlands],
@@ -3857,8 +3882,16 @@ function pfRender(d, kills, deaths, guild) {
     if (!sp && !ma) return;
     const key = (sp || ma).dataset.spec || (sp || ma).dataset.mast;
     if (!pfSpecs[key]) pfSpecs[key] = { spec: 0, mastery: 0 };
-    if (sp) pfSpecs[key].spec = Math.max(0, Math.min(120, parseInt(sp.value) || 0));
-    if (ma) pfSpecs[key].mastery = Math.max(0, Math.min(100, parseInt(ma.value) || 0));
+    if (sp) pfSpecs[key].spec = sp.value;
+    if (ma) pfSpecs[key].mastery = ma.value;
+    /* el recorte al rango válido lo hace el módulo: estos valores los tipea
+       el usuario y un número absurdo desfiguraba el Foco en cuatro pestañas */
+    if (window.AAProfile) {
+      pfSpecs[key] = AAProfile.normalize(key, pfSpecs[key]) || { spec: 0, mastery: 0 };
+    } else {
+      pfSpecs[key].spec = Math.max(0, Math.min(120, parseInt(pfSpecs[key].spec) || 0));
+      pfSpecs[key].mastery = Math.max(0, Math.min(100, parseInt(pfSpecs[key].mastery) || 0));
+    }
     pfSaveSpecs();
     pfRenderSpecs();
     pfApplySpecs();
@@ -4547,6 +4580,9 @@ async function sgSaveSession(raw) {
   try { localStorage.setItem(SG_KEYS.sess, String(raw)); } catch (e) {}
   sgPaintAccount();
   sgRoomRender();
+  /* recién con sesión de miembro tiene sentido preguntar por la copia */
+  syPaint();
+  syRefresh(true);
   return 'ok';
 }
 
@@ -4556,6 +4592,8 @@ function sgLogout() {
   sgToggleMenu(false);
   sgPaintAccount();
   sgRoomRender();
+  /* la copia en la nube sigue existiendo; este dispositivo deja de verla */
+  SY.remote = null; SY.checked = false; syPaint();
   waToast('🔐 Sesión cerrada', 'Seguís pudiendo usar toda la app pública.');
 }
 
@@ -4584,6 +4622,10 @@ async function sgRefreshConfig() {
     SG.configured = cfg.configured;
     SG.loginUrl = cfg.loginUrl;
     SG.configMissing = cfg.missing || [];
+    /* el Worker informa si el binding KV de sincronización está vinculado */
+    const syBefore = SY.available;
+    SY.available = cfg.sync === true;
+    if (SY.available !== syBefore) { syPaint(); if (SY.available) syRefresh(true); }
     if (changed) {
       sgPaintAccount();
       const p = document.getElementById('tab-sg');
@@ -4919,6 +4961,9 @@ function sgCharBoxHTML() {
 }
 
 function sgSortedMembers() {
+  if (window.AAProfile) {
+    return AAProfile.sortMembers(SG.room.members, SG.room.sort, SG.room.dir, SG.room.filter);
+  }
   const list = (SG.room.members || []).filter(m =>
     !SG.room.filter || (m.Name || '').toLowerCase().includes(SG.room.filter));
   const k = SG.room.sort, dir = SG.room.dir;
@@ -4938,8 +4983,11 @@ function sgRankTableHTML() {
   const rows = sgSortedMembers();
   if (!rows.length) return `<div class="loading-cell">Ningún miembro coincide con la búsqueda.</div>`;
   const arrow = k => SG.room.sort === k ? (SG.room.dir < 0 ? ' ▾' : ' ▴') : '';
-  const base = [...(SG.room.members || [])].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
-  const pos = {}; base.forEach((m, i) => { pos[m.Id] = i + 1; });
+  const pos = window.AAProfile ? AAProfile.positions(SG.room.members) : (() => {
+    const base = [...(SG.room.members || [])].sort((a, b) => (b.KillFame || 0) - (a.KillFame || 0));
+    const out = {}; base.forEach((m, i) => { out[m.Id] = i + 1; });
+    return out;
+  })();
   return `
   <div class="table-wrap"><table class="ledger">
     <thead><tr>
@@ -5130,7 +5178,8 @@ const BD = {
 try { BD.list = JSON.parse(localStorage.getItem('sgBuilds') || '[]'); } catch (e) {}
 function bdSave() { localStorage.setItem('sgBuilds', JSON.stringify(BD.list)); }
 
-const BD_SLOTS = [
+/* slots y aritmética de builds: js/builds/build.js (etapa 8) */
+const BD_SLOTS = window.AABuilds ? AABuilds.SLOTS : [
   { key: 'mainHand', label: 'Mano Principal', icon: 'i-sword' },
   { key: 'offHand', label: 'Mano Secundaria', icon: 'i-shield' },
   { key: 'head', label: 'Cabeza', icon: 'i-user' },
@@ -5142,6 +5191,7 @@ const BD_SLOTS = [
 ];
 
 function bdNewItem() {
+  if (window.AABuilds) return AABuilds.emptyItems();
   return BD_SLOTS.reduce((acc, s) => { acc[s.key] = null; return acc; }, {});
 }
 
@@ -5161,7 +5211,8 @@ function bdRender() {
         <div id="bdList">${bdListHTML()}</div>
       </div>`;
     document.getElementById('bdNewBtn').onclick = () => {
-      BD.current = { id: Date.now(), name: 'Nueva Build', items: bdNewItem(), createdAt: Date.now() };
+      BD.current = window.AABuilds ? AABuilds.create('Nueva Build')
+        : { id: Date.now(), name: 'Nueva Build', items: bdNewItem(), createdAt: Date.now() };
       bdRender();
     };
   } else {
@@ -5256,7 +5307,7 @@ function catalogItem(id) {
 function bdCalcCost() {
   if (BD.loading) return;
   const b = BD.current;
-  const ids = BD_SLOTS.map(s => b.items[s.key]).filter(Boolean);
+  const ids = window.AABuilds ? AABuilds.itemIds(b) : BD_SLOTS.map(s => b.items[s.key]).filter(Boolean);
   if (!ids.length) {
     waToast('⚠️ Build vacía', 'Agregá al menos un ítem para calcular costos.', 'err');
     return;
@@ -5266,6 +5317,8 @@ function bdCalcCost() {
   const box = document.getElementById('bdCostBox');
   box.innerHTML = '<div class="loading-cell">Cargando precios…</div>';
   
+  /* se piden también los bids del Black Market para mostrarlos, pero el
+     costo de la build solo usa ciudades reales: ahí no se compra equipo */
   fetchPrices(ids, [...CITIES, BLACK_MARKET]).then(prices => {
     BD.prices = prices;
     BD.loading = false;
@@ -5279,15 +5332,17 @@ function bdCalcCost() {
 function bdRenderCost() {
   const box = document.getElementById('bdCostBox');
   const b = BD.current;
-  const rows = BD_SLOTS.map(s => {
-    const id = b.items[s.key];
-    if (!id) return null;
-    const p = BD.prices[id] || {};
-    const best = bdBestPrice(p);
-    return { slot: s, id, price: best };
-  }).filter(Boolean);
-  
-  const total = rows.reduce((sum, r) => sum + (r.price.value || 0), 0);
+  const costed = window.AABuilds ? AABuilds.cost(b, BD.prices, CITIES) : (() => {
+    const rs = BD_SLOTS.map(s => {
+      const id = b.items[s.key];
+      if (!id) return null;
+      return { slot: s, id, price: bdBestPrice(BD.prices[id] || {}) };
+    }).filter(Boolean);
+    return { rows: rs, total: rs.reduce((sum, r) => sum + (r.price.value || 0), 0),
+      missing: rs.filter(r => !r.price.value).length };
+  })();
+  const rows = costed.rows;
+  const total = costed.total;
   
   box.innerHTML = `
     <div class="bd-cost-table">
@@ -5320,6 +5375,7 @@ function bdRenderCost() {
 }
 
 function bdBestPrice(p) {
+  if (window.AABuilds) return AABuilds.bestPrice(p, CITIES);
   let best = { value: 0, city: '' };
   for (const city of CITIES) {
     const v = p[city] ? p[city].sell : 0;
@@ -5330,7 +5386,8 @@ function bdBestPrice(p) {
 
 function bdCreateAlert(currentCost) {
   const b = BD.current;
-  const threshold = Math.round(currentCost * 0.9); // alerta cuando baja 10%
+  // alerta cuando baja 10% (AABuilds.ALERT_DROP)
+  const threshold = window.AABuilds ? AABuilds.alertThreshold(currentCost) : Math.round(currentCost * 0.9);
   const alert = {
     uid: 'bd-' + b.id,
     id: b.items.mainHand || b.items.chest || 'build',
@@ -5368,7 +5425,10 @@ document.addEventListener('click', e => {
     const id = +dup.dataset.bdDup;
     const orig = BD.list.find(b => b.id === id);
     if (orig) {
-      const copy = { ...orig, id: Date.now(), name: orig.name + ' (copia)', createdAt: Date.now() };
+      /* AABuilds.duplicate clona los slots: antes copia y original
+         compartían el mismo objeto items y editar una pisaba la otra */
+      const copy = window.AABuilds ? AABuilds.duplicate(orig)
+        : { ...orig, items: { ...orig.items }, id: Date.now(), name: orig.name + ' (copia)', createdAt: Date.now() };
       BD.list.push(copy);
       bdSave();
       bdRender();
@@ -7835,7 +7895,11 @@ function sgInit() {
     SG.configured = cfg.configured;
     SG.loginUrl = cfg.loginUrl;
     SG.configMissing = cfg.missing || [];
+    /* el servidor dice si la copia en la nube está habilitada (binding KV) */
+    SY.available = cfg.sync === true;
     sgPaintAccount();
+    syPaint();
+    if (SY.available) syRefresh(true);
     const p = document.getElementById('tab-sg');
     if (p && p.classList.contains('active')) sgRoomRender();
     if (!cfg.configured && cfg.missing && cfg.missing.length) {
@@ -7854,7 +7918,7 @@ async function sgFetchConfig() {
     const r = await fetch('/discord/config', { cache: 'no-store' });
     if (r && r.ok) {
       const c = await r.json();
-      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login', missing: [] };
+      if (c && c.configured) return { configured: true, loginUrl: c.loginUrl || '/discord/login', missing: [], sync: c.sync !== false };
     }
   } catch (e) {}
   if (WORKER_URL) {
@@ -7864,14 +7928,211 @@ async function sgFetchConfig() {
         const c = await r.json();
         if (c && typeof c === 'object' && !Array.isArray(c)) {
           const missing = Array.isArray(c.missing) ? c.missing.map(String).slice(0, 8) : [];
-          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login'), missing };
+          return { configured: !!c.configured, loginUrl: c.loginUrl || (WORKER_URL + '/discord/login'), missing, sync: c.sync === true };
         }
       }
     } catch (e) {}
   }
-  return { configured: false, loginUrl: '', missing: [] };
+  return { configured: false, loginUrl: '', missing: [], sync: false };
 }
+
+/* ====================================================================
+   ☁️ SINCRONIZACIÓN ENTRE DISPOSITIVOS
+   La app guarda todo en localStorage: cambiar de PC, de navegador o
+   reinstalar el ejecutable dejaba los datos atrás. Los miembros de SG
+   que ingresaron con Discord pueden subir esa misma información a una
+   copia en la nube (Workers KV) y bajarla en otro dispositivo.
+
+   Reglas conscientes:
+     · exactamente las mismas claves que el respaldo en archivo (SY_KEYS),
+       nunca la sesión de Discord ni la URL del proxy;
+     · el servidor valida la firma de la sesión: sin ingreso no hay nube;
+     · nada es automático — subir y bajar son dos botones explícitos, con
+       la fecha de cada lado a la vista, porque pisar el registro de
+       operaciones de alguien sin avisar es imperdonable.
+   ==================================================================== */
+const SY = { available: false, busy: false, remote: null, checked: false };
+/* misma lista que el respaldo en archivo (BK_KEYS), sin la sesión */
+const SY_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
+  'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory',
+  'tradeLog', 'aaSGChar', 'aaSGGuild'];
+const syKeyOk = k => typeof k === 'string' && (SY_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
+const SY_MAX_BYTES = 512 * 1024;
+
+function syToken() {
+  try { return localStorage.getItem(SG_KEYS.sess) || ''; } catch (e) { return ''; }
+}
+/* la nube requiere sesión verificada de miembro: el mismo criterio que el
+   Salón, para no ofrecer un botón que el servidor va a rechazar */
+function syEnabled() { return !!(SY.available && sgIsMember() && syToken()); }
+
+/* Igual que el resto del proxy: primero el server local (exe / server.py),
+   después el Worker. Devuelve la respuesta JSON o lanza. */
+async function syFetch(method, body) {
+  const q = '/sync?s=' + encodeURIComponent(syToken());
+  const init = { method, cache: 'no-store' };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+    init.headers = { 'Content-Type': 'application/json' };
+  }
+  const tryUrl = async u => {
+    const r = await fetch(u, init);
+    const j = await r.json().catch(() => null);
+    if (!j || typeof j !== 'object') return null;
+    return { status: r.status, json: j };
+  };
+  let out = null;
+  try { out = await tryUrl(q); } catch (e) {}
+  /* 503 = ese servidor no tiene la nube habilitada: vale la pena reintentar
+     con el Worker antes de dar la sincronización por caída */
+  if ((!out || out.status === 503 || out.status === 404) && WORKER_URL) {
+    try { const w = await tryUrl(WORKER_URL + q); if (w) out = w; } catch (e) {}
+  }
+  if (!out) throw new Error('sin respuesta del servidor');
+  if (!out.json.ok) throw new Error(syErrMsg(out.json.error, out.json));
+  return out.json;
+}
+
+function syErrMsg(code, j) {
+  switch (code) {
+    case 'sesion': return 'Tu sesión de Discord venció. Volvé a ingresar.';
+    case 'no-miembro': return 'La nube es solo para miembros verificados de Spetsnaz Grail.';
+    case 'no-configurado': return 'La sincronización todavía no está habilitada en el servidor.';
+    case 'tamano': return 'Tus datos superan el límite de ' + Math.round((j.max || SY_MAX_BYTES) / 1024) + ' KB. Vaciá historial o registro viejo.';
+    case 'claves': return 'Demasiadas claves para sincronizar.';
+    case 'valor': case 'formato': case 'json': return 'Los datos locales no tienen un formato válido.';
+    case 'vacio': return 'No hay datos para subir todavía.';
+    default: return 'No se pudo sincronizar. Probá de nuevo en un momento.';
+  }
+}
+
+/* recoge del navegador exactamente lo que se sincroniza */
+function syCollect() {
+  const data = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (syKeyOk(k)) data[k] = localStorage.getItem(k);
+    }
+  } catch (e) {}
+  return data;
+}
+
+function syFmtDate(ms) {
+  if (!ms) return 'nunca';
+  try { return new Date(ms).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch (e) { return new Date(ms).toISOString().slice(0, 16).replace('T', ' '); }
+}
+
+async function syRefresh(silent) {
+  if (!syEnabled()) { SY.remote = null; syPaint(); return; }
+  try {
+    const j = await syFetch('GET');
+    SY.remote = j.data ? { updated: j.updated || 0, keys: Object.keys(j.data).length, bytes: j.bytes || 0 } : null;
+    SY.checked = true;
+  } catch (e) {
+    SY.remote = null;
+    if (!silent) waToast('☁️ Sincronización', e.message, 'err', () => gotoTab('ledger'));
+  }
+  syPaint();
+}
+
+async function syUpload() {
+  if (SY.busy) return;
+  const data = syCollect();
+  const n = Object.keys(data).length;
+  if (!n) { waToast('☁️ Sincronización', 'Todavía no hay datos para subir.', 'err', () => gotoTab('ledger')); return; }
+  if (SY.remote && SY.remote.updated) {
+    if (!confirm(`En la nube hay una copia del ${syFmtDate(SY.remote.updated)}.\n¿Reemplazarla con los datos de este dispositivo (${n} claves)?`)) return;
+  }
+  SY.busy = true; syPaint();
+  try {
+    const j = await syFetch('PUT', { updated: Date.now(), data });
+    SY.remote = { updated: j.updated, keys: j.keys, bytes: j.bytes };
+    waToast('☁️ Datos guardados', `${j.keys} claves en la nube · ${Math.round((j.bytes || 0) / 1024)} KB`, '', () => gotoTab('ledger'));
+  } catch (e) {
+    waToast('☁️ No se pudo subir', e.message, 'err', () => gotoTab('ledger'));
+  }
+  SY.busy = false; syPaint();
+}
+
+async function syDownload() {
+  if (SY.busy) return;
+  SY.busy = true; syPaint();
+  try {
+    const j = await syFetch('GET');
+    if (!j.data || !Object.keys(j.data).length) {
+      waToast('☁️ Sin copia', 'Todavía no subiste datos desde ningún dispositivo.', 'err', () => gotoTab('ledger'));
+      SY.busy = false; syPaint(); return;
+    }
+    /* mismo filtro que el respaldo por archivo: lo que baja de la nube se
+       valida acá también, no solo en el servidor */
+    const entries = Object.entries(j.data).filter(([k, v]) => syKeyOk(k) && typeof v === 'string');
+    for (const [, v] of entries) JSON.parse(v);
+    if (!entries.length) throw new Error('La copia de la nube no tiene datos utilizables.');
+    if (!confirm(`Copia del ${syFmtDate(j.updated)} con ${entries.length} claves.\n¿Traerla? Se sobreescribirán los datos de ESTE dispositivo.`)) {
+      SY.busy = false; syPaint(); return;
+    }
+    for (const [k, v] of entries) localStorage.setItem(k, v);
+    alert('Datos restaurados desde la nube. La página se recargará para aplicarlos.');
+    location.reload();
+  } catch (e) {
+    waToast('☁️ No se pudo bajar', e.message || 'Error al leer la copia.', 'err', () => gotoTab('ledger'));
+  }
+  SY.busy = false; syPaint();
+}
+
+async function syDelete() {
+  if (SY.busy) return;
+  if (!confirm('¿Borrar tu copia en la nube? Los datos de este dispositivo no se tocan.')) return;
+  SY.busy = true; syPaint();
+  try {
+    await syFetch('DELETE');
+    SY.remote = null;
+    waToast('☁️ Copia borrada', 'Ya no queda nada tuyo en el servidor.', '', () => gotoTab('ledger'));
+  } catch (e) {
+    waToast('☁️ No se pudo borrar', e.message, 'err', () => gotoTab('ledger'));
+  }
+  SY.busy = false; syPaint();
+}
+
+/* Pinta el bloque del Registro de operaciones. Si la nube no está
+   disponible (Worker sin KV, o el usuario no ingresó) explica por qué,
+   en vez de esconder el botón sin motivo. */
+function syPaint() {
+  const box = document.getElementById('syncBox');
+  if (!box) return;
+  const btns = ['syUp', 'syDown', 'syDel'];
+  const state = document.getElementById('syState');
+  const on = syEnabled();
+  box.classList.toggle('sync-off', !on);
+  for (const id of btns) {
+    const b = document.getElementById(id);
+    if (b) { b.disabled = !on || SY.busy; b.hidden = !on; }
+  }
+  if (!state) return;
+  if (!SG.configured) state.textContent = 'El ingreso con Discord no está activo en el servidor de la app.';
+  else if (!SG.session) state.textContent = 'Ingresá con Discord (barra superior) para guardar tus datos en la nube.';
+  else if (!sgIsMember()) state.textContent = 'La copia en la nube es un beneficio de los miembros de Spetsnaz Grail.';
+  else if (!SY.available) state.textContent = 'La sincronización todavía no está habilitada en el servidor.';
+  else if (SY.busy) state.textContent = 'Sincronizando…';
+  else if (SY.remote) state.textContent = `Última copia en la nube: ${syFmtDate(SY.remote.updated)} · ${SY.remote.keys} claves · ${Math.round((SY.remote.bytes || 0) / 1024)} KB`;
+  else state.textContent = SY.checked ? 'Todavía no hay ninguna copia tuya en la nube.' : 'Consultando la nube…';
+}
+
+function syInit() {
+  const up = document.getElementById('syUp');
+  if (!up) return;
+  up.addEventListener('click', syUpload);
+  document.getElementById('syDown').addEventListener('click', syDownload);
+  document.getElementById('syDel').addEventListener('click', syDelete);
+  syPaint();
+  syRefresh(true);
+}
+/* sgInit() va después del bloque de sincronización: al restaurar la sesión
+   guardada llama a syPaint(), y las constantes de arriba tienen que existir. */
 sgInit();
+syInit();
 
 /* ====================================================================
    🗺️ arranque del tracker: alertas de zona + enlace compartible ?map=
