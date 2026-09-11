@@ -65,4 +65,3 @@ node qa-test.js
 ```
 
 Requieren `jsdom`. Se verifican todas las combinaciones de ciudad/especie, Premium y Foco, exclusión de crías y monturas, independencia del mercado, precios manuales, persistencia, desglose y totales por parcela.
-

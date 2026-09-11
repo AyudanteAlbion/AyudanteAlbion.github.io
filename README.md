@@ -149,4 +149,3 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 Código bajo licencia MIT (ver [`LICENSE`](LICENSE)). La licencia cubre únicamente el código propio: los íconos, nombres y datos del juego pertenecen a Sandbox Interactive, y las tablas extraídas de `ao-bin-dumps` siguen las condiciones de ese proyecto comunitario.
 
 Desarrollado por **SheniaLiam** para el gremio **Spetsnaz Grail**. Los íconos y datos provienen de proyectos comunitarios; el killboard es de Sandbox Interactive.
-
