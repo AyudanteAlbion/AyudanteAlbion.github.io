@@ -1,4 +1,4 @@
-name: Notificar Actualizaciones a Discord
+name: Main
 
 on:
   release:
