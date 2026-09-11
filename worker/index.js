@@ -20,13 +20,13 @@
      GET /discord/callback        -> intercambia el código, verifica la membresía
                                      en el servidor SG y vuelve a la app con
                                      #aa_session=<payload firmado con HMAC>
-     GET /discord/verify?s=       -> {valid, member, user} — comprueba la firma
+     GET /discord/verify       -> {valid, member, user} — comprueba la firma
                                      y la vigencia de una sesión (la app no
                                      confía en ninguna sesión sin este visto bueno)
-     GET    /sync?s=<sesión>      -> {ok, updated, data} — copia en la nube de
+     GET    /sync                  -> {ok, updated, data} — copia en la nube de
                                      los datos del usuario (KV AA_SYNC)
-     PUT    /sync?s=<sesión>      -> guarda {updated, data} (body JSON)
-     DELETE /sync?s=<sesión>      -> borra la copia del usuario
+     PUT    /sync                  -> guarda {updated, data} (body JSON)
+     DELETE /sync                  -> borra la copia del usuario
    Configuración (Dashboard de Cloudflare → Workers → ajustes →
    Variables y secretos del worker «ayudantealbion»):
      DISCORD_CLIENT_ID     (texto)   — Client ID de la app de Discord
@@ -38,6 +38,8 @@
      AA_SYNC               (KV)      — namespace de Workers KV declarado en
                                        wrangler.toml. Sin él /sync responde
                                        503 y la app sigue funcionando local
+     AA_PUBLIC_RATE_LIMIT  (binding) — límite de rutas públicas
+     AA_AUTH_RATE_LIMIT    (binding) — límite de OAuth, verify y sync
    En la app de Discord hay que registrar como «Redirect URI»:
      https://ayudantealbion.josemesina21.workers.dev/discord/callback
    El resto de la app sigue siendo público: nada se guarda del usuario,
@@ -98,25 +100,48 @@ const ML_ROUTES = [
 const ML_PARAMS = new Set(['take', 'skip', 'battle_size', 'weapon', 'q', 'sort']);
 
 /* Orígenes (páginas) que pueden llamar al proxy desde el navegador. El exe y
-   server.py corren en localhost con puerto variable; las peticiones sin
-   Origin (curl, apps nativas) también pasan porque CORS no las protege igual. */
+   server.py corren en localhost con puerto variable. Las peticiones sin Origin
+   (curl, apps nativas y navegación OAuth) no necesitan CORS. */
 function corsOrigin(request) {
   const o = request.headers.get('Origin');
-  if (!o) return '*';
+  if (!o) return null;
   try {
     const u = new URL(o);
     return ALLOWED_HOSTS.includes(u.hostname) ? o : null;
   } catch (e) { return null; }
 }
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  /* GET para todo el proxy de solo lectura; PUT/DELETE existen únicamente
-     para /sync (la copia en la nube de los datos del propio usuario). */
-  'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': '*',
-  'Access-Control-Max-Age': '86400',
-};
+function corsHeaders(origin, methods = 'GET, OPTIONS') {
+  const headers = {
+    'Access-Control-Allow-Methods': methods,
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+  if (origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers.Vary = 'Origin';
+  }
+  return headers;
+}
+
+/* Rate limiting es opcional durante el arranque: si todavía no se configuró
+   el binding en Cloudflare, la app sigue funcionando. Cuando existe, cada
+   bucket tiene límites independientes y la clave no contiene secretos. */
+async function enforceRateLimit(request, env, bucket, route) {
+  const limiter = env && env[bucket];
+  if (!limiter || typeof limiter.limit !== 'function') return null;
+  const client = request.headers.get('CF-Connecting-IP') || 'anonymous';
+  try {
+    const result = await limiter.limit({ key: route + ':' + client });
+    if (!result.success) {
+      return plain('demasiadas solicitudes', 429, corsOrigin(request), { 'Retry-After': '60' });
+    }
+  } catch (e) {
+    /* Fail-open: una caída del binding no debe bloquear la aplicación. */
+    console.warn('rate limit no disponible', bucket, e && e.message);
+  }
+  return null;
+}
 
 /* ---------------- sincronización entre dispositivos (KV) ----------------
    Guarda una copia de los datos de la app (registro, favoritos, precios
@@ -131,9 +156,9 @@ const SYNC_MAX_VALUE = 256 * 1024;   // por clave
 const SYNC_TTL = 180 * 24 * 3600;    // la copia caduca a los 180 días sin uso
 const SYNC_KEY_RE = /^[A-Za-z0-9_]{1,48}$/;
 
-/* ---------- creación del worker (inyectable para el selftest) ---------- */
+/* ---------- creación del Worker (inyectable para validaciones locales) ---------- */
 /* createWorker(env, fetchImpl): env trae las variables de Cloudflare y
-   fetchImpl permite simular las respuestas de Discord en las pruebas. */
+   fetchImpl permite aislar las llamadas externas durante el desarrollo local. */
 export function createWorker(env = {}, fetchImpl) {
   const net = fetchImpl || ((u, init) => fetch(u, init));
   return {
@@ -148,21 +173,35 @@ export default {
 };
 
 async function handle(request, env, net) {
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-
   const url = new URL(request.url);
   const path = url.pathname;
+  const originHeader = request.headers.get('Origin');
+  const origin = corsOrigin(request);
+
+  if (originHeader && !origin) return plain('origen no permitido', 403);
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders(origin, 'GET, PUT, DELETE, OPTIONS') });
+  }
+
+  const bucket = path === '/sync' || path.startsWith('/discord/')
+    ? 'AA_AUTH_RATE_LIMIT'
+    : (path.startsWith('/gameinfo/') || path.startsWith('/murderledger/') || path.startsWith('/twitch/')
+      ? 'AA_PUBLIC_RATE_LIMIT' : null);
+  if (bucket) {
+    const limited = await enforceRateLimit(request, env, bucket, path.split('/').slice(0, 2).join('/') || '/');
+    if (limited) return limited;
+  }
 
   /* /sync es la única ruta que acepta métodos de escritura */
   if (path === '/sync') return syncHandle(request, url, env);
 
-  if (request.method !== 'GET') return plain('solo GET', 405);
+  if (request.method !== 'GET') return plain('solo GET', 405, origin);
 
   if (path === '/' || path === '/health') return plain('ok');
 
   if (path === '/gameinfo' || path.startsWith('/gameinfo/')) {
     const origin = corsOrigin(request);
-    if (!origin) return plain('origen no permitido', 403);
+    if (!origin && originHeader) return plain('origen no permitido', 403, origin);
     const sub = path.slice('/gameinfo'.length);
     if (!GAMEINFO_ROUTES.some(re => re.test(sub))) return plain('ruta no permitida', 404);
     const qs = new URLSearchParams();
@@ -174,7 +213,7 @@ async function handle(request, env, net) {
 
   if (path === '/murderledger' || path.startsWith('/murderledger/')) {
     const origin = corsOrigin(request);
-    if (!origin) return plain('origen no permitido', 403);
+    if (!origin && originHeader) return plain('origen no permitido', 403, origin);
     const sub = path.slice('/murderledger'.length) || '/home';
     if (!ML_ROUTES.some(re => re.test(sub))) return plain('ruta no permitida', 404);
     const qs = new URLSearchParams();
@@ -191,7 +230,7 @@ async function handle(request, env, net) {
 
   if (path.startsWith('/twitch/uptime/')) {
     const origin = corsOrigin(request);
-    if (!origin) return plain('origen no permitido', 403);
+    if (!origin && originHeader) return plain('origen no permitido', 403, origin);
     const chan = path.slice('/twitch/uptime/'.length);
     if (!/^[A-Za-z0-9_]{2,39}$/.test(chan)) return plain('canal inválido', 400);
     return forward(DECAPI + chan.toLowerCase(), { '200-299': 45, '400-599': 5 }, undefined, net, origin);
@@ -208,11 +247,11 @@ async function handle(request, env, net) {
       missing: dc.ok ? [] : dc.missing,
       /* la app oculta el botón de nube si el binding KV no está vinculado */
       sync: !!syncKv(env),
-    });
+    }, 200, origin);
   }
 
   if (path === '/discord/login') return discordLogin(request, url, env);
-  if (path === '/discord/verify') return discordVerify(url, env);
+  if (path === '/discord/verify') return discordVerify(request, env);
   if (path === '/discord/callback') return discordCallback(request, url, env, net);
 
   return plain('no existe', 404);
@@ -380,6 +419,11 @@ async function discordCallback(request, url, env, net) {
 /* Verifica una sesión emitida por el callback: firma HMAC con comparación
    en tiempo constante, estructura y vencimiento. Devuelve solo lo que la
    app necesita pintar; nunca un motivo detallado del rechazo. */
+function authToken(request) {
+  const value = request.headers.get('Authorization') || '';
+  return value.startsWith('Bearer ') ? value.slice(7).trim() : '';
+}
+
 async function readSession(raw, env) {
   const dc = discordConfig(env);
   if (!dc.ok) return null;
@@ -399,16 +443,16 @@ async function readSession(raw, env) {
   return s;
 }
 
-async function discordVerify(url, env) {
-  const invalid = () => json({ valid: false }, 200);
-  const s = await readSession(url.searchParams.get('s') || '', env);
+async function discordVerify(request, env) {
+  const invalid = () => json({ valid: false }, 200, corsOrigin(request));
+  const s = await readSession(authToken(request), env);
   if (!s) return invalid();
   return json({
     valid: true,
     member: s.m === true,
     user: { i: String(s.u.i), n: String(s.u.n || 'miembro').slice(0, 80), a: /^[a-z0-9_]{0,64}$/i.test(String(s.u.a || '')) ? String(s.u.a || '') : '' },
     e: s.e,
-  });
+  }, 200, corsOrigin(request));
 }
 
 function timingSafeEqual(a, b) {
@@ -425,9 +469,9 @@ function backWith(redirect, errCode) {
 /* ================= sincronización entre dispositivos (KV) ================= */
 /* La app estática no puede guardar nada del usuario fuera del navegador. Esta
    ruta le da una copia en la nube, atada a su cuenta de Discord:
-     GET    /sync?s=<sesión>  → {ok, updated, data, bytes}
-     PUT    /sync?s=<sesión>  → body {updated, data} → {ok, updated, bytes}
-     DELETE /sync?s=<sesión>  → {ok, deleted}
+     GET    /sync  (Authorization: Bearer <sesión>)  → {ok, updated, data, bytes}
+     PUT    /sync  (Authorization: Bearer <sesión>)  → body {updated, data} → {ok, updated, bytes}
+     DELETE /sync  (Authorization: Bearer <sesión>)  → {ok, deleted}
    El Worker es el único que puede validar la firma de la sesión, así que un
    token forjado no llega al KV. La clave es `u:<id de Discord>`: nadie puede
    leer ni pisar los datos de otro sin su sesión firmada. */
@@ -461,7 +505,7 @@ async function syncHandle(request, url, env) {
      y sigue trabajando contra localStorage como siempre */
   if (!kv) return json({ ok: false, error: 'no-configurado', msg: 'La sincronización no está habilitada en el servidor.' }, 503, origin);
 
-  const s = await readSession(url.searchParams.get('s') || '', env);
+  const s = await readSession(authToken(request), env);
   if (!s) return json({ ok: false, error: 'sesion' }, 401, origin);
   /* la nube es un beneficio del Salón: solo miembros verificados de SG */
   if (s.m !== true) return json({ ok: false, error: 'no-miembro' }, 403, origin);
@@ -552,10 +596,9 @@ async function forward(target, ttlByStatus, extraHeaders, net, origin = '*') {
     return plain('arriba sin respuesta', 502);
   }
   const headers = new Headers();
-  headers.set('Access-Control-Allow-Origin', origin);
-  if (origin !== '*') headers.set('Vary', 'Origin');
+  for (const [key, value] of Object.entries(corsHeaders(origin))) headers.set(key, value);
   headers.set('Cache-Control', 'no-store');
-  headers.set('X-Content-Type-Options', 'nosniff');
+  for (const [key, value] of Object.entries(securityHeaders())) headers.set(key, value);
   const type = (res.headers.get('content-type') || '').includes('json')
     ? 'application/json; charset=utf-8'
     : 'text/plain; charset=utf-8';
@@ -567,35 +610,44 @@ async function forward(target, ttlByStatus, extraHeaders, net, origin = '*') {
   return new Response(noBody ? null : res.body, { status: res.status, headers });
 }
 
-function json(obj, status = 200, origin) {
-  const headers = { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
-  /* /sync responde con el origen concreto (y Vary) porque lleva datos del
-     usuario: no debe quedar cacheable ni compartido entre orígenes */
-  if (origin && origin !== '*') {
-    headers['Access-Control-Allow-Origin'] = origin;
-    headers.Vary = 'Origin';
-  }
+function json(obj, status = 200, origin, extra = {}) {
+  const headers = { ...corsHeaders(origin), ...securityHeaders(), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra };
   return new Response(JSON.stringify(obj), { status, headers });
 }
 
-function plain(msg, status = 200) {
+function plain(msg, status = 200, origin, extra = {}) {
   return new Response(msg, {
     status,
-    headers: { ...CORS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: { ...corsHeaders(origin), ...securityHeaders(), 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...extra },
   });
+}
+
+function securityHeaders() {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+  };
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
 }
 
 function htmlPage(title, head, body) {
   return new Response(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title>
+<title>${escapeHtml(title)}</title>
 <style>
   body{background:#0e1117;color:#d5dae4;font-family:"Inter","Segoe UI",system-ui,sans-serif;
     display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}
   .card{max-width:420px;background:#141821;border:1px solid #252b3a;border-radius:12px;padding:32px;text-align:center}
   h1{font-size:1.15rem;margin:0 0 10px}p{color:#808697;font-size:.92rem;line-height:1.5;margin:0}
   b{color:#d5dae4}
-</style></head><body><div class="card"><h1>${head}</h1><p>${body}</p></div></body></html>`, {
-    headers: { ...CORS, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+</style></head><body><div class="card"><h1>${escapeHtml(head)}</h1><p>${escapeHtml(body)}</p></div></body></html>`, {
+    headers: { ...corsHeaders(null), ...securityHeaders(), 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }

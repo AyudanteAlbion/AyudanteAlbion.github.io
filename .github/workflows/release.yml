@@ -1,97 +1,53 @@
-name: Release
+name: Publish release
 
-# Con un tag v*, un release publicado o una ejecución manual: verifica las regresiones,
-# compila el .exe de Windows y genera el .zip, y publica todo como Release.
-# Corre en GitHub Actions porque necesita red libre para bajar Go y Node deps.
+# Este workflow solo publica artefactos producidos por Build release assets.
+# No compila código ni acepta código arbitrario desde una pull request.
 
 'on':
-  push:
-    tags:
-      - 'v*'
-  release:
-    types: [published]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Versión a publicar (ej. v1.2.8)'
-        required: true
-        type: string
+  workflow_run:
+    workflows: [Build release assets]
+    types: [completed]
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: publish-release-${{ github.event.workflow_run.id }}
   cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  release:
+  publish:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout
+      - name: Validar origen
+        run: test -n "$RUN_ID"
+
+      - name: Checkout de la fuente del build
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
-      - name: Validar versión y commit
-        env:
-          EVENT: ${{ github.event_name }}
-          REF: ${{ github.ref }}
+      - name: Descargar artefactos compilados
         run: |
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-assets --dir release-assets
+          TAG=$(cat release-assets/RELEASE_TAG.txt)
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Versión inválida'; exit 1; }
-          if [[ "$EVENT" == 'workflow_dispatch' && "$REF" != 'refs/heads/main' ]]; then
-            echo 'Los releases manuales deben ejecutarse desde main'; exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
-            [[ "$(git rev-parse "$TAG^{commit}")" == "$GITHUB_SHA" ]] || { echo 'El tag ya apunta a otro commit'; exit 1; }
-          fi
+          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
 
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-
-      - name: Setup Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: '1.23'
-
-      - name: Instalar jsdom (versión probada para QA)
-        run: npm install --no-save --package-lock=false jsdom@30.0.1
-        working-directory: albion-app
-
-      - name: Selftest del worker (acceso SG + proxies)
-        run: node worker/selftest.mjs
-
-      - name: QA completa (todos los módulos + acceso SG)
-        run: node qa-test.js
-        working-directory: albion-app
-
-      - name: Regresiones de Black Market e Islas
+      - name: Verificar artefactos
         run: |
-          node black-market-test.js
-          node farm-test.js
-        working-directory: albion-app
-
-      # Los módulos de js/, los recursos que index.html referencia y la
-      # integración real (app.js con los módulos cargados, como el navegador).
-      # El build vuelve a verificar el artefacto ya armado en albion-exe/app/.
-      - name: Módulos, recursos e integración
-        run: |
-          node modules-test.js
-          node assets-test.js
-          node integration-test.js
-        working-directory: albion-app
-
-      - name: Build (sintaxis + smoke + exe + zip)
-        run: |
-          GO_BIN="$(command -v go)" ./build.sh
-          ls -lh AyudanteAlbion.zip albion-exe/AyudanteAlbion.exe
+          test -s release-assets/AyudanteAlbion.exe
+          test -s release-assets/AyudanteAlbion.zip
+          test -s release-assets/SHA256SUMS.txt
+          (cd release-assets && sha256sum -c SHA256SUMS.txt)
 
       - name: Publicar release
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           {
             echo '### ⬇️ Instalación'
@@ -105,13 +61,14 @@ jobs:
           fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG ya existe; reemplazando assets…"
-            gh release upload "$TAG" albion-exe/AyudanteAlbion.exe AyudanteAlbion.zip --clobber
+            gh release upload "$TAG" release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip release-assets/SHA256SUMS.txt#SHA256SUMS.txt --clobber
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           else
             gh release create "$TAG" \
-              albion-exe/AyudanteAlbion.exe#AyudanteAlbion.exe \
-              AyudanteAlbion.zip#AyudanteAlbion.zip \
-              --target "$GITHUB_SHA" \
+              release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe \
+              release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip \
+              release-assets/SHA256SUMS.txt#SHA256SUMS.txt \
+              --target "${{ github.event.workflow_run.head_sha }}" \
               --title "Ayudante Albion $TAG" \
               --notes-file RELEASE_NOTES.md \
               --generate-notes \

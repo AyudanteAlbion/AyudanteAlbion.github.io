@@ -24,3 +24,16 @@ SG_DISCORD_GUILD_ID = "998772435048472628"
 [[kv_namespaces]]
 binding = "AA_SYNC"
 id = "28610fd64c05426781845c40b2686601"
+
+
+# Límites opcionales del Worker. Los namespace_id son identificadores
+# numéricos propios de Cloudflare; deben existir en la cuenta antes del deploy.
+[[ratelimits]]
+name = "AA_PUBLIC_RATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "AA_AUTH_RATE_LIMIT"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
