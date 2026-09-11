@@ -28,4 +28,3 @@ Describí el error.
 Podés adjuntar capturas en GitHub. Si aplica, indicá ítem, tier, encantamiento y ciudad.
 
 > Este reporte será público. No incluyas contraseñas, tokens, sesiones de Discord ni datos personales.
-
