@@ -360,4 +360,3 @@ Primera versión pública.
 [v1.0.2]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases/tag/v1.0.2
 [v1.0.1]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases/tag/v1.0.1
 [v1.0]: https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases/tag/v1.0
-
