@@ -2,6 +2,7 @@
 
 A partir de ahora, **todos** los commits de este repositorio deben usar como mensaje
 únicamente el **nombre del archivo** modificado, sin ruta, sin descripción y sin prefijos.
+La validación compara el mensaje contra los archivos reales del commit.
 
 ## Regla
 
@@ -10,6 +11,7 @@ A partir de ahora, **todos** los commits de este repositorio deben usar como men
 ```
 
 - Solo el nombre base del archivo (sin directorios).
+- Debe coincidir con el/los archivo(s) tocado(s) por ese commit.
 - Sin descripción de lo que se hizo.
 - Sin prefijos tipo `feat:`, `fix:`, `chore:`.
 - Sin punto final, sin emojis.
@@ -41,11 +43,14 @@ actualiza la documentación correspondiente y se mergea por PR.
 ## Varios archivos
 
 Si un commit toca más de un archivo, se recomienda **dividirlo en un commit por archivo**.
-Si no es posible, usar los nombres separados por coma:
+Si no es posible, usar todos los nombres base separados por coma:
 
 ```
 index.html, style.css
 ```
+
+El orden no importa para la validación, pero la lista debe contener exactamente
+los archivos agregados, modificados, eliminados o renombrados por el commit.
 
 ## Automatización
 
@@ -53,7 +58,12 @@ El repositorio incluye hooks de Git en `.githooks/`:
 
 - `prepare-commit-msg`: si no escribes mensaje, lo genera automáticamente con el
   nombre del/los archivo(s) en staging.
-- `commit-msg`: valida que el mensaje cumpla la regla y rechaza el commit si no.
+- `commit-msg`: valida que el mensaje cumpla la regla, compara la lista contra
+  los archivos en staging y rechaza el commit si no coincide.
+
+GitHub Actions también ejecuta `.github/workflows/commit-messages.yml` en cada
+pull request. Ese check revisa todos los commits del PR y falla si algún mensaje
+no coincide con los archivos que toca.
 
 ### Activación (una sola vez por clon)
 

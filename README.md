@@ -179,6 +179,7 @@ pull request que afecte al código o a la infraestructura.
 | [`docs/farming.md`](docs/farming.md) | Bonos de isla, fuentes de datos y alcance del cálculo de Granja |
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
+| [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Regla de mensajes de commit basados en nombres de archivo |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |
 | [`docs/releases/`](docs/releases/) | Notas publicadas de cada versión |
