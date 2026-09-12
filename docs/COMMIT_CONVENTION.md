@@ -1,35 +1,30 @@
 # Convención de mensajes de commit
 
-Los commits normales de este repositorio usan una sola línea cuyo contenido es
-**exactamente el nombre del archivo modificado**, sin prefijos, sin hora y sin
-texto adicional. Así, el mensaje que GitHub muestra junto a cada archivo es
-siempre el nombre del propio archivo.
+Los commits normales de este repositorio usan una sola línea que identifica
+el elemento de primer nivel modificado, sin prefijos, hora ni texto adicional.
+Los archivos en la raíz usan su nombre; cualquier archivo dentro de una carpeta
+usa el nombre de esa carpeta.
 
 ## Formato
 
 ```text
-<nombre-del-archivo>
+<archivo-raíz-o-carpeta-raíz>
 ```
 
-Por ejemplo:
+Por ejemplo, cambios en `docs/index.html` producen el mensaje `docs`, y cambios
+en `.github/workflows/validate.yml` producen `.github`. Si un commit toca
+varios elementos de primer nivel, se separan por coma y en orden alfabético:
+`.github, docs, README.md`.
 
-```text
-README.md
-```
-
-- El mensaje es el nombre base del archivo, sin ruta (por ejemplo,
-  `docs/index.html` produce el mensaje `index.html`).
-- Si un commit toca varios archivos, sus nombres se separan por coma y en
-  orden alfabético: `app.js, style.css`.
-- No se permite cuerpo, descripción adicional, emojis, hora ni trailers en
-  commits normales.
+No se permite cuerpo, descripción adicional, emojis, hora ni trailers en
+commits normales.
 
 ## Archivos y validación
 
-La lista de nombres del mensaje debe coincidir exactamente con los archivos
-agregados, modificados, eliminados o renombrados por ese commit. Se usan nombres
-base para que el mensaje sea breve; por eso conviene dividir un cambio grande
-en un commit por archivo cuando sea posible.
+La lista del mensaje debe coincidir exactamente con los elementos de primer
+nivel que contienen archivos agregados, modificados, eliminados o renombrados
+por ese commit. Varios archivos dentro de la misma carpeta cuentan como un solo
+elemento.
 
 El repositorio incluye hooks de Git en `.githooks/`:
 
