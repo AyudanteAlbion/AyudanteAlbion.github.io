@@ -32,3 +32,25 @@ uploads/
 *.p12
 *.pfx
 *.log
+
+# Certificados, almacenes de claves y datos locales sensibles
+*.crt*
+.cer
+*.cer
+*.der
+*.jks
+*.keystore
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+*.backup
+*.orig
+*.swp
+*.swo
+.envrc
+dev.vars
+.dev.vars
+
+# Documentación operativa privada (no versionar)
+docs/deploy-worker.md
