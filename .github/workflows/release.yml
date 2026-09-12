@@ -22,6 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUN_ID: ${{ github.event.workflow_run.id }}
+      # Este job no hace checkout del repositorio (a propósito: no ejecuta
+      # código del workflow disparado con el token de escritura). Sin checkout
+      # no hay remoto de git del que gh pueda deducir el repositorio, y
+      # `gh release …` falla con «fatal: not a git repository». GH_REPO le da
+      # ese contexto sin necesidad de clonar nada.
+      GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Validar origen
