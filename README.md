@@ -142,11 +142,11 @@ curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica
 cada release. Los mensajes van como texto organizado, sin emojis: solo el
 título lleva su ícono (🗒️ changelog, 💚 release).
 
-Los commits normales nuevos usan el formato `archivo ----- nombre-del-archivo ----
-AAAA-MM-DD HH:MM:SS UTC`. La hora UTC queda en el mensaje y GitHub continúa
-mostrando además su propio tiempo relativo junto a cada archivo. La guía
-completa y la activación de los hooks están en
-[`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md).
+El mensaje de cada commit normal es exactamente el nombre del archivo
+modificado (por ejemplo, `README.md`; varios archivos se separan por coma:
+`app.js, style.css`). GitHub continúa mostrando además su propio tiempo
+relativo junto a cada archivo. La guía completa y la activación de los hooks
+están en [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md).
 
 Las descripciones de cambios que ya están en `main` se corrigen mediante PRs de
 documentación sobre `CHANGELOG.md`, `docs/releases/` o el cuerpo del PR. No se
