@@ -39,3 +39,4 @@ Fuera de alcance:
 - Ataques volumétricos (DoS/DDoS), spam o phishing activo contra usuarios reales.
 - Contenido generado por usuarios de terceros que la app solo muestra
   (por ejemplo, nombres del killboard público de Albion Online).
+
