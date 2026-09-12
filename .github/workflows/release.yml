@@ -55,6 +55,10 @@ jobs:
             gh release upload "$TAG" release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip release-assets/SHA256SUMS.txt#SHA256SUMS.txt --clobber
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           else
+            # No combinar --generate-notes con notas propias: además de no ser
+            # necesario para esta release, la versión de gh disponible en
+            # GitHub Actions puede rechazar esa combinación y dejar la release
+            # sin publicar después de haber validado todos los artefactos.
             gh release create "$TAG" \
               release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe \
               release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip \
@@ -62,7 +66,6 @@ jobs:
               --target "${{ github.event.workflow_run.head_sha }}" \
               --title "Ayudante Albion $TAG" \
               --notes-file RELEASE_NOTES.md \
-              --generate-notes \
               --latest
           fi
           gh release view "$TAG"
