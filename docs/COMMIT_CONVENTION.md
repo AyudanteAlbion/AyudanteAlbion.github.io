@@ -23,6 +23,21 @@ A partir de ahora, **todos** los commits de este repositorio deben usar como men
 | `style.css` | `albion-app/src/style.css` |
 | `build.sh` | `fix: build.sh` |
 
+## Dónde van las descripciones
+
+Esta convención mantiene el historial de commits como un índice simple de
+archivos tocados. Las descripciones humanas de cada cambio deben vivir en los
+lugares que sí se pueden corregir con un PR normal:
+
+- `CHANGELOG.md`, para resumir lo que ya entró o está por entrar en `main`.
+- `docs/releases/`, para notas largas de una versión publicada o próxima.
+- El cuerpo del pull request, para explicar contexto, validación y alcance antes
+  de mergear.
+
+Si una descripción de cambios en `main` quedó incompleta o confusa, no se
+reescribe el commit con `amend`, `rebase` ni `push --force`. Se abre una rama, se
+actualiza la documentación correspondiente y se mergea por PR.
+
 ## Varios archivos
 
 Si un commit toca más de un archivo, se recomienda **dividirlo en un commit por archivo**.
