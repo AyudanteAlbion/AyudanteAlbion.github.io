@@ -1,69 +1,50 @@
 # Convención de mensajes de commit
 
-A partir de ahora, **todos** los commits de este repositorio deben usar como mensaje
-únicamente el **nombre del archivo** modificado, sin ruta, sin descripción y sin prefijos.
-La validación compara el mensaje contra los archivos reales del commit.
+A partir de ahora, los commits normales de este repositorio usan una sola línea
+con el archivo modificado y la hora UTC del cambio. Así, el mensaje que GitHub
+muestra junto a cada archivo mantiene siempre el mismo formato.
 
-## Regla
+## Formato
 
-```
-<nombre-del-archivo>
-```
-
-- Solo el nombre base del archivo (sin directorios).
-- Debe coincidir con el/los archivo(s) tocado(s) por ese commit.
-- Sin descripción de lo que se hizo.
-- Sin prefijos tipo `feat:`, `fix:`, `chore:`.
-- Sin punto final, sin emojis.
-- Una sola línea (el cuerpo del commit debe quedar vacío).
-
-## Ejemplos
-
-| Correcto | Incorrecto |
-|---|---|
-| `index.html` | `Actualizo index.html con nuevo header` |
-| `style.css` | `albion-app/src/style.css` |
-| `build.sh` | `fix: build.sh` |
-
-## Dónde van las descripciones
-
-Esta convención mantiene el historial de commits como un índice simple de
-archivos tocados. Las descripciones humanas de cada cambio deben vivir en los
-lugares que sí se pueden corregir con un PR normal:
-
-- `CHANGELOG.md`, para resumir lo que ya entró o está por entrar en `main`.
-- `docs/releases/`, para notas largas de una versión publicada o próxima.
-- El cuerpo del pull request, para explicar contexto, validación y alcance antes
-  de mergear.
-
-Si una descripción de cambios en `main` quedó incompleta o confusa, no se
-reescribe el commit con `amend`, `rebase` ni `push --force`. Se abre una rama, se
-actualiza la documentación correspondiente y se mergea por PR.
-
-## Varios archivos
-
-Si un commit toca más de un archivo, se recomienda **dividirlo en un commit por archivo**.
-Si no es posible, usar todos los nombres base separados por coma:
-
-```
-index.html, style.css
+```text
+archivo ----- <nombre-del-archivo> ---- <AAAA-MM-DD HH:MM:SS UTC>
 ```
 
-El orden no importa para la validación, pero la lista debe contener exactamente
-los archivos agregados, modificados, eliminados o renombrados por el commit.
+Por ejemplo:
 
-## Automatización
+```text
+archivo ----- README.md ---- 2026-09-12 15:42:00 UTC
+```
+
+- `archivo` es el prefijo fijo.
+- `<nombre-del-archivo>` es el nombre base del/los archivo(s), sin ruta.
+- La hora se genera en UTC con formato de 24 horas.
+- Si un commit toca varios archivos, sus nombres se separan por coma:
+  `archivo ----- app.js, style.css ---- 2026-09-12 15:42:00 UTC`.
+- No se permite cuerpo, descripción adicional, emojis ni trailers en commits
+  normales.
+
+La hora identifica el momento en que se prepara el commit. GitHub seguirá
+mostrando además su propio tiempo relativo —por ejemplo, `10 minutes ago`—
+al lado del mensaje.
+
+## Archivos y validación
+
+La lista de nombres del mensaje debe coincidir exactamente con los archivos
+agregados, modificados, eliminados o renombrados por ese commit. Se usan nombres
+base para que el mensaje sea breve; por eso conviene dividir un cambio grande
+en un commit por archivo cuando sea posible.
 
 El repositorio incluye hooks de Git en `.githooks/`:
 
-- `prepare-commit-msg`: si no escribes mensaje, lo genera automáticamente con el
-  nombre del/los archivo(s) en staging.
-- `commit-msg`: valida que el mensaje cumpla la regla, compara la lista contra
-  los archivos en staging y rechaza el commit si no coincide.
+- `prepare-commit-msg`: si no escribes un mensaje, genera automáticamente el
+  formato con los archivos en staging y la hora UTC actual.
+- `commit-msg`: valida el formato, la fecha y la correspondencia con los
+  archivos en staging. Un mensaje manual que no cumpla la regla se rechaza.
 
 GitHub Actions también ejecuta `.github/workflows/commit-messages.yml` en cada
-pull request. Ese check revisa todos los commits del PR y falla si algún mensaje
-no coincide con los archivos que toca.
+pull request y revisa todos sus commits. Los commits generados por Git para
+merges, reverts, `fixup!` y `squash!` se aceptan como excepciones.
 
 ### Activación (una sola vez por clon)
 
@@ -77,11 +58,15 @@ O bien, desde la raíz del repositorio:
 ./scripts/setup_hooks.sh
 ```
 
-### Saltarse la validación (casos excepcionales)
+### Casos excepcionales
 
-Merges, reverts y commits generados por Git (`Merge ...`, `Revert ...`,
-`fixup!`, `squash!`) se aceptan automáticamente. Para cualquier otro caso:
+No se reescribe el historial de `main` ni se fuerza un push para cambiar
+mensajes antiguos. Para una excepción puntual, la validación puede saltarse
+explícitamente:
 
 ```bash
 git commit --no-verify -m "mensaje libre"
 ```
+
+Los commits creados con `--no-verify` no deben usarse como modelo para cambios
+posteriores.

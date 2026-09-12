@@ -1,6 +1,8 @@
 #!/bin/sh
-# Valida que el mensaje sea solo nombre(s) base de archivo y coincida con staging.
-MSG_FILE="$1"
+# Valida el formato, los nombres de archivo y la hora UTC del mensaje.
+set -eu
+
+MSG_FILE=${1:?Falta el archivo del mensaje de commit}
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 PYTHON=${PYTHON:-python3}
 
