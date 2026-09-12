@@ -1,0 +1,33 @@
+#!/bin/sh
+# Valida que el mensaje sea solo nombre(s) de archivo.
+MSG_FILE="$1"
+MSG=$(grep -vE '^[[:space:]]*#' "$MSG_FILE" | sed '/^[[:space:]]*$/d')
+
+FIRST=$(printf '%s\n' "$MSG" | head -n1)
+REST=$(printf '%s\n' "$MSG" | tail -n +2)
+
+case "$FIRST" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+
+fail() {
+  echo "ERROR: mensaje de commit invalido."
+  echo "  Recibido: '$FIRST'"
+  echo "  Esperado: solo el nombre del archivo, p.ej. 'index.html'"
+  echo "  Ver docs/COMMIT_CONVENTION.md"
+  exit 1
+}
+
+[ -n "$REST" ] && { echo "ERROR: el mensaje debe ser una sola linea."; fail; }
+[ -z "$FIRST" ] && fail
+
+OLDIFS=$IFS
+IFS=','
+for part in $FIRST; do
+  IFS=$OLDIFS
+  name=$(printf '%s' "$part" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  printf '%s' "$name" | grep -qE '^[A-Za-z0-9._-]+$' || fail
+  IFS=','
+done
+IFS=$OLDIFS
+exit 0
