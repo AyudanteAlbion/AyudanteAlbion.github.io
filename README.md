@@ -171,7 +171,6 @@ pull request que afecte al código o a la infraestructura.
 | Documento | Contenido |
 |---|---|
 | [`docs/sincronizacion.md`](docs/sincronizacion.md) | Contrato, límites y control de acceso de la copia en la nube |
-| [`docs/deploy-worker.md`](docs/deploy-worker.md) | Configuración, despliegue y verificación del Worker de Cloudflare |
 | [`docs/farming.md`](docs/farming.md) | Bonos de isla, fuentes de datos y alcance del cálculo de Granja |
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
