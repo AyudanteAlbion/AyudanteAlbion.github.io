@@ -137,6 +137,10 @@ el `.zip` y sus checksums como artefactos temporales. Cuando termina con éxito,
 entonces crea o actualiza la release de GitHub. La compilación y la publicación
 usan workflows y permisos separados.
 
+En Discord, el canal de Actualizaciones recibe el changelog de la versión en
+curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica
+cada release.
+
 ---
 
 ## Comunidad y soporte

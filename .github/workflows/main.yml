@@ -8,6 +8,7 @@ on:
       - main
     paths:
       - 'README.md'
+      - 'CHANGELOG.md'
 
 permissions:
   contents: read
@@ -21,24 +22,69 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Enviar notificación a Discord
-        # Seguridad (anti inyección de shell): los datos del evento (tag, cuerpo
-        # del release, URLs) entran por variables de entorno — nunca por
-        # interpolación ${{ }} dentro del script — y el JSON se arma con jq,
-        # que escapa comillas y saltos de línea de forma segura.
+      - name: Detectar archivos del push
+        id: changed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMITS: ${{ toJSON(github.event.commits || '[]') }}
+        run: |
+          CHANGELOG=no
+          README=no
+          if [ "$EVENT_NAME" = "push" ]; then
+            if echo "$COMMITS" | jq -e 'any(.[]; ((.added // []) + (.modified // []) | index("CHANGELOG.md") != null))' >/dev/null 2>&1; then
+              CHANGELOG=yes
+            fi
+            if echo "$COMMITS" | jq -e 'any(.[]; ((.added // []) + (.modified // []) | index("README.md") != null))' >/dev/null 2>&1; then
+              README=yes
+            fi
+          fi
+          echo "changelog=$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "readme=$README" >> "$GITHUB_OUTPUT"
+
+      # Seguridad (anti inyección de shell): los datos del evento (tag, cuerpo
+      # del release, URLs) entran por variables de entorno — nunca por
+      # interpolación ${{ }} dentro del script — y el JSON se arma con jq,
+      # que escapa comillas y saltos de línea de forma segura. El changelog lo
+      # prepara scripts/changelog_discord.py, que serializa con json.dumps.
+      #
+      # El canal de Actualizaciones recibe dos cosas separadas:
+      #   1. El changelog (qué se agregó/cambió/corrigió) cuando CHANGELOG.md
+      #      cambia en main.
+      #   2. La alerta de release cuando se publica una versión nueva.
+
+      - name: Publicar changelog en Discord
+        if: steps.changed.outputs.changelog == 'yes'
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          EVENT_NAME: ${{ github.event_name }}
+          CHANGELOG_URL: ${{ github.event.repository.html_url }}/blob/${{ github.ref_name }}/CHANGELOG.md
+        run: |
+          python3 scripts/changelog_discord.py "$CHANGELOG_URL" > changelog_embed.json
+          jq -n --slurpfile e changelog_embed.json '{embeds: $e}' > discord_payload.json
+          curl -fsS -H "Content-Type: application/json" \
+               --data-binary @discord_payload.json \
+               "$WEBHOOK_URL"
+
+      - name: Avisar actualización del README en Discord
+        if: steps.changed.outputs.readme == 'yes'
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+        run: |
+          MESSAGE=$(printf '**El README de Ayudante Albion ha sido actualizado.**\n\n🔗 Ver cambios: %s' "$COMMIT_URL")
+          jq -n --arg content "$MESSAGE" '{"content": $content}' > discord_payload.json
+          curl -fsS -H "Content-Type: application/json" \
+               --data-binary @discord_payload.json \
+               "$WEBHOOK_URL"
+
+      - name: Alertar nueva release en Discord
+        if: github.event_name == 'release'
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_URL: ${{ github.event.release.html_url }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
         run: |
-          if [ "$EVENT_NAME" = "release" ]; then
-            MESSAGE=$(printf '🚀 **¡Nueva Versión: %s!**\n\n%s\n\n🔗 Link: %s' "$RELEASE_TAG" "$RELEASE_BODY" "$RELEASE_URL")
-          else
-            MESSAGE=$(printf '**El README de Ayudante Albion ha sido actualizado.**\n\n🔗 Ver cambios: %s' "$COMMIT_URL")
-          fi
+          MESSAGE=$(printf '🚀 **¡Nueva Versión: %s!**\n\n%s\n\n🔗 Link: %s' "$RELEASE_TAG" "$RELEASE_BODY" "$RELEASE_URL")
           jq -n --arg content "$MESSAGE" '{"content": $content}' > discord_payload.json
           curl -fsS -H "Content-Type: application/json" \
                --data-binary @discord_payload.json \
