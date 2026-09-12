@@ -40,3 +40,4 @@ Fuera de alcance:
 - Contenido generado por usuarios de terceros que la app solo muestra
   (por ejemplo, nombres del killboard público de Albion Online).
 
+
