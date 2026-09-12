@@ -7,3 +7,4 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 PYTHON=${PYTHON:-python3}
 
 exec "$PYTHON" "$ROOT/scripts/validate_commit_messages.py" --message-file "$MSG_FILE" --staged
+
