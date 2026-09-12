@@ -1,32 +1,28 @@
 # Convención de mensajes de commit
 
-A partir de ahora, los commits normales de este repositorio usan una sola línea
-con el archivo modificado y la hora UTC del cambio. Así, el mensaje que GitHub
-muestra junto a cada archivo mantiene siempre el mismo formato.
+Los commits normales de este repositorio usan una sola línea cuyo contenido es
+**exactamente el nombre del archivo modificado**, sin prefijos, sin hora y sin
+texto adicional. Así, el mensaje que GitHub muestra junto a cada archivo es
+siempre el nombre del propio archivo.
 
 ## Formato
 
 ```text
-archivo ----- <nombre-del-archivo> ---- <AAAA-MM-DD HH:MM:SS UTC>
+<nombre-del-archivo>
 ```
 
 Por ejemplo:
 
 ```text
-archivo ----- README.md ---- 2026-09-12 15:42:00 UTC
+README.md
 ```
 
-- `archivo` es el prefijo fijo.
-- `<nombre-del-archivo>` es el nombre base del/los archivo(s), sin ruta.
-- La hora se genera en UTC con formato de 24 horas.
-- Si un commit toca varios archivos, sus nombres se separan por coma:
-  `archivo ----- app.js, style.css ---- 2026-09-12 15:42:00 UTC`.
-- No se permite cuerpo, descripción adicional, emojis ni trailers en commits
-  normales.
-
-La hora identifica el momento en que se prepara el commit. GitHub seguirá
-mostrando además su propio tiempo relativo —por ejemplo, `10 minutes ago`—
-al lado del mensaje.
+- El mensaje es el nombre base del archivo, sin ruta (por ejemplo,
+  `docs/index.html` produce el mensaje `index.html`).
+- Si un commit toca varios archivos, sus nombres se separan por coma y en
+  orden alfabético: `app.js, style.css`.
+- No se permite cuerpo, descripción adicional, emojis, hora ni trailers en
+  commits normales.
 
 ## Archivos y validación
 
@@ -38,9 +34,9 @@ en un commit por archivo cuando sea posible.
 El repositorio incluye hooks de Git en `.githooks/`:
 
 - `prepare-commit-msg`: si no escribes un mensaje, genera automáticamente el
-  formato con los archivos en staging y la hora UTC actual.
-- `commit-msg`: valida el formato, la fecha y la correspondencia con los
-  archivos en staging. Un mensaje manual que no cumpla la regla se rechaza.
+  nombre del/los archivo(s) en staging.
+- `commit-msg`: valida que el mensaje sea exactamente el nombre del/los
+  archivo(s) en staging. Un mensaje manual que no cumpla la regla se rechaza.
 
 GitHub Actions también ejecuta `.github/workflows/commit-messages.yml` en cada
 pull request y revisa todos sus commits. Los commits generados por Git para
