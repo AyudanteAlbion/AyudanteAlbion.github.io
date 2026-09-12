@@ -69,6 +69,11 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 
 ### Corregido
 
+- **Los avisos de cambios vuelven a llegar a Discord**: el workflow ahora
+  detecta `CHANGELOG.md` y `README.md` comparando los árboles Git anterior y
+  nuevo del push. Antes dependía de la lista `commits` del evento, que podía no
+  incluir los archivos modificados al fusionar un PR y dejaba ambos avisos
+  salteados aunque la ejecución figurara como exitosa.
 - **Los módulos del frontend ahora sí llegan al navegador.** `index.html`
   cargaba los ocho archivos de `js/`, pero ni el workflow de GitHub Pages ni
   `build.sh` copiaban esa carpeta: la web y el `.exe` pedían los ocho, recibían
