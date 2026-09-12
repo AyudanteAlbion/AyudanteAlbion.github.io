@@ -17,7 +17,7 @@ if grep -qvE '^[[:space:]]*(#.*)?$' "$MSG_FILE" 2>/dev/null; then
 fi
 
 # Git entrega las rutas separadas por NUL: así también se manejan espacios y
-# caracteres especiales en los nombres. La convención usa el nombre base.
+# caracteres especiales. La convención usa el archivo raíz o la carpeta raíz.
 FILES=$(
   git diff --cached --name-only --diff-filter=ACDMRT -z |
     "$PYTHON" -c '
@@ -25,7 +25,7 @@ import os
 import sys
 
 paths = sys.stdin.buffer.read().split(b"\0")
-names = {os.fsdecode(path).rsplit("/", 1)[-1] for path in paths if path}
+names = {os.fsdecode(path).split("/", 1)[0] for path in paths if path}
 print(", ".join(sorted(names)))
 '
 )

@@ -5,4 +5,4 @@ cd "$(dirname "$0")/.."
 chmod +x .githooks/* 2>/dev/null || true
 git config core.hooksPath .githooks
 echo "Hooks activados (core.hooksPath = .githooks)."
-echo "Formato: el mensaje es el nombre exacto del archivo (ej.: README.md)."
+echo "Formato: el mensaje identifica el archivo o carpeta de primer nivel (ej.: README.md o docs)."
