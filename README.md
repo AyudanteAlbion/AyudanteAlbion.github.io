@@ -142,6 +142,12 @@ curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica
 cada release. Los mensajes van como texto organizado, sin emojis: solo el
 título lleva su ícono (🗒️ changelog, 💚 release).
 
+Los commits normales nuevos usan el formato `archivo ----- nombre-del-archivo ----
+AAAA-MM-DD HH:MM:SS UTC`. La hora UTC queda en el mensaje y GitHub continúa
+mostrando además su propio tiempo relativo junto a cada archivo. La guía
+completa y la activación de los hooks están en
+[`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md).
+
 Las descripciones de cambios que ya están en `main` se corrigen mediante PRs de
 documentación sobre `CHANGELOG.md`, `docs/releases/` o el cuerpo del PR. No se
 reescribe el historial de `main` ni se fuerza un push para cambiar mensajes de
@@ -179,7 +185,7 @@ pull request que afecte al código o a la infraestructura.
 | [`docs/farming.md`](docs/farming.md) | Bonos de isla, fuentes de datos y alcance del cálculo de Granja |
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
-| [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Regla de mensajes de commit basados en nombres de archivo |
+| [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Formato de mensajes de commit con archivo y hora UTC |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |
 | [`docs/releases/`](docs/releases/) | Notas publicadas de cada versión |

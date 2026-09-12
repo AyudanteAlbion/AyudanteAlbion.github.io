@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Valida que los commits usen nombres de archivos como mensaje."""
+"""Valida el formato de los mensajes de commit del repositorio."""
 from __future__ import annotations
 
 import argparse
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$")
 GENERATED_PREFIXES = ("Merge ", "Revert ", "fixup! ", "squash! ")
 DIFF_FILTER = "ACDMRT"
+FORMAT_PREFIX = "archivo"
+NAME_SEPARATOR = " ----- "
+TIME_SEPARATOR = " ---- "
 
 
 class ValidationError(Exception):
@@ -53,10 +58,32 @@ def parse_message(message: str, *, strip_comments: bool) -> tuple[str, bool]:
 
 
 def split_names(subject: str) -> list[str]:
-    if not subject:
-        raise ValidationError("el mensaje está vacío")
+    """Extrae y valida los nombres de archivo del asunto canónico."""
+    if not subject.startswith(FORMAT_PREFIX + NAME_SEPARATOR):
+        raise ValidationError(
+            "debe comenzar con «archivo -----» y usar el formato "
+            "archivo ----- nombre(s) ---- AAAA-MM-DD HH:MM:SS UTC"
+        )
 
-    names = [part.strip() for part in subject.split(",")]
+    remainder = subject[len(FORMAT_PREFIX + NAME_SEPARATOR) :]
+    if TIME_SEPARATOR not in remainder:
+        raise ValidationError(
+            "falta la hora; use «archivo ----- nombre(s) ---- "
+            "AAAA-MM-DD HH:MM:SS UTC»"
+        )
+
+    names_text, timestamp = remainder.rsplit(TIME_SEPARATOR, 1)
+    if not TIMESTAMP_RE.fullmatch(timestamp):
+        raise ValidationError(
+            "la hora debe tener el formato «AAAA-MM-DD HH:MM:SS UTC»"
+        )
+
+    try:
+        datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S UTC")
+    except ValueError:
+        raise ValidationError("la hora no es una fecha válida") from None
+
+    names = [part.strip() for part in names_text.split(",")]
     if any(not name for name in names):
         raise ValidationError("hay un nombre vacío en la lista separada por comas")
 
@@ -82,6 +109,11 @@ def format_names(names: set[str]) -> str:
     return ", ".join(sorted(names))
 
 
+def format_subject(names: set[str], timestamp: str) -> str:
+    """Construye el asunto canónico usado por el hook de preparación."""
+    return f"{FORMAT_PREFIX}{NAME_SEPARATOR}{format_names(names)}{TIME_SEPARATOR}{timestamp}"
+
+
 def validate_message(
     message: str,
     *,
@@ -103,7 +135,7 @@ def validate_message(
         errors.append(f"{label}: {exc}")
         return errors
 
-    if expected_names:
+    if expected_names is not None:
         actual = set(names)
         missing = expected_names - actual
         extra = actual - expected_names
@@ -156,6 +188,10 @@ def commits_in_range(revision_range: str) -> list[str]:
 
 def validate_message_file(path: Path, *, use_staged_files: bool) -> int:
     expected = staged_basenames() if use_staged_files else None
+    # Durante un amend puede no haber cambios en staging. En ese caso se
+    # valida el formato, pero no se puede inferir la lista desde el índice.
+    if use_staged_files and not expected:
+        expected = None
     errors = validate_message(
         path.read_text(encoding="utf-8"),
         label=str(path),
@@ -194,7 +230,10 @@ def print_errors(errors: list[str]) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Valida que el mensaje de cada commit sea el nombre base del archivo modificado.",
+        description=(
+            "Valida que cada mensaje indique archivo, nombre base y hora UTC "
+            "del cambio."
+        ),
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--message-file", type=Path, help="archivo de mensaje recibido por el hook commit-msg")

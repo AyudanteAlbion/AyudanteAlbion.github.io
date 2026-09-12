@@ -1,21 +1,43 @@
 #!/bin/sh
-# Genera el mensaje de commit con el nombre del/los archivo(s) en staging.
-MSG_FILE="$1"
-SOURCE="$2"
+# Genera el mensaje de commit con el nombre del/los archivo(s) en staging y la hora UTC.
+set -eu
 
-# No tocar merges, squashes, commits con -m/-F, ni amend/template
+MSG_FILE=${1:?Falta el archivo del mensaje de commit}
+SOURCE=${2-}
+PYTHON=${PYTHON:-python3}
+
+# No tocar merges, squashes, commits con -m/-F ni amend.
 case "$SOURCE" in
   merge|squash|commit|message) exit 0 ;;
 esac
 
-# Si ya hay contenido no comentado, respetarlo
-if grep -qvE '^\s*(#.*)?$' "$MSG_FILE" 2>/dev/null; then
+# Si ya hay contenido no comentado, respetarlo para que commit-msg lo valide.
+if grep -qvE '^[[:space:]]*(#.*)?$' "$MSG_FILE" 2>/dev/null; then
   exit 0
 fi
 
-FILES=$(git diff --cached --name-only --diff-filter=ACDMRT | xargs -n1 basename 2>/dev/null | sort -u | paste -sd', ' -)
-[ -z "$FILES" ] && exit 0
+# Git entrega las rutas separadas por NUL: así también se manejan espacios y
+# caracteres especiales en los nombres. La convención usa el nombre base.
+FILES=$(
+  git diff --cached --name-only --diff-filter=ACDMRT -z |
+    "$PYTHON" -c '
+import os
+import sys
 
-printf '%s\n' "$FILES" > "$MSG_FILE.tmp"
-cat "$MSG_FILE" >> "$MSG_FILE.tmp"
-mv "$MSG_FILE.tmp" "$MSG_FILE"
+paths = sys.stdin.buffer.read().split(b"\0")
+names = {os.fsdecode(path).rsplit("/", 1)[-1] for path in paths if path}
+print(", ".join(sorted(names)))
+'
+)
+[ -n "$FILES" ] || exit 0
+
+# La hora se expresa en UTC y queda como parte del asunto de una sola línea.
+TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+TMP_FILE="$MSG_FILE.tmp.$$"
+trap 'rm -f "$TMP_FILE"' EXIT HUP INT TERM
+{
+  printf 'archivo ----- %s ---- %s\n' "$FILES" "$TIMESTAMP"
+  cat "$MSG_FILE"
+} > "$TMP_FILE"
+mv "$TMP_FILE" "$MSG_FILE"
+trap - EXIT HUP INT TERM
