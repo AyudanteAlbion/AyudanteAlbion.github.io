@@ -16,8 +16,9 @@ en `.github/workflows/validate.yml` producen `.github`. Si un commit toca
 varios elementos de primer nivel, se separan por coma y en orden alfabético:
 `.github, docs, README.md`.
 
-No se permite cuerpo, descripción adicional, emojis, hora ni trailers en
-commits normales.
+No se permite cuerpo, descripción adicional, emojis ni hora en commits
+normales. El trailer `Co-authored-by` que añaden algunas herramientas de Git
+se acepta como metadato.
 
 ## Archivos y validación
 

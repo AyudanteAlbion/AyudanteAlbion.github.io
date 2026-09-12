@@ -73,7 +73,10 @@ def validate_message(message: str, label: str, expected: set[str] | None = None,
     subject, has_body = parse_message(message, strip_comments)
     if subject.startswith(GENERATED_PREFIXES):
         return []
-    errors = [f"{label}: el mensaje debe tener una sola línea, sin cuerpo ni trailers"] if has_body else []
+    # GitHub/Arena puede añadir un trailer de coautor; no forma parte del asunto.
+    lines = message.splitlines()
+    allowed_trailers = all(line.startswith("Co-authored-by: ") for line in lines[1:] if line.strip())
+    errors = [f"{label}: el mensaje debe tener una sola línea, sin cuerpo ni trailers"] if has_body and not allowed_trailers else []
     try:
         actual = set(split_items(subject))
     except ValueError as exc:
