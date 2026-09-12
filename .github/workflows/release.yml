@@ -1,7 +1,7 @@
 name: Publish release
 
 # Este workflow solo publica artefactos producidos por Build release assets.
-# No compila código ni acepta código arbitrario desde una pull request.
+# No compila código ni ejecuta la fuente del workflow_run con permisos de escritura.
 
 'on':
   workflow_run:
@@ -27,38 +27,29 @@ jobs:
       - name: Validar origen
         run: test -n "$RUN_ID"
 
-      - name: Checkout de la fuente del build
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          persist-credentials: false
-
       - name: Descargar artefactos compilados
-        run: |
-          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-assets --dir release-assets
-          TAG=$(cat release-assets/RELEASE_TAG.txt)
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Versión inválida'; exit 1; }
-          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
+        run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-assets --dir release-assets
 
       - name: Verificar artefactos
         run: |
           test -s release-assets/AyudanteAlbion.exe
           test -s release-assets/AyudanteAlbion.zip
           test -s release-assets/SHA256SUMS.txt
+          test -s release-assets/RELEASE_TAG.txt
           (cd release-assets && sha256sum -c SHA256SUMS.txt)
 
       - name: Publicar release
         run: |
+          read -r TAG < release-assets/RELEASE_TAG.txt
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Versión inválida'; exit 1
+          fi
           {
             echo '### ⬇️ Instalación'
             echo 'Descargá **`AyudanteAlbion.exe`** y hacé doble clic: la app se abre sola en tu navegador'
             echo 'y se apaga al cerrar la pestaña. **`AyudanteAlbion.zip`** trae el ejecutable + código fuente completo.'
             echo 'Requisito: Windows 10/11 x64. No necesita instalación ni permisos de admin.'
           } > RELEASE_NOTES.md
-          if [[ -f "docs/releases/$TAG.md" ]]; then
-            printf '\n' >> RELEASE_NOTES.md
-            cat "docs/releases/$TAG.md" >> RELEASE_NOTES.md
-          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG ya existe; reemplazando assets…"
             gh release upload "$TAG" release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip release-assets/SHA256SUMS.txt#SHA256SUMS.txt --clobber
