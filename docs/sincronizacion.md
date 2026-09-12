@@ -63,4 +63,4 @@ oculta los botones y explica el motivo: todo sigue funcionando contra
 junto al simulador de Discord. La configuración del binding y el control de acceso
 se describen en la documentación de despliegue.
 
-La configuración del binding está en [`deploy-worker.md`](deploy-worker.md).
+La configuración del binding se administra en Cloudflare y en `wrangler.toml`.
