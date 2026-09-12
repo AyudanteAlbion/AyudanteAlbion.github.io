@@ -1472,3 +1472,4 @@ img { max-width: 100%; }
 @media (max-width: 720px) {
   .sync-head { flex-direction: column; gap: 2px; }
 }
+

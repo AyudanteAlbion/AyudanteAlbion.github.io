@@ -62,3 +62,4 @@ git commit --no-verify -m "mensaje libre"
 
 Los commits creados con `--no-verify` no deben usarse como modelo para cambios
 posteriores.
+

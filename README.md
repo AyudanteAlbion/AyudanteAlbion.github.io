@@ -198,3 +198,4 @@ Código bajo licencia MIT (ver [`LICENSE`](LICENSE)). La licencia cubre únicame
 
 Desarrollado por **SheniaLiam** para el gremio **Spetsnaz Grail**. Los íconos y datos provienen de proyectos comunitarios; el killboard es de Sandbox Interactive.
 
+
