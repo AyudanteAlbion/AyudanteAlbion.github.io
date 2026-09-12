@@ -48,3 +48,4 @@ PARA DESARROLLADORES
   127.0.0.1 y trae un simulador de Discord que emite tokens SIN firma real.
   No exponerlo a la red ni usarlo como servidor público: el acceso de
   miembros SG real lo resuelve el Worker de Cloudflare.
+
