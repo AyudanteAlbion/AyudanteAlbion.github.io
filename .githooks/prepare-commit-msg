@@ -1,5 +1,5 @@
 #!/bin/sh
-# Genera el mensaje de commit con el nombre del/los archivo(s) en staging y la hora UTC.
+# Genera el mensaje de commit con el nombre exacto del/los archivo(s) en staging.
 set -eu
 
 MSG_FILE=${1:?Falta el archivo del mensaje de commit}
@@ -31,12 +31,12 @@ print(", ".join(sorted(names)))
 )
 [ -n "$FILES" ] || exit 0
 
-# La hora se expresa en UTC y queda como parte del asunto de una sola línea.
-TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+# El mensaje es exactamente el nombre del archivo (o los nombres separados
+# por coma), sin prefijos, sin hora y sin cuerpo.
 TMP_FILE="$MSG_FILE.tmp.$$"
 trap 'rm -f "$TMP_FILE"' EXIT HUP INT TERM
 {
-  printf 'archivo ----- %s ---- %s\n' "$FILES" "$TIMESTAMP"
+  printf '%s\n' "$FILES"
   cat "$MSG_FILE"
 } > "$TMP_FILE"
 mv "$TMP_FILE" "$MSG_FILE"
