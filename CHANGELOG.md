@@ -44,6 +44,9 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
   separen.
 - Contrato de `/sync` replicado en `server.py` con un almacén en memoria, para
   probar el flujo completo sin Cloudflare.
+- **Changelog en Discord**: cada push a `main` que toque `CHANGELOG.md` publica
+  en el canal de Actualizaciones el resumen de la versión en curso
+  (Añadido/Cambiado/Corregido), como mensaje aparte de la alerta de release.
 
 ### Cambiado
 
