@@ -121,11 +121,43 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 
 ---
 
+## Publicación de versiones
+
+Las versiones de Windows se publican creando un tag semántico en `main`, por
+ejemplo:
+
+```bash
+git tag v1.2.8
+git push origin v1.2.8
+```
+
+El workflow **Build release assets** valida el repositorio y compila el `.exe`,
+el `.zip` y sus checksums como artefactos temporales. Cuando termina con éxito,
+**Publish release** descarga esos artefactos, verifica sus SHA-256 y recién
+entonces crea o actualiza la release de GitHub. La compilación y la publicación
+usan workflows y permisos separados.
+
+---
+
 ## Comunidad y soporte
 
 - **Discord de la app** — https://discord.gg/FH3RzqMPA4 · novedades, avisos de versiones, reportes y pedidos de funciones. También está en el Inicio, en «Únete a nuestra comunidad».
 - **Discord del gremio** — https://discord.gg/TCNWUUA7UY · para jugar con Spetsnaz Grail. Es además el que verifica el acceso al Salón de miembros.
 - **Reportar un problema** — el botón al final del Inicio abre un issue con una plantilla en español ya cargada. Lo revisás y lo enviás desde tu cuenta de GitHub; la app no reporta nada por su cuenta ni adjunta datos de tu navegador, tu almacenamiento local ni tu sesión.
+
+---
+
+## Desarrollo y validación
+
+La validación local no requiere instalar dependencias adicionales:
+
+```bash
+python3 scripts/validate_repo.py
+```
+
+Comprueba sintaxis de JavaScript y Python, JSON, `wrangler.toml`, referencias
+HTML y entradas necesarias para el build. GitHub Actions la ejecuta en cada
+pull request que afecte al código o a la infraestructura.
 
 ---
 
@@ -137,7 +169,7 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 | [`docs/deploy-worker.md`](docs/deploy-worker.md) | Configuración, despliegue y verificación del Worker de Cloudflare |
 | [`docs/farming.md`](docs/farming.md) | Bonos de isla, fuentes de datos y alcance del cálculo de Granja |
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
-| [`albion-app/js/README.md`](albion-app/js/README.md) | Arquitectura del frontend y reglas de contribución |
+| [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |
 | [`docs/releases/`](docs/releases/) | Notas publicadas de cada versión |
