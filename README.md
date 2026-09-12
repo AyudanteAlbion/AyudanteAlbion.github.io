@@ -142,6 +142,11 @@ curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica
 cada release. Los mensajes van como texto organizado, sin emojis: solo el
 título lleva su ícono (🗒️ changelog, 💚 release).
 
+Las descripciones de cambios que ya están en `main` se corrigen mediante PRs de
+documentación sobre `CHANGELOG.md`, `docs/releases/` o el cuerpo del PR. No se
+reescribe el historial de `main` ni se fuerza un push para cambiar mensajes de
+commit antiguos.
+
 ---
 
 ## Comunidad y soporte
