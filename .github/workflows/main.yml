@@ -20,24 +20,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          # La detección compara los árboles anterior y nuevo del push. El
+          # historial completo también cubre pushes con varios commits.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Detectar archivos del push
         id: changed
         env:
           EVENT_NAME: ${{ github.event_name }}
-          COMMITS: ${{ toJSON(github.event.commits || '[]') }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
           CHANGELOG=no
           README=no
+
           if [ "$EVENT_NAME" = "push" ]; then
-            if echo "$COMMITS" | jq -e 'any(.[]; ((.added // []) + (.modified // []) | index("CHANGELOG.md") != null))' >/dev/null 2>&1; then
+            # github.event.commits no siempre trae added/modified para el
+            # commit de merge de un PR. Comparar ambos árboles evita que un
+            # CHANGELOG.md o README.md modificado en el PR quede sin aviso.
+            if printf '%s' "$BEFORE_SHA" | grep -qE '^0+$'; then
+              CHANGED_FILES=$(git show --format= --name-only --diff-filter=AM "$AFTER_SHA")
+            else
+              CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BEFORE_SHA" "$AFTER_SHA")
+            fi
+            printf 'Archivos añadidos o modificados en el push:\n%s\n' "$CHANGED_FILES"
+
+            if printf '%s\n' "$CHANGED_FILES" | grep -Fxq 'CHANGELOG.md'; then
               CHANGELOG=yes
             fi
-            if echo "$COMMITS" | jq -e 'any(.[]; ((.added // []) + (.modified // []) | index("README.md") != null))' >/dev/null 2>&1; then
+            if printf '%s\n' "$CHANGED_FILES" | grep -Fxq 'README.md'; then
               README=yes
             fi
           fi
+
           echo "changelog=$CHANGELOG" >> "$GITHUB_OUTPUT"
           echo "readme=$README" >> "$GITHUB_OUTPUT"
 
