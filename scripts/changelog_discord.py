@@ -14,7 +14,7 @@ Uso:
 
 Salida (JSON en stdout, un solo objeto):
     {
-      "title": "📝 Changelog v1.3.0 — sin publicar",
+      "title": "🗒️ Changelog v1.3.0 — sin publicar",
       "description": "**Añadido**\\n- …\\n\\n**Cambiado**\\n- …\\n\\n**Corregido**\\n- …",
       "url": "https://github.com/…/blob/main/CHANGELOG.md",
       "color": 13937175
@@ -31,6 +31,10 @@ import json
 import re
 import sys
 from pathlib import Path
+
+# importa la utilidad que quita emojis (mismo directorio scripts/)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from strip_emojis import strip_emojis
 
 # Límite holgado para la descripción de un embed de Discord (4096): deja margen
 # para el aviso de recorte y para que el título no dependa de la longitud.
@@ -118,7 +122,11 @@ def reflow(block):
 
 
 def build_body(subs):
-    """Arma la descripción con Añadido/Cambiado/Corregido en negrita."""
+    """Arma la descripción con Añadido/Cambiado/Corregido en negrita.
+
+    Los mensajes de Discord van sin emojis: el cuerpo se limpia con
+    strip_emojis() y solo el título lleva su emoji (🗒️ changelog).
+    """
     parts = []
     for title, block in subs:
         if title not in WANTED:
@@ -127,7 +135,7 @@ def build_body(subs):
         if not lines:
             continue
         parts.append("**" + title + "**\n" + "\n".join(lines))
-    return "\n\n".join(parts)
+    return strip_emojis("\n\n".join(parts))
 
 
 def truncate(body: str, url: str):
@@ -151,7 +159,7 @@ def main(argv):
     description, truncated = truncate(body, url)
     if truncated:
         print("aviso: changelog recortado para caber en el embed de Discord", file=sys.stderr)
-    title = "📝 Changelog " + version
+    title = "🗒️ Changelog " + version
     if note:
         title += " — " + note
     embed = {

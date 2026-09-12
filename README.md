@@ -139,7 +139,8 @@ usan workflows y permisos separados.
 
 En Discord, el canal de Actualizaciones recibe el changelog de la versión en
 curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica
-cada release.
+cada release. Los mensajes van como texto organizado, sin emojis: solo el
+título lleva su ícono (🗒️ changelog, 💚 release).
 
 ---
 

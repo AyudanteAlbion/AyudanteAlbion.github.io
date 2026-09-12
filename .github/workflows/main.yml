@@ -51,6 +51,10 @@ jobs:
       #   1. El changelog (qué se agregó/cambió/corrigió) cuando CHANGELOG.md
       #      cambia en main.
       #   2. La alerta de release cuando se publica una versión nueva.
+      #
+      # Los mensajes van sin emojis: solo el título del changelog lleva 🗒️ y
+      # el de la release lleva 💚. El cuerpo del release se limpia con
+      # scripts/strip_emojis.py y el changelog ya sale limpio del script.
 
       - name: Publicar changelog en Discord
         if: steps.changed.outputs.changelog == 'yes'
@@ -84,7 +88,8 @@ jobs:
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_URL: ${{ github.event.release.html_url }}
         run: |
-          MESSAGE=$(printf '🚀 **¡Nueva Versión: %s!**\n\n%s\n\n🔗 Link: %s' "$RELEASE_TAG" "$RELEASE_BODY" "$RELEASE_URL")
+          BODY=$(printf '%s' "$RELEASE_BODY" | python3 scripts/strip_emojis.py)
+          MESSAGE=$(printf '💚 **¡Nueva Versión: %s!**\n\n%s\n\nEnlace: %s' "$RELEASE_TAG" "$BODY" "$RELEASE_URL")
           jq -n --arg content "$MESSAGE" '{"content": $content}' > discord_payload.json
           curl -fsS -H "Content-Type: application/json" \
                --data-binary @discord_payload.json \
