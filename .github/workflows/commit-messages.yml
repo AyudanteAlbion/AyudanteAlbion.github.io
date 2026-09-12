@@ -1,0 +1,46 @@
+name: Commit messages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-messages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validar mensajes de commit
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            python3 scripts/validate_commit_messages.py --range "${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            if printf '%s' "$BEFORE_SHA" | grep -qE '^0+$'; then
+              python3 scripts/validate_commit_messages.py --commit "$AFTER_SHA"
+            else
+              python3 scripts/validate_commit_messages.py --range "${BEFORE_SHA}..${AFTER_SHA}"
+            fi
+          else
+            python3 scripts/validate_commit_messages.py --commit "$AFTER_SHA"
+          fi
