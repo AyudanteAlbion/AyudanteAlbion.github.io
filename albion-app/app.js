@@ -1,18 +1,12 @@
 /* ===== Ayudante Albion — servidor Americas (West) ===== */
 const API = 'https://west.albion-online-data.com/api/v2/stats';
 /* Proxy de Cloudflare para killboard y badges (no envían CORS o hay que
-   proteger la cuota). El exe y el server local lo usan solo como respaldo.
-   Para pruebas, se puede pisar en runtime con localStorage.setItem('aaProxy', url). */
-const AA_WORKER = 'https://ayudantealbion.josemesina21.workers.dev';
-const WORKER_URL = (() => {
-  let v = '';
-  try { v = localStorage.getItem('aaProxy') || ''; } catch (e) {}
-  return (v || AA_WORKER).replace(/\/+$/, '');
-})();
+   proteger la cuota). El exe y el server local lo usan solo como respaldo. */
+const WORKER_URL = 'https://ayudantealbion.josemesina21.workers.dev';
 const ICON = id => `https://render.albiononline.com/v1/item/${id}.png?size=64`;
-// Íconos locales (carpeta icons/): carga instantánea, sin depender del servicio de render.
+// Íconos locales WebP (carpeta icons/): carga instantánea, sin depender del servicio de render.
 // Solo ítems base: los encantados (@1..@4) tienen ícono propio y van al servicio remoto.
-const ICON_LOCAL = id => id.includes('@') ? null : `icons/${id}.png`;
+const ICON_LOCAL = id => id.includes('@') ? null : `icons/${id}.webp`;
 
 /* Cadena de carga: ícono local → servicio de render (con reintentos por los 502
    intermitentes) → placeholder. */
@@ -74,7 +68,7 @@ function iconImg(id, cls, title) {
   /* sgEsc en todo lo que cae en un atributo (id, clase, título y URLs):
      los datos pueden venir de localStorage (p. ej. un respaldo importado).
      Para los ids reales del catálogo sgEsc no cambia nada. */
-  return `<img class="${sgEsc(cls)}" loading="lazy" src="${sgEsc(src)}" data-local="${local ? 1 : 0}" data-base="${sgEsc(ICON(id))}" data-img-retry alt=""${title ? ` title="${sgEsc(title)}"` : ''}>`;
+  return `<img class="${sgEsc(cls)}" loading="lazy" decoding="async" src="${sgEsc(src)}" data-local="${local ? 1 : 0}" data-base="${sgEsc(ICON(id))}" data-img-retry alt=""${title ? ` title="${sgEsc(title)}"` : ''}>`;
 }
 const CITIES = ['Bridgewatch','Caerleon','Fort Sterling','Lymhurst','Martlock','Thetford','Brecilien'];
 // El Black Market compra equipo al jugador; nunca es origen de compra.
@@ -359,6 +353,14 @@ function createCraftModule(cfg) {
   };
   craftModules[cfg.key] = m;
 
+  /* Los datos de una pestaña se descargan recién al abrirla. Esto evita
+     cargar comida, pociones y refinamiento en el primer render de la app. */
+  m.loadData = async function () {
+    if (m.DATA) return m.DATA;
+    m.DATA = await fetchJSON(cfg.dataUrl);
+    return m.DATA;
+  };
+
   /* ---- plantilla del panel ---- */
   root.innerHTML = `
   ${cfg.cityGuide ? `
@@ -605,12 +607,13 @@ function createCraftModule(cfg) {
 
   /* ---- carga de precios ---- */
   m.loadPrices = async function () {
-    if (!m.DATA) return;
+    if (m.loadedOnce && !m.DATA) return;
     m.loadedOnce = true;
     const btn = $('Refresh');
     btn.disabled = true;
-    $('Body').innerHTML = '<tr><td colspan="7" class="loading-cell">Cargando precios del mercado…</td></tr>';
+    $('Body').innerHTML = '<tr><td colspan="7" class="loading-cell">Cargando datos y precios del mercado…</td></tr>';
     try {
+      await m.loadData();
       const ids = new Set();
       for (const r of m.DATA.recipes) {
         ids.add(r.id);
@@ -620,7 +623,7 @@ function createCraftModule(cfg) {
       m.prices = await fetchPrices([...ids], locs);
       $('Updated').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR');
     } catch (err) {
-      $('Body').innerHTML = `<tr><td colspan="7" class="loading-cell">Error al cargar precios: ${err.message}. Reintentá en unos segundos (límite de la API).</td></tr>`;
+      $('Body').innerHTML = `<tr><td colspan="7" class="loading-cell">Error al cargar precios: ${sgEsc(err.message)}. Reintentá en unos segundos (límite de la API).</td></tr>`;
       btn.disabled = false;
       return;
     }
@@ -651,7 +654,7 @@ function createCraftModule(cfg) {
     if (!cfg.planner || !m.DATA || !Object.keys(m.prices).length) return;
     const sel = $('PlanItem');
     const recipes = m.DATA.recipes;
-    if (!sel.options.length) sel.innerHTML = recipes.map(r => `<option value="${r.id}">${r.name_es || r.name_en || r.id} (T${r.tier}${r.ench ? '.' + r.ench : ''})</option>`).join('');
+    if (!sel.options.length) sel.innerHTML = recipes.map(r => `<option value="${sgEsc(r.id)}">${sgEsc(r.name_es || r.name_en || r.id)} (T${r.tier}${r.ench ? '.' + r.ench : ''})</option>`).join('');
     const r = recipes.find(x => x.id === sel.value) || recipes[0];
     if (!r) return;
     sel.value = r.id;
@@ -660,7 +663,7 @@ function createCraftModule(cfg) {
     const totalOut = qty * r.amount;
     const profit = c.profit * qty;
     $('PlanStats').innerHTML = `<div class="stat"><div class="k">Producción</div><div class="v">${fmt(totalOut)} unidades</div><div class="s">${qty} lote${qty === 1 ? '' : 's'}</div></div><div class="stat"><div class="k">Costo materiales + estación</div><div class="v">${isNaN(c.totalCost) ? '—' : fmt(c.totalCost * qty)}</div><div class="s">precios actuales</div></div><div class="stat"><div class="k">Ganancia total</div><div class="v ${profit > 0 ? 'pos' : 'neg'}">${isNaN(profit) ? '—' : (profit > 0 ? '+' : '') + fmt(profit)}</div><div class="s">después de impuestos</div></div>`;
-    $('PlanMaterials').innerHTML = `<strong>Materiales a comprar</strong><div class="planner-material-list">${r.resources.map(res => `<span class="planner-material">${iconImg(res.id, 'item-icon sm', m.DATA.ingredients[res.id]?.name_es || res.id)} <b>${fmt(res.count * qty)}</b> ${m.DATA.ingredients[res.id]?.name_es || res.id}</span>`).join('')}</div>`;
+    $('PlanMaterials').innerHTML = `<strong>Materiales a comprar</strong><div class="planner-material-list">${r.resources.map(res => `<span class="planner-material">${iconImg(res.id, 'item-icon sm', m.DATA.ingredients[res.id]?.name_es || res.id)} <b>${fmt(res.count * qty)}</b> ${sgEsc(m.DATA.ingredients[res.id]?.name_es || res.id)}</span>`).join('')}</div>`;
   }
 
   m.render = function () {
@@ -1072,7 +1075,7 @@ async function loadFlipPrices(ids) {
     const data = await fetchPrices(ids, SELL_CITIES);
     Object.assign(flipData, data);
   } catch (err) {
-    document.getElementById('flipBody').innerHTML = `<tr><td colspan="8" class="loading-cell">Error: ${err.message}. Esperá unos segundos y reintentá.</td></tr>`;
+    document.getElementById('flipBody').innerHTML = `<tr><td colspan="8" class="loading-cell">Error: ${sgEsc(err.message)}. Esperá unos segundos y reintentá.</td></tr>`;
     btn.disabled = false;
     return;
   }
@@ -1155,13 +1158,13 @@ function renderFlip() {
   const best = profitable[0];
   const filterOn = flipFilterActive();
   document.getElementById('flipStats').innerHTML = `
-    <div class="stat"><div class="k">Ítems monitoreados</div><div class="v">${filterOn ? filtered.length : all.length}</div><div class="s">${filterOn ? 'filtro: ' + flipFilterLabel() + ' · mostrando ' + shown.length + ' de ' + all.length : 'mostrando ' + shown.length + ' · en 7 ciudades'}</div></div>
+    <div class="stat"><div class="k">Ítems monitoreados</div><div class="v">${filterOn ? filtered.length : all.length}</div><div class="s">${filterOn ? 'filtro: ' + sgEsc(flipFilterLabel()) + ' · mostrando ' + shown.length + ' de ' + all.length : 'mostrando ' + shown.length + ' · en 7 ciudades'}</div></div>
     <div class="stat"><div class="k">Flips rentables</div><div class="v ${profitable.length ? 'pos' : ''}">${profitable.length}</div><div class="s">tras impuestos</div></div>
-    <div class="stat"><div class="k">Mejor flip</div><div class="v">${best ? catalogName(best.id) : '—'}</div><div class="s">${best ? '+' + fmt(best.f.profit) + ' plata/u (' + best.f.bestBuy.city + ' → ' + best.f.bestSell.city + ')' : ''}</div></div>`;
+    <div class="stat"><div class="k">Mejor flip</div><div class="v">${best ? sgEsc(catalogName(best.id)) : '—'}</div><div class="s">${best ? '+' + fmt(best.f.profit) + ' plata/u (' + best.f.bestBuy.city + ' → ' + best.f.bestSell.city + ')' : ''}</div></div>`;
 
   // el filtro no coincide con ningún ítem monitoreado: explicarlo en la tabla
   if (!filtered.length) {
-    body.innerHTML = `<tr><td colspan="8" class="loading-cell">Ningún ítem monitoreado coincide con el filtro (${flipFilterLabel()}). <button class="btn micro-btn" data-clear-filter>✕ Quitar filtro</button></td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" class="loading-cell">Ningún ítem monitoreado coincide con el filtro (${sgEsc(flipFilterLabel())}). <button class="btn micro-btn" data-clear-filter>✕ Quitar filtro</button></td></tr>`;
     return;
   }
 
@@ -1928,6 +1931,31 @@ function buildGearUI() {
   renderPlanner();
 }
 
+/* Crafteo de equipo: es el dataset más grande, por eso se carga solo al
+   abrir la pestaña. La UI se construye después de recibir los datos. */
+async function loadGearModule() {
+  if (GEAR.loadedOnce || GEAR.loading) return;
+  GEAR.loading = true;
+  const root = document.getElementById('tab-gear');
+  root.innerHTML = '<div class="panel loading-cell">Cargando datos de equipo…</div>';
+  try {
+    const data = await fetchJSON('data/gear_data.json');
+    GEAR.DATA = data;
+    GEAR.byId = {};
+    for (const r of data.recipes) GEAR.byId[r.id] = r;
+    buildGearUI();
+    GEAR.loadedOnce = true;
+  } catch (e) {
+    root.innerHTML = `<div class="panel loading-cell sg-err">No se pudieron cargar los datos de equipo: ${sgEsc(e.message)}</div>`;
+  } finally {
+    GEAR.loading = false;
+  }
+}
+craftModules['gear'] = {
+  get loadedOnce() { return GEAR.loadedOnce; },
+  loadPrices: loadGearModule,
+};
+
 /* ---------- init ---------- */
 const CRAFT_PLACES = [
   ['0', 'Isla personal (0% bono)', false],
@@ -1995,22 +2023,11 @@ const REFINE_PLACES = [
   });
 
   try {
-    const [foodData, potionData, refineData, gearData, catalog] = await Promise.all([
-      fetchJSON('data/food_data.json'),
-      fetchJSON('data/potion_data.json'),
-      fetchJSON('data/refine_data.json'),
-      fetchJSON('data/gear_data.json'),
-      fetchJSON('data/catalog.json'),
-    ]);
-    food.DATA = foodData;
-    alch.DATA = potionData;
-    refine.DATA = refineData;
-    GEAR.DATA = gearData;
-    for (const r of gearData.recipes) GEAR.byId[r.id] = r;
-    buildGearUI();
-    CATALOG = catalog;
+    /* El catálogo es necesario para el buscador y Flipping desde Inicio.
+       Los datos pesados de cada herramienta se cargan al abrir su pestaña. */
+    CATALOG = await fetchJSON('data/catalog.json');
   } catch (e) {
-    document.getElementById('foodBody').innerHTML = `<tr><td colspan="7" class="loading-cell">Error cargando datos locales: ${e.message}</td></tr>`;
+    document.getElementById('foodBody').innerHTML = `<tr><td colspan="7" class="loading-cell">Error cargando datos locales: ${sgEsc(e.message)}</td></tr>`;
     return;
   }
 
@@ -2088,7 +2105,7 @@ async function transLoadPrices() {
     renderTrans();
     renderTransRouteSelectors();
   } catch (e) {
-    TR('Body').innerHTML = `<tr><td colspan="7" class="loading-cell">Error cargando precios: ${e.message}</td></tr>`;
+    TR('Body').innerHTML = `<tr><td colspan="7" class="loading-cell">Error cargando precios: ${sgEsc(e.message)}</td></tr>`;
   }
   TRANS.loading = false;
 }
@@ -2418,7 +2435,7 @@ async function meldLoadPrices() {
     renderMeld();
     renderMeldSimSelector();
   } catch (e) {
-    MD('Body').innerHTML = `<tr><td colspan="7" class="loading-cell">Error cargando precios: ${e.message}</td></tr>`;
+    MD('Body').innerHTML = `<tr><td colspan="7" class="loading-cell">Error cargando precios: ${sgEsc(e.message)}</td></tr>`;
   }
   MELD.loading = false;
 }
@@ -2689,7 +2706,7 @@ async function psLoad() {
     psSaveMarketSnapshot(id, data);
     psRender(id);
   } catch (e) {
-    box.innerHTML = `<div class="panel"><div class="loading-cell">Error: ${e.message}</div></div>`;
+    box.innerHTML = `<div class="panel"><div class="loading-cell">Error: ${sgEsc(e.message)}</div></div>`;
   }
 }
 function psRender(id) {
@@ -3049,7 +3066,7 @@ async function enLoad() {
     EN.prices = await fetchPrices(ids, SELL_CITIES);
     enRender();
   } catch (e) {
-    box.innerHTML = `<div class="panel"><div class="loading-cell">Error: ${e.message}</div></div>`;
+    box.innerHTML = `<div class="panel"><div class="loading-cell">Error: ${sgEsc(e.message)}</div></div>`;
   }
   EN.loading = false;
 }
@@ -3281,7 +3298,7 @@ async function fmLoad() {
     FM.prices = await fetchPrices([...ids], CITIES);
     fmRender();
   } catch (e) {
-    document.getElementById('fmBody').innerHTML = `<tr><td colspan="7" class="loading-cell">Error: ${e.message}</td></tr>`;
+    document.getElementById('fmBody').innerHTML = `<tr><td colspan="7" class="loading-cell">Error: ${sgEsc(e.message)}</td></tr>`;
   }
   FM.loading = false;
 }
@@ -3593,7 +3610,7 @@ async function pfLoadPlayer(id, name) {
     localStorage.setItem('pfPlayer', JSON.stringify(PF.player));
     pfRender(detail, kills, deaths, guild);
   } catch (e) {
-    box.innerHTML = `<div class="panel"><div class="loading-cell">No se pudo cargar el perfil: ${e.message}. El killboard oficial suele estar saturado — probá de nuevo en unos segundos.</div></div>`;
+    box.innerHTML = `<div class="panel"><div class="loading-cell">No se pudo cargar el perfil: ${sgEsc(e.message)}. El killboard oficial suele estar saturado — probá de nuevo en unos segundos.</div></div>`;
   }
   PF.loading = false;
 }
@@ -3768,7 +3785,7 @@ function pfRender(d, kills, deaths, guild) {
           : '<div class="sr-item"><div><div class="n muted">Sin resultados</div><div class="m">Verificá el nombre exacto del personaje</div></div></div>';
         res.classList.add('open');
       } catch (e) {
-        res.innerHTML = `<div class="sr-item"><div><div class="n muted">Killboard no disponible (${e.message})</div><div class="m">Reintentá en unos segundos</div></div></div>`;
+        res.innerHTML = `<div class="sr-item"><div><div class="n muted">Killboard no disponible (${sgEsc(e.message)})</div><div class="m">Reintentá en unos segundos</div></div></div>`;
         res.classList.add('open');
       }
     }, 450);
@@ -4513,6 +4530,15 @@ function sgEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/* URLs que terminan en HTML dinámico deben ser http(s) y no pueden venir
+   directamente de localStorage o de una API sin validación. */
+function safeExternalUrl(value) {
+  try {
+    const u = new URL(String(value), location.origin);
+    return ['http:', 'https:'].includes(u.protocol) ? sgEsc(u.href) : '#';
+  } catch (e) { return '#'; }
+}
+
 /* base64url → JSON (unicode-safe; el Worker codifica con TextEncoder) */
 function sgFromB64url(s) {
   const bin = atob(String(s).replace(/-/g, '+').replace(/_/g, '/'));
@@ -4537,9 +4563,10 @@ function sgDecodeSession(raw) {
    Primero el proxy local (server.py / exe), después el Worker.
    Devuelve {valid, member, user, e} o null si nadie pudo responder. */
 async function sgVerifySession(raw) {
-  const q = '/discord/verify?s=' + encodeURIComponent(String(raw));
+  const q = '/discord/verify';
+  const init = { cache: 'no-store', headers: { Authorization: 'Bearer ' + String(raw) } };
   const ask = async u => {
-    const r = await fetch(u, { cache: 'no-store' });
+    const r = await fetch(u, init);
     if (!r || !r.ok) return null;
     const j = await r.json();
     return (j && typeof j === 'object' && typeof j.valid === 'boolean') ? j : null;
@@ -4638,7 +4665,7 @@ async function sgRefreshConfig() {
 window.sgAvatarFail = function (img) { img.style.display = 'none'; };
 function sgAvatarHTML(u, cls) {
   const ini = sgEsc((u.n || '?').trim().charAt(0).toUpperCase() || '?');
-  const url = u.a ? `https://cdn.discordapp.com/avatars/${sgEsc(u.i)}/${sgEsc(u.a)}.png?size=64` : '';
+  const url = u.a ? `https://cdn.discordapp.com/avatars/${encodeURIComponent(String(u.i))}/${encodeURIComponent(String(u.a))}.png?size=64` : '';
   return `<span class="sg-av ${cls || ''}">${url
     ? `<img src="${url}" alt="" data-sg-avatar>` : ''}<span class="sg-av-ini">${ini}</span></span>`;
 }
@@ -4656,7 +4683,7 @@ function sgPaintAccount() {
   const ini = document.getElementById('sgAccountInitial');
   const dot = document.getElementById('sgAccountDot');
   if (s.u.a) {
-    img.src = `https://cdn.discordapp.com/avatars/${s.u.i}/${s.u.a}.png?size=64`;
+    img.src = `https://cdn.discordapp.com/avatars/${encodeURIComponent(String(s.u.i))}/${encodeURIComponent(String(s.u.a))}.png?size=64`;
     img.hidden = false; ini.textContent = '';
     img.onerror = () => { img.hidden = true; ini.textContent = (s.u.n || '?').charAt(0).toUpperCase(); };
   } else {
@@ -6209,7 +6236,7 @@ const WM_PROVIDER_URLS = {
   ao2d: 'https://albiononline2d.com/',
 };
 function wmProvLink(url, text){
-  return `<a href="${url}" target="_blank" rel="noopener" class="wm-prov-link" title="Abrir ${text} en una pestaña nueva ↗">${text}</a>`;
+  return `<a href="${safeExternalUrl(url)}" target="_blank" rel="noopener" class="wm-prov-link" title="Abrir ${text} en una pestaña nueva ↗">${text}</a>`;
 }
 function wmProvidersHTML(){
   const p = WM.providers;
@@ -7945,7 +7972,7 @@ async function sgFetchConfig() {
 
    Reglas conscientes:
      · exactamente las mismas claves que el respaldo en archivo (SY_KEYS),
-       nunca la sesión de Discord ni la URL del proxy;
+       nunca la sesión de Discord ni la configuración del Worker;
      · el servidor valida la firma de la sesión: sin ingreso no hay nube;
      · nada es automático — subir y bajar son dos botones explícitos, con
        la fecha de cada lado a la vista, porque pisar el registro de
@@ -7969,11 +7996,15 @@ function syEnabled() { return !!(SY.available && sgIsMember() && syToken()); }
 /* Igual que el resto del proxy: primero el server local (exe / server.py),
    después el Worker. Devuelve la respuesta JSON o lanza. */
 async function syFetch(method, body) {
-  const q = '/sync?s=' + encodeURIComponent(syToken());
-  const init = { method, cache: 'no-store' };
+  const q = '/sync';
+  const init = {
+    method,
+    cache: 'no-store',
+    headers: { Authorization: 'Bearer ' + syToken() },
+  };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
-    init.headers = { 'Content-Type': 'application/json' };
+    init.headers['Content-Type'] = 'application/json';
   }
   const tryUrl = async u => {
     const r = await fetch(u, init);

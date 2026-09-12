@@ -44,7 +44,7 @@ en el script (GO_SHA256).
 
 PARA DESARROLLADORES
 --------------------
-- albion-app/server.py es el servidor de DESARROLLO local: escucha solo en
+- tools/server.py es el servidor de DESARROLLO local: escucha solo en
   127.0.0.1 y trae un simulador de Discord que emite tokens SIN firma real.
   No exponerlo a la red ni usarlo como servidor público: el acceso de
   miembros SG real lo resuelve el Worker de Cloudflare.

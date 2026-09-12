@@ -144,7 +144,7 @@ curl -s $W/discord/config
 #    si configured:false, "missing" nombra lo que falta (nunca valores)
 
 # 2 · sesión basura rechazada
-curl -s "$W/discord/verify?s=abc.def"
+curl -s -H "Authorization: Bearer abc.def" "$W/discord/verify"
 # → {"valid":false}
 
 # 3 · Mapa de Guerra: rutas nuevas abiertas
@@ -213,17 +213,15 @@ En el navegador (https://ayudantealbion.github.io, Ctrl+F5):
 lo borró. Se recargó como **Secret** y se agregó `keep_vars = true` +
 `SG_DISCORD_GUILD_ID` en `wrangler.toml`.
 
-## Pruebas locales (sin tocar Cloudflare)
+## Desarrollo local (sin tocar Cloudflare)
 
 ```bash
-node worker/selftest.mjs           # OAuth + verify + /sync (KV simulado) + allowlist del proxy (sin red)
-cd albion-app && python3 server.py # http://127.0.0.1:3000 — proxy gameinfo abierto + Discord simulado
-cd albion-app && node qa-test.js   # QA completa (requiere jsdom)
+cd albion-app && python3 ../tools/server.py # http://127.0.0.1:3000
 ```
 
-`server.py` no usa la allowlist del Worker: en local el Mapa de Guerra ya habla
-directo con el killboard. Cloudflare solo hace falta para la web pública y el
-ejecutable cuando no hay server local.
+`server.py` ofrece en local los endpoints necesarios para probar la aplicación.
+Cloudflare solo hace falta para la web pública y el ejecutable cuando no hay
+servidor local.
 
 ## Qué se publica en la web
 
@@ -231,11 +229,6 @@ El workflow «Publicar en la web» arma `_site` con `index.html`, `app.js`,
 `styles.css`, los módulos de `js/`, y las carpetas `data/`, `icons/` e `img/`.
 El servidor local sirve el árbol entero, así que **una carpeta que falte en el
 workflow funciona en desarrollo y falla solo en producción**.
-
-Para que eso no se repita, `albion-app/assets-test.js` corre sobre `_site`
-antes de subir el artefacto: compara cada `src`/`href` local de `index.html`
-contra los archivos presentes y corta el deploy si falta alguno. `build.sh`
-hace la misma verificación sobre `albion-exe/app/` antes de compilar el `.exe`.
 
 > Ocurrió de verdad: `index.html` cargaba los ocho módulos de `js/`, pero ni
 > `pages.yml` ni `build.sh` copiaban la carpeta. La web y el ejecutable

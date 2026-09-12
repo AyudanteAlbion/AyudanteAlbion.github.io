@@ -145,11 +145,6 @@ herramientas se pisaban. Ahora son dos botones independientes del Salón:
 - Móvil: se eliminó la hoja inferior y el botón flotante 🎯 (`wm-sheet` / `wm-fab`); la pestaña propia
   ya resuelve el problema y los cuatro botones se reparten la fila.
 
-## QA
-- `qa-test.js`: stubs de `/battles` y `/battles/:id`, territorio propio en zona real
-  (Kindlegrass Steppe, adyacente a Astolat) y ~20 chequeos nuevos del tracker por zona.
-- `worker/selftest.mjs`: `/battles/:id` permitida y traversal bloqueado.
-
 ---
 
 # Fase 3 (2026-09): multi-proveedor — datos al día y verificables
@@ -187,7 +182,7 @@ Sí, pero incompletas y potencialmente atrasadas:
 2. **Asesinatos crudos**: `/events` en 5 páginas de 51 (`pvFetchEventPages`), normalizados a
    `{id, ts, zone, v, vg, k, kg, f, ip, bid}` (`pvSlimEvent`). Zona desde `Victim.ZoneName`.
 3. **Murderledger vía proxy**: rutas nuevas `/murderledger/home` y `/murderledger/vod-events` en
-   el Worker (`ML_ROUTES`, allowlist + parámetros filtrados), `server.py` y `main.go` (exe).
+   el Worker (`ML_ROUTES`, allowlist + parámetros filtrados), `tools/server.py` y `main.go` (exe).
    La app intenta local primero y cae al Worker (`mlFetch`), igual que gameinfo.
 4. **Scoring de peligro extendido**: cada kill crudo suma `(0.5 + fama/20000) · decaimiento(2 h)`
    al score de su zona; `wmZoneDanger` ahora expone `evKills`, `evFame`, `lastKillAt`.
@@ -207,12 +202,5 @@ Sí, pero incompletas y potencialmente atrasadas:
 - `/events` caído → ranking usa kills de batallas, aviso en el feed.
 - Murderledger caído → panel lo marca «sin respuesta»; el resto sigue.
 - `/battles` totalmente caído → el tracker muestra el error (como antes).
-- Todo se prueba en `qa-test.js` (stub con zonas + Murderledger) y en un escenario degradado
-  manual (events/murderledger 502).
-
-## QA
-- `qa-test.js`: stubs de `/gameinfo/events` con `Victim.ZoneName` (3 kills en Astolat, 1 en
-  Kindlegrass Steppe) y de `/murderledger/home`; 8 chequeos nuevos (panel de fuentes, veredicto,
-  ranking ordenado por kills, feed con enlaces a KillBoard#1/AO2D, CSV de kills).
-- `worker/selftest.mjs`: sección 8b — `/murderledger/home` y `/vod-events` pasan, rutas ajenas
-  404, subruta vacía → /home, Origin ajeno 403.
+- El tracker conserva escenarios degradados para cuando `/events`, Murderledger o `/battles` no respondan;
+  en esos casos muestra el estado de la fuente y continúa con los datos disponibles.

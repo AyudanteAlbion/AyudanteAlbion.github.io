@@ -1,0 +1,9 @@
+# Cambios de infraestructura y publicación requieren revisión del mantenedor.
+/.github/workflows/ @AyudanteAlbion/ayudantes
+/.github/CODEOWNERS    @AyudanteAlbion/ayudantes
+/worker/               @AyudanteAlbion/ayudantes
+/wrangler.toml         @AyudanteAlbion/ayudantes
+/build.sh              @AyudanteAlbion/ayudantes
+/albion-exe/           @AyudanteAlbion/ayudantes
+/tools/                @AyudanteAlbion/ayudantes
+/scripts/              @AyudanteAlbion/ayudantes

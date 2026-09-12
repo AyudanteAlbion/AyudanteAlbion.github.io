@@ -16,9 +16,9 @@ El Worker expone `/sync`, la única ruta que acepta métodos de escritura:
 
 | Método | Respuesta |
 |---|---|
-| `GET /sync?s=<sesión>` | `{ok, updated, data, bytes}` — la copia del usuario |
-| `PUT /sync?s=<sesión>` | Guarda `{updated, data}` del cuerpo JSON |
-| `DELETE /sync?s=<sesión>` | Borra la copia |
+| `GET /sync` + `Authorization: Bearer <sesión>` | `{ok, updated, data, bytes}` — la copia del usuario |
+| `PUT /sync` + `Authorization: Bearer <sesión>` | Guarda `{updated, data}` del cuerpo JSON |
+| `DELETE /sync` + `Authorization: Bearer <sesión>` | Borra la copia |
 
 ## Control de acceso
 
@@ -59,9 +59,8 @@ oculta los botones y explica el motivo: todo sigue funcionando contra
 
 ## Probar sin Cloudflare
 
-`albion-app/server.py` implementa el mismo contrato con un almacén en memoria,
-junto al simulador de Discord. El selftest del Worker
-(`node worker/selftest.mjs`) lo cubre con un KV simulado: control de acceso,
-aislamiento entre usuarios, límites y CORS.
+`tools/server.py` implementa el mismo contrato con un almacén en memoria,
+junto al simulador de Discord. La configuración del binding y el control de acceso
+se describen en la documentación de despliegue.
 
 La configuración del binding está en [`deploy-worker.md`](deploy-worker.md).
