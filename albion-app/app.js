@@ -3015,6 +3015,16 @@ function llSetDefaultDate() {
   const el = document.getElementById('llDate');
   if (el && !el.value) el.value = llDateInputValue(Date.now());
 }
+let LL_UID_COUNTER = 0;
+function llUid() {
+  if (window.crypto && typeof crypto.randomUUID === 'function') return 'll_' + crypto.randomUUID();
+  if (window.crypto && typeof crypto.getRandomValues === 'function') {
+    const values = new Uint32Array(2);
+    crypto.getRandomValues(values);
+    return 'll_' + Date.now().toString(36) + '_' + Array.from(values, v => v.toString(36)).join('');
+  }
+  return 'll_' + Date.now().toString(36) + '_' + (LL_UID_COUNTER++).toString(36);
+}
 function llPrefill(id, type, price, city) {
   LL.item = id;
   document.getElementById('llItem').value = catalogName(id);
@@ -3213,7 +3223,7 @@ function llUpdateCities() {
     const city = document.getElementById('llCity').value;
     LL.rows.push({
       v: LLCore.VERSION || 2,
-      uid: 'll_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
+      uid: llUid(),
       ts, id: LL.item, name: document.getElementById('llItem').value,
       type, qty, price, fee, craftCost,
       city: city === '—' ? '' : city,
@@ -4743,7 +4753,7 @@ async function plQuotePrices() {
   }
   if (cur.length) chunks.push(cur);
   for (const chunk of chunks) {
-    const url = `${API}/prices/${chunk.join(',')}.json?locations=${locs.map(c => c.replace(' ', '%20')).join(',')}&qualities=1,2,3,4,5`;
+    const url = `${API}/prices/${chunk.join(',')}.json?locations=${locs.map(c => encodeURIComponent(c)).join(',')}&qualities=1,2,3,4,5`;
     const data = await fetchJSON(url, 25000);
     for (const row of data || []) {
       const id = row.item_id;
@@ -4802,7 +4812,7 @@ function plRender(added) {
     <div class="stat"><div class="k">Ítems distintos</div><div class="v">${fmt(groups.length)}</div><div class="s">según filtros actuales</div></div>
     <div class="stat"><div class="k">Equipo observado</div><div class="v">${fmt(totalEq)}</div><div class="s">cantidad en slots de equipo</div></div>
     <div class="stat"><div class="k">Inventario observado</div><div class="v">${fmt(totalInv)}</div><div class="s">cantidad en inventario</div></div>
-    <div class="stat"><div class="k">Valor orientativo</div><div class="v">${totalValue ? fmt(totalValue) : '—'}</div><div class="s">${cfg.city === 'median' ? 'mediana de ciudades' : cfg.city}</div></div>`;
+    <div class="stat"><div class="k">Valor orientativo</div><div class="v">${totalValue ? fmt(totalValue) : '—'}</div><div class="s">${cfg.city === 'median' ? 'mediana de ciudades' : sgEsc(cfg.city)}</div></div>`;
   if (PL.loading || PL.priceLoading) {
     body.innerHTML = '<tr><td colspan="9" class="loading-cell">Actualizando muestra pública y precios por lote…</td></tr>';
     return;
