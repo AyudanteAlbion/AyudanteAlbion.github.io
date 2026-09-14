@@ -482,7 +482,7 @@ function backWith(redirect, errCode) {
 const SYNC_KEYS = new Set([
   'alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
   'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory',
-  'marketHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild',
+  'marketHistory', 'tradeLog', 'tradeLogVersion', 'aaSGChar', 'aaSGGuild',
 ]);
 const syncKeyOk = k => typeof k === 'string' && SYNC_KEY_RE.test(k)
   && (SYNC_KEYS.has(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));

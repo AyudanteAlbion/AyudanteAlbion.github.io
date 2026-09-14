@@ -1,0 +1,15 @@
+{
+  "name": "ayudante-albion",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Pruebas y validaciones locales de Ayudante Albion.",
+  "scripts": {
+    "validate": "python3 scripts/validate_repo.py",
+    "qa:phases": "node scripts/phase_qa.js",
+    "test": "npm run validate && npm run qa:phases"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

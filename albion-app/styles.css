@@ -1473,3 +1473,60 @@ img { max-width: 100%; }
   .sync-head { flex-direction: column; gap: 2px; }
 }
 
+
+/* ====================================================================
+   HISTORIAL DE LA API Y ANALÍTICA NUEVA
+   ==================================================================== */
+.history-label {
+  margin-top: 12px;
+  margin-bottom: 6px;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.history-summary, .history-empty {
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255,255,255,.04);
+}
+.mh-chart-wrap {
+  position: relative;
+  padding: 4px 10px 12px;
+  overflow-x: auto;
+}
+.mh-chart {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+  background: linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,0));
+  border: 1px solid rgba(255,255,255,.04);
+  border-radius: 8px;
+}
+.mh-grid { stroke: rgba(255,255,255,.08); stroke-width: 1; }
+.mh-axis { fill: var(--muted); font-size: 11px; }
+.mh-line { stroke: var(--gold); stroke-width: 2.4; filter: drop-shadow(0 0 4px rgba(228,175,83,.25)); }
+.mh-bar { fill: rgba(20,185,138,.18); }
+.mh-point { fill: var(--panel); stroke: var(--gold); stroke-width: 2; cursor: help; }
+.mh-point:hover { fill: var(--gold); }
+.mh-tip {
+  position: absolute;
+  z-index: 30;
+  max-width: 220px;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px -10px rgba(0,0,0,.65);
+  color: var(--text);
+  font-size: .78rem;
+  pointer-events: none;
+}
+.range-row { display: flex; gap: 6px; }
+.range-row input { min-width: 90px !important; }
+#plStatus { margin-top: 10px; }
+@media (max-width: 720px) {
+  .mh-chart { min-width: 480px; }
+  .range-row { flex-direction: column; }
+}

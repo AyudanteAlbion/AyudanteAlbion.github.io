@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -28,7 +29,21 @@ def validate_javascript() -> None:
         if ".git" not in path.parts and "node_modules" not in path.parts
     )
     for path in files:
-        run(["node", "--check", str(path)], f"JavaScript inválido: {path.relative_to(ROOT)}")
+        text = path.read_text(encoding="utf-8")
+        # worker/index.js es un módulo ESM (Cloudflare Workers usa `export`).
+        # Node 22 puede detectarlo aunque package.json no declare `type`, pero
+        # Node 18/20 en CI no siempre. Validarlo como .mjs mantiene la suite
+        # portable sin cambiar cómo se publica el Worker.
+        if re.search(r"^\s*export\s+", text, re.MULTILINE):
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".mjs", delete=False) as handle:
+                handle.write(text)
+                temp_name = handle.name
+            try:
+                run(["node", "--check", temp_name], f"JavaScript inválido: {path.relative_to(ROOT)}")
+            finally:
+                Path(temp_name).unlink(missing_ok=True)
+        else:
+            run(["node", "--check", str(path)], f"JavaScript inválido: {path.relative_to(ROOT)}")
 
 
 def validate_python() -> None:
