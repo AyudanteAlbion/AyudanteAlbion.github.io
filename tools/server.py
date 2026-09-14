@@ -54,7 +54,7 @@ SYNC_MAX_VALUE = 256 * 1024
 SYNC_KEYS = {
     'alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
     'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory',
-    'marketHistory', 'tradeLog', 'tradeLogVersion', 'aaSGChar', 'aaSGGuild',
+    'marketHistory', 'tradeLog', 'tradeLogVersion', 'manualSessions', 'aaSGChar', 'aaSGGuild',
 }
 _DAILY_RE = re.compile(r'^dailyBonus_[A-Za-z_]{1,40}$')
 

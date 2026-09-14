@@ -17,6 +17,7 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 
 ### Añadido
 
+- Sesiones manuales de actividad (transporte, farmeo, crafteo, flipping, PvE, PvP) con cálculo de rendimiento en plata por hora (silver/h), gastos operativos, seguimiento de sesión activa en tiempo real e importación/exportación universal y segura de archivos CSV.
 - Alertas robustas contra precios viejos: validador central de cotizaciones, preferencia de frescura máxima (15 min, 60 min o sin límite) y estado “esperando cotización reciente”.
 - Historial real de precios por ciudad/calidad desde `stats/history`, con gráfico SVG, rangos 7/30/90/180/365 días, caché corta y separación explícita entre **Historial de la API** y **Tus consultas guardadas**.
 - Analítica avanzada del Registro de operaciones: `tradeLog` v2, comisiones/impuestos, coste extra de crafteo, fecha editable, métricas netas, rankings, pérdidas, resultado por ítem/ciudad, series diaria/semanal y distribución por hora local.

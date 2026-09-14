@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Pruebas sin dependencias para P1–P4: módulos puros del frontend. */
+/* Pruebas sin dependencias para P1–P5: módulos puros del frontend. */
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
@@ -76,4 +76,62 @@ const oldRaw = { EventId: 'old-raw', TimeStamp: '2026-09-01T00:00:00', Victim: {
 const oldMerge = P.merge(P.emptyCache(), [oldRaw], Date.parse('2026-09-14T12:00:00Z'));
 assert.strictEqual(oldMerge.added, 0, 'P4 no cuenta como nuevo un evento fuera de ventana');
 
-console.log('QA P1–P4 OK');
+const win5 = loadModule('albion-app/js/ledger/sessions.js');
+const S = win5.AASessions;
+
+// P5: Normalización de sesiones y cálculo de duración / métricas
+const sessRaw = { id: 's1', title: 'Transporte Caerleon', activity: 'Transporte', startTs: '2026-09-14T10:00:00Z', endTs: '2026-09-14T11:00:00Z', expenses: 50000, note: 'Buey T8' };
+const normSess = S.normalizeSession(sessRaw);
+assert.strictEqual(normSess.activity, 'transport', 'P5 normaliza actividad a clave canónica');
+assert.strictEqual(normSess.expenses, 50000, 'P5 normaliza gastos operativos');
+
+const sRows = [
+  { ts: Date.parse('2026-09-14T10:10:00Z'), id: 'T4_BAG', type: 'buy', qty: 10, price: 1000, fee: 100, sessionId: 's1' },
+  { ts: Date.parse('2026-09-14T10:50:00Z'), id: 'T4_BAG', type: 'sell', qty: 10, price: 1800, fee: 300, sessionId: 's1' }
+];
+
+const sMetrics = S.sessionMetrics(normSess, sRows);
+assert.strictEqual(sMetrics.grossSales, 18000, 'P5 ingreso bruto ventas');
+assert.strictEqual(sMetrics.netIncome, 17700, 'P5 ingreso neto ventas (18000 - 300)');
+assert.strictEqual(sMetrics.operationInvestment, 10100, 'P5 inversión operativa compras (10000 + 100)');
+assert.strictEqual(sMetrics.totalInvestment, 60100, 'P5 inversión total con gastos (10100 + 50000)');
+assert.strictEqual(sMetrics.profit, -42400, 'P5 beneficio neto sesión');
+assert.strictEqual(sMetrics.durationHours, 1, 'P5 duración 1 hora');
+
+// P5: Sesión rentable y plata por hora
+const sessProf = { id: 's2', title: 'Farmeo Nieblas', activity: 'farming', startTs: Date.parse('2026-09-14T12:00:00Z'), endTs: Date.parse('2026-09-14T14:00:00Z'), expenses: 20000 };
+const sProfRows = [
+  { ts: Date.parse('2026-09-14T13:00:00Z'), id: 'T7_ORE', type: 'sell', qty: 100, price: 5000, fee: 10000, sessionId: 's2' }
+];
+const sProfMetrics = S.sessionMetrics(sessProf, sProfRows);
+assert.strictEqual(sProfMetrics.profit, 470000, 'P5 beneficio farmeo (490000 - 20000)');
+assert.strictEqual(sProfMetrics.silverPerHour, 235000, 'P5 plata por hora (470000 / 2h)');
+assert.strictEqual(sProfMetrics.roi > 0, true, 'P5 ROI positivo');
+
+// P5: Resumen agregado de sesiones
+const summary = S.sessionsSummary([normSess, sessProf], [...sRows, ...sProfRows]);
+assert.strictEqual(summary.totalSessions, 2, 'P5 total sesiones');
+assert.strictEqual(summary.totalDurationHours, 3, 'P5 duración total horas');
+assert.strictEqual(summary.bestSession.sessionId, 's2', 'P5 mejor sesión detectada');
+
+// P5: Parser de CSV robusto con delimitadores y protección anti-inyección
+const csvSample = '\ufefffecha,item,tipo,cantidad,precio_unitario,comision,ciudad,nota\n' +
+  '2026-09-14T10:00:00Z,T4_BAG,Compra,5,2000,50,Caerleon,"nota con coma, prueba"\n' +
+  '2026-09-14T11:00:00Z,T4_BAG,Venta,5,3000,100,Martlock,=1+2\n';
+
+const parsedCsv = S.parseTradeLogCSV(csvSample);
+assert.strictEqual(parsedCsv.valid.length, 2, 'P5 parsea CSV correctamente');
+assert.strictEqual(parsedCsv.valid[0].qty, 5, 'P5 cantidad parseada');
+assert.strictEqual(parsedCsv.valid[0].price, 2000, 'P5 precio parseado');
+assert.strictEqual(parsedCsv.valid[0].type, 'buy', 'P5 tipo compra mapeado a buy');
+assert.strictEqual(parsedCsv.valid[1].type, 'sell', 'P5 tipo venta mapeado a sell');
+assert.strictEqual(parsedCsv.valid[1].note, '1+2', 'P5 sanitiza fórmula inyectada en nota');
+
+// P5: Fusión y desduplicación de filas importadas
+const mergedRows = S.mergeTradeRows(sRows, parsedCsv.valid, 'append');
+assert.strictEqual(mergedRows.added, 2, 'P5 agrega filas no duplicadas');
+const mergedAgain = S.mergeTradeRows(mergedRows.rows, parsedCsv.valid, 'append');
+assert.strictEqual(mergedAgain.added, 0, 'P5 deduplica filas idénticas');
+assert.strictEqual(mergedAgain.skipped, 2, 'P5 reporta filas omitidas');
+
+console.log('QA P1–P5 OK');

@@ -120,7 +120,7 @@ Cada extracción debe mantener la API global que utiliza la aplicación.
 - Cada punto de consumo en `app.js` conserva su fallback para mantener la
   compatibilidad con instalaciones que todavía carguen la aplicación de forma aislada.
 
-## Extensiones P1–P4
+## Extensiones P1–P5
 
 - `market/price-freshness.js` centraliza la validación que usan las alertas:
   precio positivo, timestamp válido y antigüedad menor que la frescura máxima
@@ -135,6 +135,10 @@ Cada extracción debe mantener la API global que utiliza la aplicación.
 - `losses/public-losses.js` normaliza `/gameinfo/events`, separa equipo de
   inventario y mantiene una caché local acotada a 7 días para el explorador de
   ítems observados en pérdidas públicas.
+- `ledger/sessions.js` implementa el modelo de sesiones manuales de actividad
+  (transporte, farmeo, crafteo, flipping, pve, pvp), cálculo de duración y plata
+  por hora (silver/h), agregación de métricas con gastos operativos, e
+  importación/exportación universal y segura de archivos CSV.
 
 La prueba sin dependencias `scripts/phase_qa.js` cubre los contratos de estos
-cuatro módulos y complementa `scripts/validate_repo.py`.
+cinco módulos y complementa `scripts/validate_repo.py`.

@@ -598,6 +598,7 @@
 
 <!-- ============ TAB: REGISTRO DE OPERACIONES (global) ============ -->
 <section id="tab-ledgerlog" class="tab-panel">
+  <div id="llActiveSessionBanner" class="ll-active-session" hidden></div>
   <div class="stat-row" id="llStats"></div>
 
   <div class="panel controls">
@@ -641,6 +642,10 @@
         <select id="llCity"></select>
       </div>
       <div class="control">
+        <label>Sesión (opcional)</label>
+        <select id="llSessionSelect"><option value="">— Ninguna —</option></select>
+      </div>
+      <div class="control">
         <label>Nota (opcional)</label>
         <input type="text" id="llNoteTxt" class="search" placeholder="ej: para regear" maxlength="100">
       </div>
@@ -655,6 +660,7 @@
     <div class="flip-head" style="padding:14px 14px 0">
       <div class="chip-group" id="llFilter">
         <button class="chip active" data-f="all">Todas</button>
+        <button class="chip" data-f="sessions">⏱️ Sesiones</button>
         <button class="chip" data-f="buy">Compras</button>
         <button class="chip" data-f="sell">Ventas</button>
         <button class="chip" data-f="craft">Crafteos</button>
@@ -668,15 +674,22 @@
         <button class="chip" data-f="hour">Hora local</button>
       </div>
       <div class="toggles inline">
-        <label class="check">Ciudad
+        <button class="btn" id="llNewSessionBtn" title="Crear o iniciar una nueva sesión de juego">+ Nueva sesión</button>
+        <label class="check" id="llCityFilterWrap">Ciudad
           <select id="llCityFilter" class="mini-select"><option value="">Todas</option></select>
         </label>
-        <label class="check">Período
+        <label class="check" id="llSessionFilterWrap">Sesión
+          <select id="llSessionFilter" class="mini-select"><option value="">Todas</option></select>
+        </label>
+        <label class="check" id="llPeriodFilterWrap">Período
           <select id="llPeriodFilter" class="mini-select">
             <option value="all">Todo</option><option value="7">7 días</option><option value="30">30 días</option><option value="90">90 días</option><option value="365">365 días</option>
           </select>
         </label>
+        <button class="btn" id="llImportCsv" title="Importar operaciones desde archivo CSV">Importar CSV</button>
+        <input type="file" id="llCsvFile" accept=".csv,text/csv,text/plain" style="display:none">
         <button class="btn" id="llExport">Exportar CSV</button>
+        <button class="btn" id="llExportSessions" title="Exportar resumen de sesiones en CSV" hidden>Exportar sesiones CSV</button>
         <button class="btn" id="bkExport" title="Descarga un archivo con TODOS tus datos: registro, precios manuales, especializaciones, perfil e historial">Respaldo completo</button>
         <button class="btn" id="bkImport" title="Restaura un respaldo descargado previamente">Importar respaldo</button>
         <input type="file" id="bkFile" accept=".json,application/json" style="display:none">
@@ -708,6 +721,98 @@
       </thead>
       <tbody id="llBody"></tbody>
     </table>
+  </div>
+
+  <!-- Modal Nueva Sesión -->
+  <div id="llSessionModal" class="aa-modal" hidden>
+    <div class="aa-modal-box">
+      <div class="aa-modal-head">
+        <h3 id="llModalSessTitleText">Nueva sesión de actividad</h3>
+        <button type="button" class="reset-price" id="llModalSessClose" title="Cerrar">✕</button>
+      </div>
+      <div class="aa-modal-body">
+        <div class="control-grid" style="grid-template-columns:1fr 1fr">
+          <div class="control" style="grid-column:1 / -1">
+            <label>Título / Descripción</label>
+            <input type="text" id="llModalSessTitle" class="search" placeholder="ej: Transporte Martlock → Caerleon, Farmeo Nieblas T7" maxlength="80">
+          </div>
+          <div class="control">
+            <label>Actividad</label>
+            <select id="llModalSessActivity">
+              <option value="transport">Transporte</option>
+              <option value="farming">Farmeo</option>
+              <option value="crafting">Crafteo</option>
+              <option value="flipping">Flipping</option>
+              <option value="pve">PvE / Dungeons</option>
+              <option value="pvp">PvP / Ganking</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+          <div class="control">
+            <label>Gastos operativos iniciales</label>
+            <input type="number" id="llModalSessExpenses" min="0" step="1" placeholder="plata (comida, viajes, tasas...)">
+          </div>
+          <div class="control">
+            <label>Fecha y hora de inicio</label>
+            <input type="datetime-local" id="llModalSessStart">
+          </div>
+          <div class="control">
+            <label>Fecha y hora de fin (opcional)</label>
+            <input type="datetime-local" id="llModalSessEnd" placeholder="Dejar vacío si está activa">
+          </div>
+          <div class="control" style="grid-column:1 / -1">
+            <label>Notas adicionales (opcional)</label>
+            <input type="text" id="llModalSessNote" class="search" placeholder="ej: buey T8, zona negra..." maxlength="200">
+          </div>
+        </div>
+      </div>
+      <div class="aa-modal-foot">
+        <button type="button" class="btn" id="llModalSessCancel">Cancelar</button>
+        <button type="button" class="btn primary" id="llModalSessStartNow">▶ Iniciar sesión activa ahora</button>
+        <button type="button" class="btn" id="llModalSessSave">💾 Guardar sesión</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Importar CSV -->
+  <div id="llCsvModal" class="aa-modal" hidden>
+    <div class="aa-modal-box aa-modal-lg">
+      <div class="aa-modal-head">
+        <h3>Importar operaciones desde CSV</h3>
+        <button type="button" class="reset-price" id="llCsvModalClose" title="Cerrar">✕</button>
+      </div>
+      <div class="aa-modal-body">
+        <p class="micro muted" style="margin-bottom:12px">
+          Cargá un archivo CSV o pegá el texto. Admite exportaciones de Ayudante Albion, hojas de Excel o Google Sheets con columnas de fecha, ítem, tipo (compra/venta/crafteo), cantidad, precio unitario, comisión y ciudad.
+        </p>
+        <div class="aa-csv-actions" style="display:flex; gap:10px; align-items:center; margin-bottom:10px">
+          <button type="button" class="btn primary" id="llCsvSelectFileBtn">📁 Elegir archivo .csv</button>
+          <span class="micro muted">o pegá el texto debajo:</span>
+        </div>
+        <textarea id="llCsvTextInput" class="aa-csv-textarea" rows="5" placeholder="fecha,item,tipo,cantidad,precio_unitario,comision,ciudad,nota&#10;2026-09-14T10:00:00Z,T4_BAG,Compra,5,2000,50,Caerleon,ejemplo"></textarea>
+        <div id="llCsvPreviewArea" class="aa-csv-preview" hidden>
+          <div class="aa-csv-summary" id="llCsvSummary" style="margin:10px 0; font-size:.85rem"></div>
+          <div class="table-wrap" style="max-height:180px; overflow-y:auto; margin:8px 0">
+            <table class="ledger" id="llCsvPreviewTable">
+              <thead><tr><th>Fecha</th><th>Ítem</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th>Ciudad</th></tr></thead>
+              <tbody id="llCsvPreviewBody"></tbody>
+            </table>
+          </div>
+          <div class="control-grid" style="grid-template-columns:1fr; margin-top:8px">
+            <label class="check">
+              <input type="radio" name="llCsvMode" value="append" checked> <b>Añadir a los registros existentes</b> (ignora duplicados idénticos)
+            </label>
+            <label class="check">
+              <input type="radio" name="llCsvMode" value="replace"> <b>Reemplazar todo el registro actual</b>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="aa-modal-foot">
+        <button type="button" class="btn" id="llCsvModalCancel">Cancelar</button>
+        <button type="button" class="btn primary" id="llCsvModalConfirm" disabled>Importar registros</button>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1218,6 +1323,7 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/market/price-freshness.js?v=1"></script>
 <script src="js/market/api-history.js?v=1"></script>
 <script src="js/ledger/analytics.js?v=1"></script>
+<script src="js/ledger/sessions.js?v=1"></script>
 <script src="js/losses/public-losses.js?v=1"></script>
 <script src="js/crafting/recipe.js?v=1"></script>
 <script src="js/profile/specs.js?v=1"></script>

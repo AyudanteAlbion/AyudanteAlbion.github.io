@@ -2968,7 +2968,7 @@ function psRender(id) {
 })();
 
 /* ====================================================================
-   REGISTRO DE OPERACIONES (personal, localStorage)
+   REGISTRO DE OPERACIONES Y SESIONES MANUALES (personal, localStorage)
    ==================================================================== */
 const LLCore = window.AALedger || (() => {
   const n = v => { const x = Number(v); return isFinite(x) ? x : 0; };
@@ -2994,16 +2994,55 @@ const LLCore = window.AALedger || (() => {
     filterRows: (rows, opt = {}) => (rows || []).filter(r => (!opt.type || r.type === opt.type) && (!opt.city || (r.city || '') === opt.city) && (opt.period === 'all' || !opt.period || n(r.ts) >= (opt.now || Date.now()) - (Number(opt.period) || 1) * 86400e3)),
   };
 })();
-const LL = { rows: [], filter: 'all', item: null, cityFilter: '', period: 'all' };
+
+const LLSessionCore = window.AASessions || (() => {
+  const n = v => { const x = Number(v); return isFinite(x) ? x : 0; };
+  return {
+    VERSION: 1,
+    ACTIVITIES: { transport: 'Transporte', farming: 'Farmeo', crafting: 'Crafteo', flipping: 'Flipping', pve: 'PvE / Dungeons', pvp: 'PvP / Ganking', other: 'Otro' },
+    createId: () => 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+    normalizeSession: s => ({ v: 1, id: s.id || 'sess_' + Date.now(), title: s.title || 'Sesión', activity: s.activity || 'other', startTs: s.startTs || Date.now(), endTs: s.endTs || null, expenses: n(s.expenses), note: s.note || '', tags: s.tags || [] }),
+    migrateSessions: list => ({ sessions: (Array.isArray(list) ? list : []).map(s => ({ v: 1, id: s.id || 'sess_' + Date.now(), title: s.title || 'Sesión', activity: s.activity || 'other', startTs: s.startTs || Date.now(), endTs: s.endTs || null, expenses: n(s.expenses), note: s.note || '', tags: s.tags || [] })), changed: false }),
+    sessionRows: (s, rows) => (rows || []).filter(r => r.sessionId === s.id || (r.ts >= s.startTs && (!s.endTs || r.ts <= s.endTs))),
+    sessionDurationMs: (s, now) => Math.max(0, (s.endTs || now || Date.now()) - s.startTs),
+    sessionMetrics: (s, rows, opt) => {
+      const rs = (rows || []).filter(r => r.sessionId === s.id || (r.ts >= s.startTs && (!s.endTs || r.ts <= s.endTs)));
+      let buy = 0, craft = 0, sell = 0, gross = 0, net = 0, inv = 0;
+      rs.forEach(r => { const g = n(r.qty) * n(r.price), f = Math.max(0, n(r.fee)); if (r.type === 'sell') { sell += n(r.qty); gross += g; net += (g - f); } else { if (r.type === 'craft') craft += n(r.qty); else buy += n(r.qty); inv += (g + f + Math.max(0, n(r.craftCost))); } });
+      const exp = Math.max(0, n(s.expenses)), totInv = inv + exp, profit = net - totInv;
+      const durMs = Math.max(0, (s.endTs || (opt && opt.now) || Date.now()) - s.startTs), durH = durMs / 3600e3;
+      return { sessionId: s.id, title: s.title, activity: s.activity, activityLabel: s.activity || 'Otro', isActive: !s.endTs, startTs: s.startTs, endTs: s.endTs, rowsCount: rs.length, buyQty: buy, craftQty: craft, sellQty: sell, totalQty: buy + craft + sell, grossSales: gross, netIncome: net, operationInvestment: inv, expenses: exp, totalInvestment: totInv, profit, roi: totInv > 0 ? profit / totInv : null, durationMs: durMs, durationHours: durH, silverPerHour: durH > 0.001 ? Math.round(profit / durH) : (profit > 0 ? profit : 0) };
+    },
+    sessionsSummary: (list, rows, opt) => {
+      const ms = (list || []).map(s => LLSessionCore.sessionMetrics(s, rows, opt));
+      let dur = 0, exp = 0, inv = 0, net = 0, profit = 0, rowsCount = 0;
+      ms.forEach(m => { dur += m.durationMs; exp += m.expenses; inv += m.totalInvestment; net += m.netIncome; profit += m.profit; rowsCount += m.rowsCount; });
+      const h = dur / 3600e3;
+      return { totalSessions: list.length, activeCount: ms.filter(m => m.isActive).length, totalDurationMs: dur, totalDurationHours: h, totalExpenses: exp, totalInvestment: inv, totalNetIncome: net, totalProfit: profit, totalRowsCount: rowsCount, overallRoi: inv > 0 ? profit / inv : null, overallSilverPerHour: h > 0.001 ? Math.round(profit / h) : 0, bestSession: ms.sort((a,b) => b.profit - a.profit)[0] || null, metricsList: ms };
+    },
+    parseCSV: () => ({ headers: [], rows: [] }),
+    parseTradeLogCSV: () => ({ valid: [], errors: [], summary: { totalParsed: 0, validCount: 0 } }),
+    mergeTradeRows: (ex, inc, mode) => mode === 'replace' ? { rows: [...inc], added: inc.length, skipped: 0 } : { rows: [...ex, ...inc], added: inc.length, skipped: 0 },
+    exportTradeLogCSV: (rows) => '',
+    exportSessionsCSV: (sessions, rows) => '',
+  };
+})();
+
+const LL = { rows: [], sessions: [], filter: 'all', item: null, cityFilter: '', sessionFilter: '', period: 'all' };
 try { LL.rows = JSON.parse(localStorage.getItem('tradeLog') || '[]'); } catch (e) {}
+try { LL.sessions = JSON.parse(localStorage.getItem('manualSessions') || '[]'); } catch (e) {}
+
 function llSave() {
   localStorage.setItem('tradeLog', JSON.stringify(LL.rows));
   localStorage.setItem('tradeLogVersion', String(LLCore.VERSION || 2));
+  localStorage.setItem('manualSessions', JSON.stringify(LL.sessions));
 }
 try {
   const mig = LLCore.migrateRows(LL.rows);
   LL.rows = mig.rows;
-  if (mig.changed || localStorage.getItem('tradeLogVersion') !== String(LLCore.VERSION || 2)) llSave();
+  const sMig = LLSessionCore.migrateSessions(LL.sessions);
+  LL.sessions = sMig.sessions;
+  if (mig.changed || sMig.changed || localStorage.getItem('tradeLogVersion') !== String(LLCore.VERSION || 2)) llSave();
 } catch (e) {}
 
 /* Prefill desde otras pestañas: botones «Registrar» en Flipping/Crafteo */
@@ -3015,6 +3054,15 @@ function llSetDefaultDate() {
   const el = document.getElementById('llDate');
   if (el && !el.value) el.value = llDateInputValue(Date.now());
 }
+function fmtDuration(ms) {
+  if (!ms || ms < 1000) return '0 min';
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return m + ' min';
+  return h + ' h ' + (m > 0 ? m + ' m' : '');
+}
+
 let LL_UID_COUNTER = 0;
 function llUid() {
   if (window.crypto && typeof crypto.randomUUID === 'function') return 'll_' + crypto.randomUUID();
@@ -3051,7 +3099,13 @@ function csvCell(v) {
 function llSigned(n) { return (n > 0 ? '+' : '') + fmt(n); }
 function llRoi(v) { return v == null || !isFinite(v) ? '—' : pct(v); }
 function llCurrentRows(type) {
-  return LLCore.filterRows(LL.rows, { city: LL.cityFilter, period: LL.period, type: type || '', now: Date.now() });
+  let rows = LLCore.filterRows(LL.rows, { city: LL.cityFilter, period: LL.period, type: type || '', now: Date.now() });
+  if (LL.sessionFilter) {
+    const sess = LL.sessions.find(s => s.id === LL.sessionFilter);
+    if (sess) rows = LLSessionCore.sessionRows(sess, rows);
+    else rows = rows.filter(r => r.sessionId === LL.sessionFilter);
+  }
+  return rows;
 }
 function llRefreshCityFilter() {
   const sel = document.getElementById('llCityFilter');
@@ -3063,13 +3117,85 @@ function llRefreshCityFilter() {
   sel.value = Array.from(sel.options).some(o => o.value === prev) ? prev : '';
   LL.cityFilter = sel.value;
 }
+function llRefreshSessionFilters() {
+  const sessSel = document.getElementById('llSessionSelect');
+  const sessFilter = document.getElementById('llSessionFilter');
+  if (sessSel) {
+    const prev = sessSel.value;
+    sessSel.replaceChildren(new Option('— Ninguna —', ''));
+    const active = LL.sessions.find(s => !s.endTs);
+    LL.sessions.forEach(s => {
+      const opt = new Option((s.endTs ? '' : '🟢 ') + s.title + ' (' + (LLSessionCore.ACTIVITIES[s.activity] || s.activity) + ')', s.id);
+      sessSel.appendChild(opt);
+    });
+    if (prev && [...sessSel.options].some(o => o.value === prev)) sessSel.value = prev;
+    else if (active) sessSel.value = active.id;
+    else sessSel.value = '';
+  }
+  if (sessFilter) {
+    const prev = sessFilter.value;
+    sessFilter.replaceChildren(new Option('Todas', ''));
+    LL.sessions.forEach(s => {
+      const opt = new Option((s.endTs ? '' : '🟢 ') + s.title, s.id);
+      sessFilter.appendChild(opt);
+    });
+    sessFilter.value = [...sessFilter.options].some(o => o.value === prev) ? prev : '';
+    LL.sessionFilter = sessFilter.value;
+  }
+}
 function llFilterNote() {
   const parts = [];
   if (LL.cityFilter) parts.push('ciudad: ' + LL.cityFilter);
+  if (LL.sessionFilter) {
+    const s = LL.sessions.find(x => x.id === LL.sessionFilter);
+    parts.push('sesión: ' + (s ? s.title : LL.sessionFilter));
+  }
   if (LL.period !== 'all') parts.push('últimos ' + LL.period + ' días');
   return parts.length ? ' · ' + parts.join(' · ') : '';
 }
+function llRenderActiveSessionBanner() {
+  const banner = document.getElementById('llActiveSessionBanner');
+  if (!banner) return;
+  const active = LL.sessions.find(s => !s.endTs);
+  if (!active) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    return;
+  }
+  const m = LLSessionCore.sessionMetrics(active, LL.rows, { now: Date.now() });
+  banner.hidden = false;
+  banner.innerHTML = `
+    <div class="ll-active-info">
+      <span class="ll-pulse"></span>
+      <div>
+        <b style="font-size:.95rem">${sgEsc(active.title)}</b>
+        <span class="badge gold" style="margin-left:6px">${sgEsc(m.activityLabel)}</span>
+        <span class="micro muted" style="margin-left:8px">⏱️ ${fmtDuration(m.durationMs)}</span>
+      </div>
+    </div>
+    <div class="ll-active-stats">
+      <div>Inversión: <span class="val">${fmt(m.totalInvestment)}</span></div>
+      <div>Ingresos: <span class="val">${fmt(m.netIncome)}</span></div>
+      <div>Beneficio: <span class="val ${m.profit >= 0 ? 'pos' : 'neg'}">${llSigned(m.profit)}</span></div>
+      <div>Rendimiento: <span class="val ${m.silverPerHour >= 0 ? 'pos' : 'neg'}">${fmt(m.silverPerHour)} plata/h</span></div>
+      <div class="micro muted">${m.rowsCount} op.</div>
+    </div>
+    <div class="ll-active-actions">
+      <button class="btn micro-btn primary" id="llActiveEndBtn" data-end-sess="${sgEsc(active.id)}">🏁 Finalizar sesión</button>
+    </div>
+  `;
+}
 function llRenderStats(rows) {
+  if (LL.filter === 'sessions') {
+    const sum = LLSessionCore.sessionsSummary(LL.sessions, LL.rows, { now: Date.now() });
+    document.getElementById('llStats').innerHTML = `
+      <div class="stat"><div class="k">Sesiones registradas</div><div class="v">${fmt(sum.totalSessions)}</div><div class="s">${sum.activeCount ? sum.activeCount + ' activa(s)' : 'todas cerradas'}</div></div>
+      <div class="stat"><div class="k">Tiempo acumulado</div><div class="v">${fmtDuration(sum.totalDurationMs)}</div><div class="s">${sum.totalDurationHours.toFixed(1)} horas de juego</div></div>
+      <div class="stat"><div class="k">Inversión total</div><div class="v">${fmt(sum.totalInvestment)}</div><div class="s">operaciones + ${fmt(sum.totalExpenses)} gastos</div></div>
+      <div class="stat"><div class="k">Beneficio acumulado</div><div class="v ${sum.totalProfit >= 0 ? 'pos' : 'neg'}">${llSigned(sum.totalProfit)}</div><div class="s">ingresos netos ${fmt(sum.totalNetIncome)}</div></div>
+      <div class="stat"><div class="k">Promedio Plata/Hora</div><div class="v ${sum.overallSilverPerHour >= 0 ? 'pos' : 'neg'}">${fmt(sum.overallSilverPerHour)} / h</div><div class="s">ROI promedio ${llRoi(sum.overallRoi)}</div></div>`;
+    return;
+  }
   const m = LLCore.metrics(rows);
   document.getElementById('llStats').innerHTML = `
     <div class="stat"><div class="k">Inversión</div><div class="v">${fmt(m.investment)}</div><div class="s">compras + crafteos + tasas${llFilterNote()}</div></div>
@@ -3077,6 +3203,44 @@ function llRenderStats(rows) {
     <div class="stat"><div class="k">Beneficio neto</div><div class="v ${m.profit >= 0 ? 'pos' : 'neg'}">${llSigned(m.profit)}</div><div class="s">resultado agregado, no emparejado</div></div>
     <div class="stat"><div class="k">ROI agregado</div><div class="v ${m.roi == null ? '' : m.roi >= 0 ? 'pos' : 'neg'}">${llRoi(m.roi)}</div><div class="s">beneficio / capital invertido</div></div>
     <div class="stat"><div class="k">Volumen</div><div class="v">${fmt(m.buyQty + m.craftQty + m.sellQty)}</div><div class="s">comprado ${fmt(m.buyQty)} · crafteado ${fmt(m.craftQty)} · vendido ${fmt(m.sellQty)}</div></div>`;
+}
+function llRenderSessionsList() {
+  const body = document.getElementById('llBody');
+  const thead = document.querySelector('#llTable thead tr');
+  thead.innerHTML = `<th>Sesión / Actividad</th><th>Estado</th><th class="num">Duración</th><th class="num">Gastos op.</th><th class="num">Inversión total</th><th class="num">Ingresos netos</th><th class="num">Beneficio neto</th><th class="num">ROI</th><th class="num">Silver / hora</th><th>Acciones</th>`;
+  if (!LL.sessions.length) {
+    body.innerHTML = '<tr><td colspan="10" class="loading-cell">No hay sesiones creadas todavía. Tocá «+ Nueva sesión» para iniciar una.</td></tr>';
+    return;
+  }
+  const now = Date.now();
+  body.innerHTML = [...LL.sessions].sort((a, b) => (b.startTs || 0) - (a.startTs || 0)).map(s => {
+    const m = LLSessionCore.sessionMetrics(s, LL.rows, { now });
+    const startDate = new Date(s.startTs).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + new Date(s.startTs).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    const statusBadge = m.isActive ? '<span class="badge gold">🟢 En curso</span>' : '<span class="badge">Cerrada</span>';
+    const noteTxt = s.note ? `<div class="micro muted">${sgEsc(s.note)}</div>` : '';
+    const endBtn = m.isActive ? `<button class="btn micro-btn" data-end-sess="${sgEsc(s.id)}" title="Finalizar sesión">🏁 Fin</button>` : '';
+    return `<tr>
+      <td>
+        <b>${sgEsc(s.title)}</b>
+        <span class="badge" style="margin-left:6px">${sgEsc(m.activityLabel)}</span>
+        ${noteTxt}
+        <div class="micro muted">Inicio: ${startDate} · ${m.rowsCount} ops</div>
+      </td>
+      <td>${statusBadge}</td>
+      <td class="num">${fmtDuration(m.durationMs)}</td>
+      <td class="num">${m.expenses ? fmt(m.expenses) : '—'}</td>
+      <td class="num">${fmt(m.totalInvestment)}</td>
+      <td class="num">${fmt(m.netIncome)}</td>
+      <td class="num ${m.profit >= 0 ? 'pos' : 'neg'}"><b>${llSigned(m.profit)}</b></td>
+      <td class="num ${m.roi == null ? '' : m.roi >= 0 ? 'pos' : 'neg'}">${llRoi(m.roi)}</td>
+      <td class="num ${m.silverPerHour >= 0 ? 'pos' : 'neg'}"><b>${fmt(m.silverPerHour)} / h</b></td>
+      <td class="num" style="white-space:nowrap">
+        <button class="btn micro-btn" data-view-sess="${sgEsc(s.id)}" title="Filtrar operaciones de esta sesión">👁️ Ver</button>
+        ${endBtn}
+        <button class="reset-price" data-del-sess="${sgEsc(s.id)}" title="Eliminar sesión">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 function llRenderGroups(groups, opts = {}) {
   const body = document.getElementById('llBody');
@@ -3134,9 +3298,13 @@ function llRenderRows(rows) {
     const net = LLCore.operationNet(r);
     const feeTxt = LLCore.fee(r) ? fmt(LLCore.fee(r)) : '—';
     const extra = LLCore.craftCost(r) ? `<span class="price-sub">crafteo +${fmt(LLCore.craftCost(r))}</span>` : '';
+    const sessTag = r.sessionId ? (() => {
+      const s = LL.sessions.find(x => x.id === r.sessionId);
+      return s ? `<span class="badge micro-badge" style="margin-left:4px" title="Sesión: ${sgEsc(s.title)}">⏱️ ${sgEsc(s.title.slice(0, 16))}</span>` : '';
+    })() : '';
     return `<tr>
       <td class="muted">${fecha}</td>
-      <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}<span>${sgEsc(name)}</span></div></td>
+      <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}<span>${sgEsc(name)}</span>${sessTag}</div></td>
       <td><span class="badge ${r.type === 'sell' ? 'gold' : ''}">${LL_TYPE_ES[r.type] || r.type}</span></td>
       <td class="num">${fmt(r.qty)}</td>
       <td class="num">${fmt(r.price)}</td>
@@ -3150,8 +3318,25 @@ function llRenderRows(rows) {
 }
 function llRender() {
   llRefreshCityFilter();
+  llRefreshSessionFilters();
+  llRenderActiveSessionBanner();
   const baseRows = llCurrentRows();
   llRenderStats(baseRows);
+
+  const expBtn = document.getElementById('llExport');
+  const expSessBtn = document.getElementById('llExportSessions');
+  if (expBtn && expSessBtn) {
+    if (LL.filter === 'sessions') {
+      expBtn.hidden = true; expSessBtn.hidden = false;
+    } else {
+      expBtn.hidden = false; expSessBtn.hidden = true;
+    }
+  }
+
+  if (LL.filter === 'sessions') {
+    llRenderSessionsList();
+    return;
+  }
   if (LL.filter === 'all' || LL.filter === 'buy' || LL.filter === 'sell' || LL.filter === 'craft') {
     llRenderRows(llCurrentRows(LL.filter === 'all' ? '' : LL.filter));
     return;
@@ -3207,6 +3392,7 @@ function llUpdateCities() {
     inp.value = it.dataset.name;
     res.classList.remove('open');
   });
+
   document.getElementById('llAdd').addEventListener('click', () => {
     llUpdateCities();
     const qty = Math.max(1, parseInt(document.getElementById('llQty').value) || 1);
@@ -3221,6 +3407,7 @@ function llUpdateCities() {
       return;
     }
     const city = document.getElementById('llCity').value;
+    const sessVal = document.getElementById('llSessionSelect').value;
     LL.rows.push({
       v: LLCore.VERSION || 2,
       uid: llUid(),
@@ -3228,6 +3415,7 @@ function llUpdateCities() {
       type, qty, price, fee, craftCost,
       city: city === '—' ? '' : city,
       note: document.getElementById('llNoteTxt').value.trim(),
+      sessionId: sessVal || undefined
     });
     llSave(); llRender();
     document.getElementById('llPrice').value = '';
@@ -3236,6 +3424,7 @@ function llUpdateCities() {
     document.getElementById('llNoteTxt').value = '';
     document.getElementById('llDate').value = llDateInputValue(Date.now());
   });
+
   document.getElementById('llFilter').addEventListener('click', e => {
     const chip = e.target.closest('.chip'); if (!chip) return;
     LL.filter = chip.dataset.f;
@@ -3243,32 +3432,235 @@ function llUpdateCities() {
     llRender();
   });
   document.getElementById('llCityFilter').addEventListener('change', e => { LL.cityFilter = e.target.value; llRender(); });
+  document.getElementById('llSessionFilter').addEventListener('change', e => { LL.sessionFilter = e.target.value; llRender(); });
   document.getElementById('llPeriodFilter').addEventListener('change', e => { LL.period = e.target.value; llRender(); });
+
   document.getElementById('llBody').addEventListener('click', e => {
-    const del = e.target.closest('[data-del-uid]'); if (!del) return;
-    LL.rows = LL.rows.filter(r => r.uid !== del.dataset.delUid);
-    llSave(); llRender();
+    const del = e.target.closest('[data-del-uid]');
+    if (del) {
+      LL.rows = LL.rows.filter(r => r.uid !== del.dataset.delUid);
+      llSave(); llRender();
+      return;
+    }
+    const delSess = e.target.closest('[data-del-sess]');
+    if (delSess) {
+      if (confirm('¿Eliminar esta sesión? Las operaciones individuales no se borrarán.')) {
+        LL.sessions = LL.sessions.filter(s => s.id !== delSess.dataset.delSess);
+        if (LL.sessionFilter === delSess.dataset.delSess) LL.sessionFilter = '';
+        llSave(); llRender();
+      }
+      return;
+    }
+    const endSess = e.target.closest('[data-end-sess]');
+    if (endSess) {
+      const s = LL.sessions.find(x => x.id === endSess.dataset.endSess);
+      if (s) {
+        s.endTs = Date.now();
+        llSave(); llRender();
+        waToast('🏁 Sesión finalizada', `Sesión «${s.title}» cerrada con éxito.`);
+      }
+      return;
+    }
+    const viewSess = e.target.closest('[data-view-sess]');
+    if (viewSess) {
+      LL.sessionFilter = viewSess.dataset.viewSess;
+      LL.filter = 'all';
+      document.querySelectorAll('#llFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.f === 'all'));
+      llRender();
+      return;
+    }
   });
+
+  document.getElementById('llActiveSessionBanner').addEventListener('click', e => {
+    const endBtn = e.target.closest('#llActiveEndBtn');
+    if (endBtn) {
+      const s = LL.sessions.find(x => x.id === endBtn.dataset.endSess);
+      if (s) {
+        s.endTs = Date.now();
+        llSave(); llRender();
+        waToast('🏁 Sesión finalizada', `Sesión «${s.title}» cerrada.`);
+      }
+      return;
+    }
+  });
+
+  /* ---- Modales de Sesión ---- */
+  const sessModal = document.getElementById('llSessionModal');
+  document.getElementById('llNewSessionBtn').addEventListener('click', () => {
+    document.getElementById('llModalSessTitle').value = '';
+    document.getElementById('llModalSessActivity').value = 'transport';
+    document.getElementById('llModalSessExpenses').value = '';
+    document.getElementById('llModalSessStart').value = llDateInputValue(Date.now());
+    document.getElementById('llModalSessEnd').value = '';
+    document.getElementById('llModalSessNote').value = '';
+    sessModal.hidden = false;
+  });
+  document.getElementById('llModalSessClose').addEventListener('click', () => { sessModal.hidden = true; });
+  document.getElementById('llModalSessCancel').addEventListener('click', () => { sessModal.hidden = true; });
+
+  document.getElementById('llModalSessStartNow').addEventListener('click', () => {
+    const title = document.getElementById('llModalSessTitle').value.trim() || 'Sesión de juego';
+    const activity = document.getElementById('llModalSessActivity').value;
+    const expenses = Math.max(0, parseFloat(document.getElementById('llModalSessExpenses').value) || 0);
+    const startTs = Date.now();
+    const note = document.getElementById('llModalSessNote').value.trim();
+    const newSess = LLSessionCore.normalizeSession({
+      id: LLSessionCore.createId(),
+      title,
+      activity,
+      expenses,
+      startTs,
+      endTs: null,
+      note
+    });
+    LL.sessions.push(newSess);
+    llSave(); llRender();
+    sessModal.hidden = true;
+    waToast('⏱️ Sesión activa iniciada', `Sesión «${title}» en curso.`);
+  });
+
+  document.getElementById('llModalSessSave').addEventListener('click', () => {
+    const title = document.getElementById('llModalSessTitle').value.trim() || 'Sesión de juego';
+    const activity = document.getElementById('llModalSessActivity').value;
+    const expenses = Math.max(0, parseFloat(document.getElementById('llModalSessExpenses').value) || 0);
+    const startVal = document.getElementById('llModalSessStart').value;
+    const startTs = startVal ? new Date(startVal).getTime() : Date.now();
+    const endVal = document.getElementById('llModalSessEnd').value;
+    const endTs = endVal ? new Date(endVal).getTime() : null;
+    const note = document.getElementById('llModalSessNote').value.trim();
+
+    const newSess = LLSessionCore.normalizeSession({
+      id: LLSessionCore.createId(),
+      title,
+      activity,
+      expenses,
+      startTs,
+      endTs,
+      note
+    });
+    LL.sessions.push(newSess);
+    llSave(); llRender();
+    sessModal.hidden = true;
+    waToast('💾 Sesión guardada', `Sesión «${title}» guardada.`);
+  });
+
+  /* ---- Modal de Importación CSV ---- */
+  const csvModal = document.getElementById('llCsvModal');
+  const csvText = document.getElementById('llCsvTextInput');
+  const csvFile = document.getElementById('llCsvFile');
+  const csvConfirm = document.getElementById('llCsvModalConfirm');
+  const csvSummary = document.getElementById('llCsvSummary');
+  const csvBody = document.getElementById('llCsvPreviewBody');
+  const csvPreviewArea = document.getElementById('llCsvPreviewArea');
+  let currentCsvParsed = null;
+
+  function updateCsvPreview() {
+    const raw = csvText.value.trim();
+    if (!raw) {
+      csvPreviewArea.hidden = true;
+      csvConfirm.disabled = true;
+      currentCsvParsed = null;
+      return;
+    }
+    currentCsvParsed = LLSessionCore.parseTradeLogCSV(raw, {
+      findIdByName: (n) => {
+        if (!CATALOG) return null;
+        const low = String(n || '').toLowerCase();
+        const hit = CATALOG.find(c => c[1].toLowerCase() === low || c[0].toLowerCase() === low);
+        return hit ? hit[0] : null;
+      },
+      nameOf: catalogName
+    });
+
+    const sum = currentCsvParsed.summary;
+    csvSummary.innerHTML = `
+      <b>${sum.validCount}</b> operación(es) válidas detectadas${sum.invalidCount ? ` · <span class="neg">${sum.invalidCount} error(es)</span>` : ''} ·
+      Inversión: <b>${fmt(sum.investment)}</b> · Ingresos netos: <b>${fmt(sum.netIncome)}</b> · Beneficio est.: <b class="${sum.estimatedProfit >= 0 ? 'pos' : 'neg'}">${llSigned(sum.estimatedProfit)}</b>
+    `;
+
+    const previewRows = currentCsvParsed.valid.slice(0, 5);
+    csvBody.innerHTML = previewRows.map(r => `<tr>
+      <td>${new Date(r.ts).toLocaleDateString('es-AR')}</td>
+      <td>${sgEsc(r.name || r.id)}</td>
+      <td><span class="badge ${r.type === 'sell' ? 'gold' : ''}">${LL_TYPE_ES[r.type] || r.type}</span></td>
+      <td class="num">${fmt(r.qty)}</td>
+      <td class="num">${fmt(r.price)}</td>
+      <td class="num">${fmt(r.fee || 0)}</td>
+      <td>${sgEsc(r.city || '—')}</td>
+    </tr>`).join('');
+
+    csvPreviewArea.hidden = false;
+    csvConfirm.disabled = sum.validCount === 0;
+  }
+
+  document.getElementById('llImportCsv').addEventListener('click', () => {
+    csvText.value = '';
+    csvPreviewArea.hidden = true;
+    csvConfirm.disabled = true;
+    csvModal.hidden = false;
+  });
+  document.getElementById('llCsvModalClose').addEventListener('click', () => { csvModal.hidden = true; });
+  document.getElementById('llCsvModalCancel').addEventListener('click', () => { csvModal.hidden = true; });
+  document.getElementById('llCsvSelectFileBtn').addEventListener('click', () => { csvFile.click(); });
+
+  csvFile.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      csvText.value = String(reader.result || '');
+      updateCsvPreview();
+    };
+    reader.readAsText(f);
+    e.target.value = '';
+  });
+
+  csvText.addEventListener('input', updateCsvPreview);
+
+  csvConfirm.addEventListener('click', () => {
+    if (!currentCsvParsed || !currentCsvParsed.valid.length) return;
+    const modeEl = document.querySelector('input[name="llCsvMode"]:checked');
+    const mode = modeEl ? modeEl.value : 'append';
+    const res = LLSessionCore.mergeTradeRows(LL.rows, currentCsvParsed.valid, mode);
+    LL.rows = res.rows;
+    llSave(); llRender();
+    csvModal.hidden = true;
+    waToast('⬇ CSV importado', `${res.added} operaciones agregadas (${res.skipped} duplicadas omitidas).`);
+  });
+
   document.getElementById('llExport').addEventListener('click', () => {
-    const head = 'version,fecha,item,id,tipo,cantidad,precio_unitario,bruto,comision_impuesto,coste_extra_crafteo,ingreso_neto,inversion,neto_operacion,ciudad,nota\n';
-    const csv = head + LL.rows.map(r =>
-      [LLCore.VERSION || 2, new Date(r.ts).toISOString(), csvCell(r.name || r.id), csvCell(r.id), LL_TYPE_ES[r.type] || r.type,
-       r.qty, r.price, LLCore.gross(r), LLCore.fee(r), LLCore.craftCost(r), LLCore.netIncome(r), LLCore.investment(r), LLCore.operationNet(r), csvCell(r.city), csvCell(r.note || '')].join(',')
-    ).join('\n');
+    const csv = LLSessionCore.exportTradeLogCSV(LL.rows) || (() => {
+      const head = 'version,fecha,item,id,tipo,cantidad,precio_unitario,bruto,comision_impuesto,coste_extra_crafteo,ingreso_neto,inversion,neto_operacion,ciudad,nota\n';
+      return head + LL.rows.map(r =>
+        [LLCore.VERSION || 2, new Date(r.ts).toISOString(), csvCell(r.name || r.id), csvCell(r.id), LL_TYPE_ES[r.type] || r.type,
+         r.qty, r.price, LLCore.gross(r), LLCore.fee(r), LLCore.craftCost(r), LLCore.netIncome(r), LLCore.investment(r), LLCore.operationNet(r), csvCell(r.city), csvCell(r.note || '')].join(',')
+      ).join('\n');
+    })();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
     a.download = 'registro-operaciones-v2.csv';
     a.click();
   });
+
+  document.getElementById('llExportSessions').addEventListener('click', () => {
+    const csv = LLSessionCore.exportSessionsCSV(LL.sessions, LL.rows, { now: Date.now() });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `sesiones-ayudante-albion-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  });
+
   document.getElementById('llClear').addEventListener('click', () => {
-    if (confirm('¿Vaciar todo el registro? Esta acción no se puede deshacer.')) {
-      LL.rows = []; llSave(); llRender();
+    if (confirm('¿Vaciar todo el registro y sesiones? Esta acción no se puede deshacer.')) {
+      LL.rows = [];
+      LL.sessions = [];
+      llSave(); llRender();
     }
   });
 
   /* ---- Respaldo completo: exporta/importa TODO el localStorage de la app ---- */
   const BK_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory', 'kaOn', 'manualPrices',
-    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory', 'tradeLog', 'tradeLogVersion', 'aaSGChar', 'aaSGGuild'];
+    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory', 'tradeLog', 'tradeLogVersion', 'manualSessions', 'aaSGChar', 'aaSGGuild'];
   const BK_MAX_BYTES = 5 * 1024 * 1024;
   const bkKeyOk = k => typeof k === 'string' && (BK_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
   document.getElementById('bkExport').addEventListener('click', () => {
@@ -3292,8 +3684,6 @@ function llUpdateCities() {
         if (String(reader.result).length > BK_MAX_BYTES) throw new Error('tamaño');
         const payload = JSON.parse(reader.result);
         if (!payload || payload.app !== 'AyudanteAlbion' || !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) throw new Error('formato');
-        /* solo claves de datos de la app, con valores de texto: un respaldo
-           ajeno no puede plantar sesiones, redirigir el proxy ni pisar otras claves */
         const entries = Object.entries(payload.data).filter(([k, v]) => bkKeyOk(k) && typeof v === 'string');
         for (const [k, v] of entries) JSON.parse(v); // cada valor debe ser JSON válido
         const n = entries.length;
@@ -8538,7 +8928,7 @@ const SY = { available: false, busy: false, remote: null, checked: false };
 /* misma lista que el respaldo en archivo (BK_KEYS), sin la sesión */
 const SY_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
   'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory',
-  'tradeLog', 'tradeLogVersion', 'aaSGChar', 'aaSGGuild'];
+  'tradeLog', 'tradeLogVersion', 'manualSessions', 'aaSGChar', 'aaSGGuild'];
 const syKeyOk = k => typeof k === 'string' && (SY_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
 const SY_MAX_BYTES = 512 * 1024;
 
