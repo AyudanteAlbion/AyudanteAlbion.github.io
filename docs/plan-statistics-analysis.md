@@ -1,6 +1,8 @@
 # Plan: llevar las capacidades de *Statistics Analysis Tool* al ejecutable de Ayudante Albion
 
-> Estado: **propuesta de diseño** (no hay código de tracking todavía).
+> Estado: **Fase 0 implementada.** La separación de ediciones, el transporte de eventos, la
+> agregación y la pestaña Sesión ya funcionan con una fuente simulada; falta la captura real.
+> Lo construido está documentado en [`tracker-escritorio.md`](tracker-escritorio.md).
 > Alcance: `albion-exe/` (Go) + `albion-app/` (frontend) + build y release.
 > Referencia analizada: <https://triky313.github.io/AlbionOnline-StatisticsAnalysis/> (v10.x, WPF/.NET 10, Windows).
 
@@ -113,7 +115,7 @@ modelo: hay que sumarle un productor de eventos y un canal en vivo hacia la pág
 
 Cada fase es publicable por sí sola y no rompe la web. Nada de un “big bang”.
 
-### Fase 0 — Cimientos, sin red todavía *(riesgo bajo, valor inmediato)*
+### Fase 0 — Cimientos, sin red todavía ✅ **hecha**
 - `GET /api/tracker/status` → `{available:false, reason:"no-capture"}`.
 - Hub pub/sub + `/ws` con eventos sintéticos (modo demo) para desarrollar la UI sin el juego.
 - Capa `store/` con JSON atómico en `%APPDATA%` y rotación.
@@ -248,7 +250,7 @@ apagaría solo; en cambio, el WS abierto cuenta como pestaña viva de forma expl
 
 | Fase | Entregable | Esfuerzo |
 |---|---|---|
-| 0 | Cimientos + modo demo | 1 iteración |
+| 0 | Cimientos + modo demo | ✅ hecha |
 | 1 | Captura + Photon + pestaña Sesión | 2–3 iteraciones ⚠️ la más incierta |
 | 2 | Damage Meter completo | 2 iteraciones |
 | 3 | Dashboard de sesión + mapas | 2 iteraciones |
@@ -263,9 +265,10 @@ Ese es el punto donde el resto del plan pasa de ser una idea a ser trabajo mecá
 
 ---
 
-## 8. Decisiones abiertas
+## 8. Decisiones
 
-1. ¿Un solo `.exe` con tracker o dos binarios (liviano / tracker) por el tema antivirus y admin?
-2. ¿Npcap como requisito duro, o intentamos primero el fallback de raw socket?
-3. ¿El tracker se limita al servidor West, como el resto de la app, o detectamos los tres?
-4. ¿Los datos de sesión entran en la sincronización en la nube, o quedan solo locales por volumen?
+1. ~~¿Un solo `.exe` o dos binarios?~~ **Resuelto: dos ediciones** separadas por build tag de Go.
+   `AyudanteAlbion.exe` queda idéntico al de siempre y `AyudanteAlbion-Tracker.exe` suma el motor.
+2. ¿Npcap como requisito duro, o intentamos primero el fallback de raw socket? — **abierta**
+3. ¿El tracker se limita al servidor West, como el resto de la app, o detectamos los tres? — **abierta**
+4. ¿Los datos de sesión entran en la sincronización en la nube, o quedan locales por volumen? — **abierta**

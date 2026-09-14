@@ -3,7 +3,9 @@
 # Build de distribución de Ayudante Albion
 #   1. Verifica sintaxis de app.js
 #   2. Sincroniza la app dentro de albion-exe/app/ (el heartbeat vive en app.js)
-#   3. Compila AyudanteAlbion.exe (Windows, sin consola)
+#   3. Compila las DOS ediciones (Windows, sin consola):
+#        - AyudanteAlbion.exe          estándar, idéntica a la web
+#        - AyudanteAlbion-Tracker.exe  estándar + estadísticas en vivo
 #   4. Genera AyudanteAlbion.zip
 # Uso: ./build.sh
 # ============================================================
@@ -28,7 +30,7 @@ rm -rf albion-exe/app/icons && cp -r albion-app/icons albion-exe/app/
 cp -r albion-app/img albion-exe/app/ && rm -rf albion-exe/app/img/logo-opts
 echo "   OK"
 
-echo "── 3/4 · Compilando AyudanteAlbion.exe"
+echo "── 3/4 · Compilando las dos ediciones"
 GO_VERSION="1.23.4"
 # SHA256 oficial del tarball, publicado en https://go.dev/dl/?mode=json&include=all
 # (verificado además contra los pines de buildroot y bazel). El .exe que se
@@ -42,16 +44,25 @@ if [[ ! -x "$GO_BIN" ]]; then
     || { echo "   ERROR: el checksum de Go no coincide (tarball corrupto o alterado). Abortando."; exit 1; }
   tar -C /tmp -xzf /tmp/go.tar.gz
 fi
+# Edición estándar: sin build tag, no compila nada del paquete tracker.
+# Es el binario de siempre y sigue pesando lo mismo.
 ( cd albion-exe && GOOS=windows GOARCH=amd64 "$GO_BIN" build \
     -ldflags="-s -w -H windowsgui" -o AyudanteAlbion.exe . )
-ls -lh albion-exe/AyudanteAlbion.exe | awk '{print "   " $5 "  " $9}'
+ls -lh albion-exe/AyudanteAlbion.exe | awk '{print "   estandar  " $5 "  " $9}'
+
+# Edición Tracker: mismo código + el motor de estadísticas en vivo.
+( cd albion-exe && GOOS=windows GOARCH=amd64 "$GO_BIN" build -tags tracker \
+    -ldflags="-s -w -H windowsgui" -o AyudanteAlbion-Tracker.exe . )
+ls -lh albion-exe/AyudanteAlbion-Tracker.exe | awk '{print "   tracker   " $5 "  " $9}'
 
 echo "── 4/4 · Generando AyudanteAlbion.zip"
 rm -f AyudanteAlbion.zip
 zip -q -r AyudanteAlbion.zip \
   LICENSE \
-  albion-exe/AyudanteAlbion.exe albion-exe/LEEME.txt \
-  albion-exe/main.go albion-exe/go.mod albion-app tools \
+  albion-exe/AyudanteAlbion.exe albion-exe/AyudanteAlbion-Tracker.exe \
+  albion-exe/LEEME.txt \
+  albion-exe/main.go albion-exe/edition_standard.go albion-exe/edition_tracker.go \
+  albion-exe/tracker albion-exe/go.mod albion-app tools \
   -x "albion-app/node_modules/*" -x "albion-app/img/logo-opts/*"
 ls -lh AyudanteAlbion.zip | awk '{print "   " $5 "  " $9}'
 

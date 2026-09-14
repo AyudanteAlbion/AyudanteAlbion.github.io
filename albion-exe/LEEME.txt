@@ -1,9 +1,29 @@
 AYUDANTE ALBION — EJECUTABLE
 ============================
 
+DOS EDICIONES
+-------------
+AyudanteAlbion.exe
+  Edicion ESTANDAR. Exactamente las mismas herramientas que la web:
+  crafteo, flipping, precios, registro de operaciones y SG.
+  No necesita permisos de administrador ni programas adicionales.
+
+AyudanteAlbion-Tracker.exe
+  Edicion TRACKER. Todo lo anterior MAS la pestana "Sesion" con
+  estadisticas en vivo del juego: medidor de dano y curacion,
+  fama y plata por hora, historial de mapas y botin recogido.
+  Esa pestana solo aparece en esta edicion.
+
+  El tracking arranca APAGADO: hay que activarlo a mano desde la
+  pestana Sesion. Solo lee el trafico de red del juego; no modifica
+  el cliente, no dibuja nada encima y no ve jugadores fuera de tu
+  campo de vision.
+
+  Si no sabes cual elegir, usa la estandar.
+
 USO
 ---
-1. Copiá AyudanteAlbion.exe a cualquier carpeta de tu PC con Windows.
+1. Copiá el .exe elegido a cualquier carpeta de tu PC con Windows.
 2. Hacé doble clic (vas a ver el ícono del yunque dorado).
 3. La app se abre directamente en tu navegador. No aparece ninguna
    ventana de consola.
@@ -37,6 +57,9 @@ PARA REGENERARLO (si la app se actualiza)
 -----------------------------------------
 Requiere Go (golang.org). Desde la raíz del repositorio:
   ./build.sh
+Compila las dos ediciones. La edición Tracker se distingue por el
+build tag de Go: `go build -tags tracker`. Sin ese tag, el motor de
+estadísticas ni siquiera entra al binario.
 El script verifica la app, sincroniza los archivos, compila el .exe
 (con el ícono incluido vía rsrc_windows_amd64.syso) y genera el .zip.
 El Go que baja solo está incluido si coincide el checksum oficial fijo

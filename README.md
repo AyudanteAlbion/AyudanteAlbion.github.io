@@ -23,6 +23,8 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 
 Funciona en el navegador o como ejecutable de escritorio para Windows. No necesita instalación ni cuenta para usar las herramientas de cálculo.
 
+El escritorio tiene además una **edición Tracker** con estadísticas en vivo del juego —medidor de daño, fama y plata por hora, mapas y botín— que el navegador no puede ofrecer. Ver [Ediciones](#ediciones-web-escritorio-y-tracker).
+
 ---
 
 ## Herramientas
@@ -115,9 +117,33 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 
 ---
 
-## Ejecutable
+## Ediciones: web, escritorio y Tracker
 
-`AyudanteAlbion.exe` para Windows 10/11 x64. Al abrirlo levanta un servidor local en el puerto 3000 (usa otro si está ocupado) y funciona igual que la versión web, incluido el ingreso con Discord.
+La app se distribuye en tres formas. Las dos de escritorio son ejecutables para Windows 10/11 x64: al abrirlos levantan un servidor local en el puerto 3000 (usan otro si está ocupado) y funcionan igual que la web, incluido el ingreso con Discord.
+
+| | 🌐 Web | 💾 `AyudanteAlbion.exe` | 📊 `AyudanteAlbion-Tracker.exe` |
+|---|:---:|:---:|:---:|
+| Crafteo, Mercado, Personal, SG | ✅ | ✅ | ✅ |
+| Funciona sin instalar nada | ✅ | ✅ | ✅ |
+| Sin permisos de administrador | ✅ | ✅ | — |
+| **Pestaña Sesión** (estadísticas en vivo) | — | — | ✅ |
+| Medidor de daño y curación | — | — | ✅ |
+| Fama, plata y respec por hora | — | — | ✅ |
+| Historial de mapas y botín | — | — | ✅ |
+
+### Por qué hay dos ejecutables
+
+Las estadísticas en vivo necesitan **leer el tráfico de red del juego**, algo que el navegador no puede hacer y que requiere permisos elevados. Antes que imponerle eso a todo el mundo, la edición estándar queda idéntica a la de siempre y quien quiera el tracking baja la edición Tracker.
+
+La separación es real, no un interruptor: el motor de estadísticas se compila con un *build tag* de Go (`go build -tags tracker`), así que en la edición estándar **ese código no existe dentro del binario**.
+
+### La pestaña Sesión
+
+Solo aparece en la edición Tracker. El frontend es el mismo en las tres formas y decide qué mostrar preguntando `GET /api/tracker/status`: la web responde 404, la estándar responde «no disponible» y la Tracker responde con el motor listo.
+
+El tracking **arranca apagado** y se activa a mano. Siguiendo la misma línea que otras herramientas de la comunidad: solo monitorea el tráfico, no modifica el cliente del juego, no dibuja overlay y no ve jugadores fuera de tu campo de visión.
+
+Detalle técnico completo en [`docs/tracker-escritorio.md`](docs/tracker-escritorio.md).
 
 ---
 
@@ -185,6 +211,7 @@ pull request que afecte al código o a la infraestructura.
 | [`docs/farming.md`](docs/farming.md) | Bonos de isla, fuentes de datos y alcance del cálculo de Granja |
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
+| [`docs/tracker-escritorio.md`](docs/tracker-escritorio.md) | Ediciones del ejecutable y motor de estadísticas en vivo |
 | [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Formato de mensajes de commit con archivo y hora UTC |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |

@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+"""Simulador del motor de tracking para desarrollo del frontend.
+
+Replica los endpoints que la edición Tracker del ejecutable expone en Go
+(`/api/tracker/*`), para poder trabajar la interfaz sin Windows, sin Npcap y
+sin el juego abierto. NO es parte de lo que se distribuye: el .exe usa la
+implementación real en `albion-exe/tracker/`.
+
+Mantener los dos lados en sintonía: si cambia el contrato JSON en Go, cambiarlo
+acá también, porque es lo que se prueba a diario.
+
+Uso:  python3 tools/tracker_dev.py [puerto]
+"""
+from __future__ import annotations
+
+import http.server
+import json
+import os
+import queue
+import random
+import threading
+import time
+
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'albion-app')
+
+PARTY = ['SheniaLiam', 'GrailHealer', 'SpetsnazTank', 'MistRunner']
+ZONES = ['Martlock', 'Mase Knoll', 'Blackthorn Quarry', 'Caerleon', 'Thetford']
+ITEMS = ['T6_BAG', 'T5_MAIN_CURSEDSTAFF', 'T4_2H_BOW', 'T6_ARMOR_LEATHER_SET2']
+ABILITIES = ['Bola de fuego', 'Tajo', 'Flecha perforante', 'Maldición']
+
+
+class Hub:
+    """Pub/sub mínimo, equivalente al Hub de Go."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._subs: set[queue.Queue] = set()
+
+    def subscribe(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=256)
+        with self._lock:
+            self._subs.add(q)
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        with self._lock:
+            self._subs.discard(q)
+
+    def publish(self, kind: str, payload) -> None:
+        event = {'type': kind, 'ts': int(time.time() * 1000), 'payload': payload}
+        with self._lock:
+            subs = list(self._subs)
+        for q in subs:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                pass  # suscriptor lento: se descarta, nunca se bloquea
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._subs)
+
+
+class State:
+    """Estado agregado de la sesión, espejo de tracker.State en Go."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.reset(full=True)
+
+    def reset(self, full: bool = False) -> None:
+        with self._lock:
+            self.started = time.time()
+            self.fame = self.silver = self.respec = 0
+            self.players: dict[str, dict] = {}
+            self.loot: list[dict] = []
+            self.maps: list[dict] = []
+            if full:
+                self.capturing = False
+                self.character = ''
+                self.zone = ''
+                self.party: list[str] = []
+            for name in self.party:
+                self._player(name)
+            if self.character:
+                self._player(self.character)['self'] = True
+
+    def _player(self, name: str) -> dict:
+        p = self.players.get(name)
+        if p is None:
+            p = {'name': name, 'damage': 0, 'healing': 0, 'overheal': 0,
+                 'taken': 0, 'biggestHit': 0, 'deaths': 0, 'kills': 0, 'self': False}
+            self.players[name] = p
+        return p
+
+    def set_identity(self, character: str, party: list[str]) -> None:
+        with self._lock:
+            self.character = character
+            self.party = list(party)
+            for name in party:
+                self._player(name)
+            self._player(character)['self'] = True
+
+    def enter_zone(self, name: str) -> None:
+        with self._lock:
+            now = int(time.time() * 1000)
+            if self.maps and not self.maps[-1]['leave']:
+                self.maps[-1]['leave'] = now
+                self.maps[-1]['seconds'] = (now - self.maps[-1]['enter']) // 1000
+            self.zone = name
+            self.maps.append({'name': name, 'enter': now, 'leave': 0, 'seconds': 0})
+            del self.maps[:-200]
+
+    def add_damage(self, source: str, target: str, amount: int) -> None:
+        with self._lock:
+            p = self._player(source)
+            p['damage'] += amount
+            p['biggestHit'] = max(p['biggestHit'], amount)
+            # Solo jugadores conocidos acumulan daño recibido: si no, cada mob
+            # golpeado se colaría como una fila del medidor.
+            if target in self.players:
+                self.players[target]['taken'] += amount
+
+    def add_healing(self, source: str, effective: int, overheal: int) -> None:
+        with self._lock:
+            p = self._player(source)
+            p['healing'] += effective
+            p['overheal'] += overheal
+
+    def add_loot(self, entry: dict) -> None:
+        with self._lock:
+            entry['ts'] = int(time.time() * 1000)
+            self.loot.append(entry)
+            del self.loot[:-500]
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            elapsed = max(1.0, time.time() - self.started)
+            total_dmg = sum(p['damage'] for p in self.players.values())
+            total_heal = sum(p['healing'] for p in self.players.values())
+            rows = []
+            for p in self.players.values():
+                row = dict(p)
+                row['dps'] = row['damage'] / elapsed
+                row['hps'] = row['healing'] / elapsed
+                row['shareDamage'] = (row['damage'] / total_dmg * 100) if total_dmg else 0
+                row['shareHealing'] = (row['healing'] / total_heal * 100) if total_heal else 0
+                rows.append(row)
+            rows.sort(key=lambda r: (-r['damage'], -r['healing'], r['name']))
+
+            now = int(time.time() * 1000)
+            maps = []
+            for m in reversed(self.maps):
+                m = dict(m)
+                if not m['leave']:
+                    m['seconds'] = (now - m['enter']) // 1000
+                maps.append(m)
+
+            hours = elapsed / 3600
+            return {
+                'capturing': self.capturing,
+                'simulated': True,
+                'character': self.character,
+                'zone': self.zone,
+                'party': list(self.party),
+                'startedAt': int(self.started * 1000),
+                'seconds': int(elapsed),
+                'fame': self.fame,
+                'silver': self.silver,
+                'respec': self.respec,
+                'famePerHour': self.fame / hours,
+                'silverPerHour': self.silver / hours,
+                'combatants': rows,
+                'maps': maps,
+                'loot': list(reversed(self.loot)),
+            }
+
+
+HUB = Hub()
+STATE = State()
+_STOP = threading.Event()
+
+
+def simulate() -> None:
+    """Genera una sesión verosímil mientras el tracking esté activo."""
+    STATE.set_identity(PARTY[0], PARTY)
+    STATE.enter_zone(ZONES[0])
+    tick = 0
+    while not _STOP.is_set():
+        time.sleep(0.7)
+        if not STATE.capturing:
+            continue
+        tick += 1
+        actor = random.choice(PARTY)
+        if actor == 'GrailHealer':
+            eff, over = random.randint(150, 750), random.randint(0, 200)
+            STATE.add_healing(actor, eff, over)
+            HUB.publish('heal', {'source': actor, 'amount': eff, 'overheal': over})
+        else:
+            dmg = random.randint(200, 1600)
+            STATE.add_damage(actor, 'Mob heretico', dmg)
+            with STATE._lock:
+                STATE.fame += random.randint(40, 200)
+                STATE.silver += random.randint(90, 490)
+            HUB.publish('damage', {'source': actor, 'target': 'Mob heretico',
+                                   'amount': dmg, 'ability': random.choice(ABILITIES)})
+        if tick % 13 == 0:
+            STATE.add_loot({'player': random.choice(PARTY), 'itemId': random.choice(ITEMS),
+                            'quantity': random.randint(1, 3), 'quality': random.randint(1, 3),
+                            'source': 'mob'})
+            if random.random() < 0.4:
+                STATE.enter_zone(random.choice(ZONES))
+        if tick % 2 == 0:
+            HUB.publish('snapshot', STATE.snapshot())
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=ROOT, **kw)
+
+    def _json(self, body, code: int = 200) -> None:
+        raw = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Content-Length', str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self):
+        if self.path.startswith('/api/tracker/status'):
+            return self._json({'edition': 'tracker', 'available': True, 'reason': '',
+                               'source': 'simulador (dev)', 'capturing': STATE.capturing,
+                               'listeners': HUB.count()})
+        if self.path.startswith('/api/tracker/session'):
+            return self._json(STATE.snapshot())
+        if self.path.startswith('/api/tracker/stream'):
+            return self.stream()
+        return super().do_GET()
+
+    def do_POST(self):
+        if self.path.startswith('/api/tracker/start'):
+            STATE.capturing = True
+            HUB.publish('status', STATE.snapshot())
+            return self._json({'ok': True, 'capturing': True})
+        if self.path.startswith('/api/tracker/stop'):
+            STATE.capturing = False
+            HUB.publish('status', STATE.snapshot())
+            return self._json({'ok': True, 'capturing': False})
+        if self.path.startswith('/api/tracker/reset'):
+            STATE.reset()
+            snap = STATE.snapshot()
+            HUB.publish('snapshot', snap)
+            return self._json(snap)
+        return self.send_error(405)
+
+    def stream(self) -> None:
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+        q = HUB.subscribe()
+        try:
+            self.wfile.write(b'data: ' + json.dumps(
+                {'type': 'snapshot', 'ts': int(time.time() * 1000),
+                 'payload': STATE.snapshot()}).encode() + b'\n\n')
+            self.wfile.flush()
+            while not _STOP.is_set():
+                try:
+                    event = q.get(timeout=10)
+                except queue.Empty:
+                    self.wfile.write(b': keepalive\n\n')
+                    self.wfile.flush()
+                    continue
+                self.wfile.write(b'data: ' + json.dumps(event).encode() + b'\n\n')
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            HUB.unsubscribe(q)
+
+    def end_headers(self):
+        if self.path.startswith('/icons/'):
+            self.send_header('Cache-Control', 'public, max-age=604800')
+        super().end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+def main() -> None:
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 3000
+    threading.Thread(target=simulate, daemon=True).start()
+    # Bind 0.0.0.0 solo porque es un entorno de desarrollo en contenedor;
+    # el ejecutable real escucha únicamente en 127.0.0.1.
+    http.server.ThreadingHTTPServer(('0.0.0.0', port), Handler).serve_forever()
+
+
+if __name__ == '__main__':
+    main()

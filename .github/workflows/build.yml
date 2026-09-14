@@ -62,9 +62,10 @@ jobs:
           # cuatro archivos planos y además hace que SHA256SUMS.txt sirva tal
           # cual para quien descarga los archivos de la release.
           cp albion-exe/AyudanteAlbion.exe AyudanteAlbion.exe
-          sha256sum AyudanteAlbion.exe AyudanteAlbion.zip > SHA256SUMS.txt
+          cp albion-exe/AyudanteAlbion-Tracker.exe AyudanteAlbion-Tracker.exe
+          sha256sum AyudanteAlbion.exe AyudanteAlbion-Tracker.exe AyudanteAlbion.zip > SHA256SUMS.txt
           printf '%s\n' "$TAG" > RELEASE_TAG.txt
-          ls -lh AyudanteAlbion.exe AyudanteAlbion.zip SHA256SUMS.txt RELEASE_TAG.txt
+          ls -lh AyudanteAlbion.exe AyudanteAlbion-Tracker.exe AyudanteAlbion.zip SHA256SUMS.txt RELEASE_TAG.txt
 
       - name: Guardar artefactos de release
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -72,6 +73,7 @@ jobs:
           name: release-assets
           path: |
             AyudanteAlbion.exe
+            AyudanteAlbion-Tracker.exe
             AyudanteAlbion.zip
             SHA256SUMS.txt
             RELEASE_TAG.txt
