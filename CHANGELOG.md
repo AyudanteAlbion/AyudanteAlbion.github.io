@@ -17,6 +17,10 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 
 ### Añadido
 
+- Alertas robustas contra precios viejos: validador central de cotizaciones, preferencia de frescura máxima (15 min, 60 min o sin límite) y estado “esperando cotización reciente”.
+- Historial real de precios por ciudad/calidad desde `stats/history`, con gráfico SVG, rangos 7/30/90/180/365 días, caché corta y separación explícita entre **Historial de la API** y **Tus consultas guardadas**.
+- Analítica avanzada del Registro de operaciones: `tradeLog` v2, comisiones/impuestos, coste extra de crafteo, fecha editable, métricas netas, rankings, pérdidas, resultado por ítem/ciudad, series diaria/semanal y distribución por hora local.
+- Explorador de **ítems observados en pérdidas públicas** desde `/gameinfo/events`, con caché local de 7 días, deduplicado, separación equipo/inventario, filtros y valorización orientativa por lote.
 - **Sincronización entre dispositivos** (Workers KV): los miembros de SG que
   ingresan con Discord pueden subir, bajar y borrar una copia de sus datos desde
   el bloque ☁️ del *Registro de operaciones*. Nada automático: cada acción pide
@@ -34,14 +38,11 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 - `SECURITY.md`: política de seguridad pública con canal de reporte privado,
   plazos y alcance.
 - `docs/sincronizacion.md` y `docs/deploy-worker.md`.
-- `package.json` en la raíz con la suite unificada de pruebas (`jsdom`).
-- Dos pruebas nuevas que cubren el hueco por el que se coló el fallo de los
-  módulos: `assets-test.js` comprueba que todo archivo referenciado por
-  `index.html` exista en el artefacto publicado (corre en el workflow de Pages
-  antes de subirlo y en `build.sh` antes de compilar el `.exe`), e
-  `integration-test.js` carga `app.js` **con** los módulos, como el navegador,
-  y compara cada fórmula contra su fallback para que las dos copias no se
-  separen.
+- `package.json` en la raíz con la suite unificada de validación y pruebas sin dependencias externas.
+- Suite local sin dependencias: `scripts/validate_repo.py` comprueba sintaxis,
+  referencias y entradas del build; `scripts/phase_qa.js` cubre los contratos
+  de frescura de alertas, historial API, analítica del registro y pérdidas
+  públicas. `npm test` ejecuta ambas.
 - Contrato de `/sync` replicado en `server.py` con un almacén en memoria, para
   probar el flujo completo sin Cloudflare.
 - **Changelog en Discord**: cada push a `main` que toque `CHANGELOG.md` publica

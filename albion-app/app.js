@@ -171,7 +171,7 @@ function mpKey(id, city, kind) { return `${id}|${city}|${kind}`; }
 // Grupos de pestañas por dropdown: su trigger se marca activo cuando la actual es una de sus herramientas
 const DD_GROUPS = [
   { dd: 'craftDd', btn: 'craftDdBtn', keys: ['gear', 'refine', 'alch', 'food', 'enchant', 'farm'] },
-  { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute', 'meld', 'alerts'] },
+  { dd: 'flipDd', btn: 'flipDdBtn', keys: ['flip', 'transmute', 'meld', 'alerts', 'losses'] },
 ];
 function gotoTab(key, sgTab) {
   if (window.AANavigation) AANavigation.activateTab(key);
@@ -187,6 +187,7 @@ function gotoTab(key, sgTab) {
   const mod = craftModules[key];
   if (mod && !mod.loadedOnce) mod.loadPrices();
   if (key === 'sg') sgSelectTab(sgTab || SG.tab);
+  if (key === 'losses' && typeof plMaybeLoad === 'function') plMaybeLoad();
   window.scrollTo({ top: 0 });
 }
 document.getElementById('mainTabs').addEventListener('click', e => {
@@ -2670,7 +2671,7 @@ document.querySelectorAll('.top-action[data-tab]').forEach(btn =>
    BUSCADOR GLOBAL DE PRECIOS
    Venta más barata y mejor orden de compra por ciudad × calidad.
    ==================================================================== */
-const PS = { item: null, ench: 0, data: null, history: [], marketHistory: [] };
+const PS = { item: null, ench: 0, data: null, history: [], marketHistory: [], apiHist: { cache: new Map(), ctrl: null, seq: 0, data: null, loading: false, error: null } };
 try { PS.history = JSON.parse(localStorage.getItem('psHistory') || '[]'); } catch (e) {}
 try { PS.marketHistory = JSON.parse(localStorage.getItem('marketHistory') || '[]'); } catch (e) {}
 function psSaveMarketSnapshot(id, data) {
@@ -2678,8 +2679,142 @@ function psSaveMarketSnapshot(id, data) {
   else return;
   try { localStorage.setItem('marketHistory', JSON.stringify(PS.marketHistory)); } catch (e) {}
 }
-function psTrend(id, quality) {
-  return window.AAMarketHistory ? AAMarketHistory.trend(PS.marketHistory, id, quality, BLACK_MARKET) : null;
+function psFullId() {
+  return PS.item ? PS.item + (PS.ench > 0 ? '@' + PS.ench : '') : '';
+}
+function psHistControls() {
+  return {
+    city: document.getElementById('psHistCity')?.value || 'Caerleon',
+    quality: +(document.getElementById('psHistQuality')?.value || 1),
+    days: +(document.getElementById('psHistDays')?.value || 30),
+    timeScale: 24,
+  };
+}
+function psHistoryCacheGet(key) {
+  const hit = PS.apiHist.cache.get(key);
+  return hit && Date.now() - hit.saved < 5 * 60e3 ? hit : null;
+}
+function psFormatApiDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function psHistorySvg(points, meta) {
+  const w = 760, h = 260, padL = 58, padR = 18, padT = 20, padB = 38;
+  if (!points || points.length < 2) return '';
+  const xs = points.map(p => p.ts), ys = points.map(p => p.avgPrice);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  let minY = Math.min(...ys), maxY = Math.max(...ys);
+  if (minY === maxY) { minY *= 0.95; maxY *= 1.05; }
+  const counts = points.map(p => p.itemCount || 0);
+  const maxC = Math.max(1, ...counts);
+  const x = ts => padL + (maxX === minX ? 0 : (ts - minX) / (maxX - minX)) * (w - padL - padR);
+  const y = v => padT + (maxY === minY ? .5 : 1 - (v - minY) / (maxY - minY)) * (h - padT - padB);
+  const line = points.map((p, i) => (i ? 'L' : 'M') + x(p.ts).toFixed(1) + ' ' + y(p.avgPrice).toFixed(1)).join(' ');
+  const grid = [0, .25, .5, .75, 1].map(t => {
+    const yy = padT + t * (h - padT - padB);
+    const val = maxY - t * (maxY - minY);
+    return `<line x1="${padL}" y1="${yy}" x2="${w - padR}" y2="${yy}" class="mh-grid"/><text x="${padL - 8}" y="${yy + 4}" text-anchor="end" class="mh-axis">${fmt(val)}</text>`;
+  }).join('');
+  const bars = points.map(p => {
+    const bh = (p.itemCount || 0) / maxC * 52;
+    return `<rect x="${(x(p.ts) - 2).toFixed(1)}" y="${(h - padB - bh).toFixed(1)}" width="4" height="${bh.toFixed(1)}" class="mh-bar"><title>${psFormatApiDate(p.ts)} · cantidad ${p.itemCount == null ? '—' : fmt(p.itemCount)}</title></rect>`;
+  }).join('');
+  const dots = points.map(p => {
+    const tip = `${psFormatApiDate(p.ts)} · precio ${fmt(p.avgPrice)} · cantidad ${p.itemCount == null ? '—' : fmt(p.itemCount)}`;
+    return `<circle class="mh-point" cx="${x(p.ts).toFixed(1)}" cy="${y(p.avgPrice).toFixed(1)}" r="4" data-tip="${sgEsc(tip)}"><title>${sgEsc(tip)}</title></circle>`;
+  }).join('');
+  const first = points[0], last = points[points.length - 1];
+  return `<div class="mh-chart-wrap"><svg class="mh-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Historial de precio promedio de ${sgEsc(meta.label)}">
+    ${grid}${bars}<path d="${line}" class="mh-line" fill="none"/><g>${dots}</g>
+    <text x="${padL}" y="${h - 12}" class="mh-axis">${psFormatApiDate(first.ts)}</text>
+    <text x="${w - padR}" y="${h - 12}" text-anchor="end" class="mh-axis">${psFormatApiDate(last.ts)}</text>
+  </svg><div class="mh-tip" id="psApiTip" hidden></div></div>`;
+}
+function psRenderApiHistory() {
+  const box = document.getElementById('psApiHistory');
+  if (!box) return;
+  if (!PS.item) {
+    box.innerHTML = '<div class="loading-cell">Buscá un ítem para consultar el historial publicado.</div>';
+    return;
+  }
+  if (PS.apiHist.loading) {
+    box.innerHTML = '<div class="loading-cell">Cargando Historial de la API…</div>';
+    return;
+  }
+  if (PS.apiHist.error) {
+    box.innerHTML = `<div class="loading-cell">No se pudo leer stats/history: ${sgEsc(PS.apiHist.error)}. La búsqueda actual de precios sigue funcionando.</div>`;
+    return;
+  }
+  const payload = PS.apiHist.data;
+  if (!payload) {
+    box.innerHTML = '<div class="loading-cell">Elegí ciudad, calidad y período; luego tocá “Historial”.</div>';
+    return;
+  }
+  const { points, coverage, cfg, sourceUrl, cached } = payload;
+  const itemName = catalogName(psFullId());
+  const legend = `${itemName} · ${cfg.city} · ${QUALITY_ES[cfg.quality] || cfg.quality} · ${cfg.days} días`;
+  if (!points.length) {
+    box.innerHTML = `<div class="history-empty"><b>Sin datos suficientes.</b> No hubo cobertura publicada para ${sgEsc(legend)}.<div class="micro muted">Fuente: Albion Online Data Project stats/history · última actualización: — · <a href="${sgEsc(sourceUrl)}" target="_blank" rel="noopener">ver consulta</a></div></div>`;
+    return;
+  }
+  const covWarn = !coverage.enough || (coverage.coverageRatio != null && coverage.coverageRatio < 0.15)
+    ? '<span class="badge warn">cobertura baja</span>' : '<span class="badge">cobertura ' + Math.round((coverage.coverageRatio || 0) * 100) + '%</span>';
+  box.innerHTML = `<div class="history-summary">
+    <div><b>${sgEsc(legend)}</b> ${covWarn}${cached ? ' <span class="badge">caché corta</span>' : ''}</div>
+    <div class="micro muted">Fuente: Albion Online Data Project stats/history · última actualización: ${psFormatApiDate(coverage.lastTs)} · puntos ${coverage.points} · días con datos ${coverage.daysWithData}/${coverage.daysRequested}${coverage.totalItemCount != null ? ' · cantidad observada ' + fmt(coverage.totalItemCount) : ''}</div>
+  </div>${psHistorySvg(points, { label: legend })}`;
+}
+async function psLoadApiHistory() {
+  const box = document.getElementById('psApiHistory');
+  if (!box || !PS.item || !window.AAApiHistory) { psRenderApiHistory(); return; }
+  const cfg = psHistControls();
+  const id = psFullId();
+  const key = AAApiHistory.cacheKey(id, cfg);
+  const cached = psHistoryCacheGet(key);
+  if (cached) {
+    if (PS.apiHist.ctrl) PS.apiHist.ctrl.abort();
+    PS.apiHist.seq++;
+    PS.apiHist.data = { ...cached.data, cached: true };
+    PS.apiHist.error = null;
+    PS.apiHist.loading = false;
+    psRenderApiHistory();
+    return;
+  }
+  if (PS.apiHist.ctrl) PS.apiHist.ctrl.abort();
+  const ctrl = new AbortController();
+  const seq = ++PS.apiHist.seq;
+  PS.apiHist.ctrl = ctrl;
+  PS.apiHist.loading = true;
+  PS.apiHist.error = null;
+  psRenderApiHistory();
+  const url = AAApiHistory.buildUrl(API, id, cfg);
+  const timer = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.json();
+    if (seq !== PS.apiHist.seq) return;
+    const points = AAApiHistory.normalize(raw, cfg);
+    const cov = AAApiHistory.coverage(points, cfg.days);
+    const data = { points, coverage: cov, cfg, sourceUrl: url, cached: false };
+    PS.apiHist.cache.set(key, { saved: Date.now(), data });
+    PS.apiHist.data = data;
+  } catch (e) {
+    if (e.name === 'AbortError' && seq !== PS.apiHist.seq) return;
+    PS.apiHist.error = e.name === 'AbortError' ? 'tiempo de espera agotado' : e.message;
+    PS.apiHist.data = null;
+  } finally {
+    clearTimeout(timer);
+    if (seq === PS.apiHist.seq) {
+      PS.apiHist.loading = false;
+      psRenderApiHistory();
+    }
+  }
+}
+
+function psScheduleApiHistory() {
+  clearTimeout(PS.apiHist.debounce);
+  PS.apiHist.debounce = setTimeout(psLoadApiHistory, 150);
 }
 
 const QUALITY_ES = { 1: 'Normal', 2: 'Buena', 3: 'Notable', 4: 'Excelente', 5: 'Obra maestra' };
@@ -2698,7 +2833,7 @@ async function psLoad() {
   if (!PS.item) return;
   const box = document.getElementById('psResult');
   box.innerHTML = '<div class="panel"><div class="loading-cell">Cargando precios…</div></div>';
-  const id = PS.item + (PS.ench > 0 ? '@' + PS.ench : '');
+  const id = psFullId();
   try {
     // sin filtro de calidad → devuelve todas
     const data = await fetchJSON(`${API}/prices/${id}.json?locations=${PS_CITIES.map(c => c.replace(' ', '%20')).join(',')}`);
@@ -2737,7 +2872,7 @@ function psRender(id) {
     ? AAMarketHistory.opportunities(grid, cities, BLACK_MARKET) : [];
   const trend = psTrend(id, 1);
   const opportunityHtml = opportunities.length ? `<div class="panel market-opportunities"><h3>Oportunidades de flipping — calidad Normal</h3><div class="table-wrap"><table class="ledger"><thead><tr><th>Comprar</th><th>Vender</th><th class="num">Capital</th><th class="num">Ganancia neta</th><th class="num">Margen</th></tr></thead><tbody>${opportunities.slice(0, 8).map(o => `<tr><td>${o.from}</td><td>${o.to}</td><td class="num">${fmt(o.buy)}</td><td class="num pos">+${fmt(o.profit)}</td><td class="num pos">${pct(o.margin)}</td></tr>`).join('')}</tbody></table></div><div class="micro muted pad">Impuestos estimados: Premium y orden de venta en ciudades; Black Market usa 4% sin publicación. No incluye transporte.</div></div>` : '';
-  const trendHtml = trend ? `<div class="market-trend"><b>Tendencia observada</b> <span class="${trend.change >= 0 ? 'pos' : 'neg'}">${trend.change >= 0 ? '+' : ''}${pct(trend.change)}</span> · ${trend.points.length} registros · promedio actual ${fmt(trend.last)}</div>` : '<div class="market-trend muted">Historial: se necesitan al menos dos capturas para mostrar tendencia.</div>';
+  const trendHtml = trend ? `<div class="market-trend"><b>Tus consultas guardadas</b> <span class="${trend.change >= 0 ? 'pos' : 'neg'}">${trend.change >= 0 ? '+' : ''}${pct(trend.change)}</span> · ${trend.points.length} registros · promedio actual ${fmt(trend.last)}</div>` : '<div class="market-trend muted">Tus consultas guardadas: se necesitan al menos dos capturas locales para mostrar tendencia.</div>';
   box.innerHTML = `
   <div class="panel table-wrap">
     <div class="flip-head" style="padding:14px 14px 4px">
@@ -2770,6 +2905,9 @@ function psRender(id) {
 (function initPS() {
   const inp = document.getElementById('psSearch');
   const res = document.getElementById('psResults');
+  const histCity = document.getElementById('psHistCity');
+  if (histCity) histCity.replaceChildren(...CITIES.map(c => new Option(c, c)));
+  if (histCity) histCity.value = 'Caerleon';
   inp.addEventListener('input', () => {
     const q = inp.value.trim().toLowerCase();
     if (q.length < 2 || !CATALOG) { res.classList.remove('open'); return; }
@@ -2794,26 +2932,99 @@ function psRender(id) {
     res.classList.remove('open');
     psSaveHistory(it.dataset.id, it.dataset.name);
     psLoad();
+    psLoadApiHistory();
   });
   document.getElementById('psHistory').addEventListener('click', e => {
     const t = e.target.closest('.fam-tag'); if (!t) return;
     PS.item = t.dataset.id;
     inp.value = t.textContent;
     psLoad();
+    psLoadApiHistory();
   });
-  document.getElementById('psEnch').addEventListener('change', e => { PS.ench = +e.target.value; if (PS.item) psLoad(); });
+  document.getElementById('psEnch').addEventListener('change', e => { PS.ench = +e.target.value; if (PS.item) { psLoad(); psLoadApiHistory(); } });
   document.getElementById('psRefresh').addEventListener('click', psLoad);
+  document.getElementById('psHistRefresh').addEventListener('click', psLoadApiHistory);
+  ['psHistCity', 'psHistQuality', 'psHistDays'].forEach(id => document.getElementById(id).addEventListener('change', psScheduleApiHistory));
+  document.getElementById('psApiHistory').addEventListener('mouseover', e => {
+    const point = e.target.closest('.mh-point');
+    const tip = document.getElementById('psApiTip');
+    if (!point || !tip) return;
+    tip.textContent = point.dataset.tip || '';
+    tip.hidden = false;
+  });
+  document.getElementById('psApiHistory').addEventListener('mousemove', e => {
+    const tip = document.getElementById('psApiTip');
+    if (!tip || tip.hidden) return;
+    const box = document.getElementById('psApiHistory').getBoundingClientRect();
+    tip.style.left = Math.min(box.width - 180, Math.max(8, e.clientX - box.left + 12)) + 'px';
+    tip.style.top = Math.max(8, e.clientY - box.top - 34) + 'px';
+  });
+  document.getElementById('psApiHistory').addEventListener('mouseout', e => {
+    if (!e.target.closest('.mh-point')) return;
+    const tip = document.getElementById('psApiTip'); if (tip) tip.hidden = true;
+  });
   psRenderHistory();
+  psRenderApiHistory();
 })();
 
 /* ====================================================================
    REGISTRO DE OPERACIONES (personal, localStorage)
    ==================================================================== */
-const LL = { rows: [], filter: 'all', item: null };
+const LLCore = window.AALedger || (() => {
+  const n = v => { const x = Number(v); return isFinite(x) ? x : 0; };
+  const gross = r => n(r.qty) * n(r.price);
+  const fee = r => Math.max(0, n(r.fee));
+  const craftCost = r => r.type === 'craft' ? Math.max(0, n(r.craftCost)) : 0;
+  const netIncome = r => r.type === 'sell' ? gross(r) - fee(r) : 0;
+  const investment = r => r.type === 'sell' ? 0 : gross(r) + fee(r) + craftCost(r);
+  const add = (g, r) => { g.rows++; const q = n(r.qty); if (r.type === 'sell') { g.sellQty += q; g.grossSales += gross(r); g.netIncome += netIncome(r); } else { if (r.type === 'craft') g.craftQty += q; else g.buyQty += q; g.investment += investment(r); } g.fees += fee(r); g.craftCost += craftCost(r); g.profit = g.netIncome - g.investment; g.roi = g.investment > 0 ? g.profit / g.investment : null; g.profitPerSold = g.sellQty > 0 ? g.profit / g.sellQty : null; return g; };
+  const empty = (key, label) => ({ key, label: label || key, rows: 0, buyQty: 0, craftQty: 0, sellQty: 0, grossSales: 0, netIncome: 0, investment: 0, fees: 0, craftCost: 0, profit: 0, roi: null, profitPerSold: null });
+  const groupBy = (rows, keyFn, labelFn) => Array.from(rows.reduce((m, r) => { const k = keyFn(r), g = m.get(k) || empty(k, labelFn ? labelFn(r, k) : k); if (r.id && !g.id) g.id = r.id; add(g, r); return m.set(k, g); }, new Map()).values());
+  return {
+    VERSION: 2,
+    migrateRows: rows => ({ rows: (Array.isArray(rows) ? rows : []).map((r, i) => ({ ...r, v: 2, uid: r.uid || 'll_' + (r.ts || 0) + '_' + i, fee: r.fee == null ? 0 : r.fee, craftCost: r.craftCost == null ? 0 : r.craftCost, city: r.city || '', note: r.note || '' })), changed: false }),
+    gross, fee, craftCost, netIncome, investment,
+    operationNet: r => r.type === 'sell' ? netIncome(r) : -investment(r),
+    metrics: rows => rows.reduce((g, r) => add(g, r), empty('total', 'Total')),
+    itemGroups: (rows, nameOf) => groupBy(rows, r => r.id || '—', r => r.name || (nameOf && nameOf(r.id)) || r.id || '—'),
+    cityGroups: rows => groupBy(rows, r => r.city || '—', r => r.city || 'Sin ciudad'),
+    dailyGroups: rows => groupBy(rows, r => new Date(n(r.ts)).toISOString().slice(0, 10)).sort((a, b) => a.key.localeCompare(b.key)),
+    weeklyGroups: rows => groupBy(rows, r => { const d = new Date(n(r.ts)); return d.getFullYear() + '-S' + Math.ceil((((d - new Date(d.getFullYear(), 0, 1)) / 86400e3) + 1) / 7); }).sort((a, b) => a.key.localeCompare(b.key)),
+    hourGroups: rows => { const gs = Array.from({ length: 24 }, (_, h) => empty(String(h).padStart(2, '0'), String(h).padStart(2, '0') + ':00')); rows.forEach(r => add(gs[new Date(n(r.ts)).getHours()], r)); return gs; },
+    filterRows: (rows, opt = {}) => (rows || []).filter(r => (!opt.type || r.type === opt.type) && (!opt.city || (r.city || '') === opt.city) && (opt.period === 'all' || !opt.period || n(r.ts) >= (opt.now || Date.now()) - (Number(opt.period) || 1) * 86400e3)),
+  };
+})();
+const LL = { rows: [], filter: 'all', item: null, cityFilter: '', period: 'all' };
 try { LL.rows = JSON.parse(localStorage.getItem('tradeLog') || '[]'); } catch (e) {}
-function llSave() { localStorage.setItem('tradeLog', JSON.stringify(LL.rows)); }
+function llSave() {
+  localStorage.setItem('tradeLog', JSON.stringify(LL.rows));
+  localStorage.setItem('tradeLogVersion', String(LLCore.VERSION || 2));
+}
+try {
+  const mig = LLCore.migrateRows(LL.rows);
+  LL.rows = mig.rows;
+  if (mig.changed || localStorage.getItem('tradeLogVersion') !== String(LLCore.VERSION || 2)) llSave();
+} catch (e) {}
 
 /* Prefill desde otras pestañas: botones «Registrar» en Flipping/Crafteo */
+function llDateInputValue(ts) {
+  const d = new Date(ts || Date.now());
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+function llSetDefaultDate() {
+  const el = document.getElementById('llDate');
+  if (el && !el.value) el.value = llDateInputValue(Date.now());
+}
+let LL_UID_COUNTER = 0;
+function llUid() {
+  if (window.crypto && typeof crypto.randomUUID === 'function') return 'll_' + crypto.randomUUID();
+  if (window.crypto && typeof crypto.getRandomValues === 'function') {
+    const values = new Uint32Array(2);
+    crypto.getRandomValues(values);
+    return 'll_' + Date.now().toString(36) + '_' + Array.from(values, v => v.toString(36)).join('');
+  }
+  return 'll_' + Date.now().toString(36) + '_' + (LL_UID_COUNTER++).toString(36);
+}
 function llPrefill(id, type, price, city) {
   LL.item = id;
   document.getElementById('llItem').value = catalogName(id);
@@ -2821,6 +3032,9 @@ function llPrefill(id, type, price, city) {
   llUpdateCities();
   document.getElementById('llQty').value = 1;
   document.getElementById('llPrice').value = price && isFinite(price) ? Math.round(price) : '';
+  document.getElementById('llFee').value = '';
+  document.getElementById('llCraftCost').value = '';
+  document.getElementById('llDate').value = llDateInputValue(Date.now());
   const sel = document.getElementById('llCity');
   sel.value = city && [...sel.options].some(o => o.value === city) ? city : '—';
   gotoTab('ledgerlog');
@@ -2831,86 +3045,135 @@ const LL_TYPE_ES = { buy: 'Compra', sell: 'Venta', craft: 'Crafteo' };
    (= + - @ o tab/CR), se antepone un apóstrofo para que Excel/Sheets no la ejecuten. */
 function csvCell(v) {
   let t = String(v == null ? '' : v);
-  if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+  if (/^[=+\-@\t]/.test(t) || t.charCodeAt(0) === 13) t = "'" + t;
   return '"' + t.replace(/"/g, '""') + '"';
 }
-
-function llRender() {
-  const rows = LL.rows.filter(r => LL.filter === 'all' || r.type === LL.filter);
-  // stats: P&L = ventas − compras − crafteos
-  const sum = t => LL.rows.filter(r => r.type === t).reduce((s, r) => s + r.qty * r.price, 0);
-  const bought = sum('buy'), sold = sum('sell'), crafted = sum('craft');
-  const pnl = sold - bought - crafted;
-  const DAY = 86400e3;
-  const last7 = LL.rows.filter(r => Date.now() - r.ts < 7 * DAY);
-  const pnl7 = last7.filter(r => r.type === 'sell').reduce((s, r) => s + r.qty * r.price, 0)
-             - last7.filter(r => r.type !== 'sell').reduce((s, r) => s + r.qty * r.price, 0);
+function llSigned(n) { return (n > 0 ? '+' : '') + fmt(n); }
+function llRoi(v) { return v == null || !isFinite(v) ? '—' : pct(v); }
+function llCurrentRows(type) {
+  return LLCore.filterRows(LL.rows, { city: LL.cityFilter, period: LL.period, type: type || '', now: Date.now() });
+}
+function llRefreshCityFilter() {
+  const sel = document.getElementById('llCityFilter');
+  if (!sel) return;
+  const prev = sel.value;
+  const values = new Set([...CITIES, BLACK_MARKET]);
+  LL.rows.forEach(r => { if (r.city) values.add(r.city); });
+  sel.replaceChildren(new Option('Todas', ''), ...Array.from(values).map(c => new Option(c, c)));
+  sel.value = Array.from(sel.options).some(o => o.value === prev) ? prev : '';
+  LL.cityFilter = sel.value;
+}
+function llFilterNote() {
+  const parts = [];
+  if (LL.cityFilter) parts.push('ciudad: ' + LL.cityFilter);
+  if (LL.period !== 'all') parts.push('últimos ' + LL.period + ' días');
+  return parts.length ? ' · ' + parts.join(' · ') : '';
+}
+function llRenderStats(rows) {
+  const m = LLCore.metrics(rows);
   document.getElementById('llStats').innerHTML = `
-    <div class="stat"><div class="k">Invertido (compras + crafteos)</div><div class="v">${fmt(bought + crafted)}</div><div class="s">${LL.rows.filter(r => r.type !== 'sell').length} operaciones</div></div>
-    <div class="stat"><div class="k">Recuperado (ventas)</div><div class="v">${fmt(sold)}</div><div class="s">${LL.rows.filter(r => r.type === 'sell').length} ventas</div></div>
-    <div class="stat"><div class="k">P&L total</div><div class="v ${pnl >= 0 ? 'pos' : 'neg'}">${fmt(pnl)}</div><div class="s">ventas − compras − crafteos</div></div>
-    <div class="stat"><div class="k">P&L últimos 7 días</div><div class="v ${pnl7 >= 0 ? 'pos' : 'neg'}">${fmt(pnl7)}</div><div class="s">${last7.length} operaciones</div></div>`;
+    <div class="stat"><div class="k">Inversión</div><div class="v">${fmt(m.investment)}</div><div class="s">compras + crafteos + tasas${llFilterNote()}</div></div>
+    <div class="stat"><div class="k">Ingresos netos</div><div class="v">${fmt(m.netIncome)}</div><div class="s">ventas − comisiones</div></div>
+    <div class="stat"><div class="k">Beneficio neto</div><div class="v ${m.profit >= 0 ? 'pos' : 'neg'}">${llSigned(m.profit)}</div><div class="s">resultado agregado, no emparejado</div></div>
+    <div class="stat"><div class="k">ROI agregado</div><div class="v ${m.roi == null ? '' : m.roi >= 0 ? 'pos' : 'neg'}">${llRoi(m.roi)}</div><div class="s">beneficio / capital invertido</div></div>
+    <div class="stat"><div class="k">Volumen</div><div class="v">${fmt(m.buyQty + m.craftQty + m.sellQty)}</div><div class="s">comprado ${fmt(m.buyQty)} · crafteado ${fmt(m.craftQty)} · vendido ${fmt(m.sellQty)}</div></div>`;
+}
+function llRenderGroups(groups, opts = {}) {
   const body = document.getElementById('llBody');
   const thead = document.querySelector('#llTable thead tr');
-
-  /* ---- vista «Resumen por ítem»: agrupa todas las operaciones ---- */
-  if (LL.filter === 'byitem') {
-    thead.innerHTML = `<th>Ítem</th><th class="num">Compradas</th><th class="num">Crafteadas</th><th class="num">Vendidas</th>
-      <th class="num">Invertido</th><th class="num">Recuperado</th><th class="num">P&L</th><th class="num">P&L por unidad vendida</th><th></th>`;
-    const byItem = {};
-    for (const r of LL.rows) {
-      const k = r.id;
-      const g = byItem[k] = byItem[k] || { id: k, name: r.name, buyQ: 0, craftQ: 0, sellQ: 0, spent: 0, earned: 0 };
-      if (r.type === 'sell') { g.sellQ += r.qty; g.earned += r.qty * r.price; }
-      else { g[r.type === 'buy' ? 'buyQ' : 'craftQ'] += r.qty; g.spent += r.qty * r.price; }
-    }
-    const groups = Object.values(byItem).sort((a, b) => (b.earned - b.spent) - (a.earned - a.spent));
-    if (!groups.length) {
-      body.innerHTML = '<tr><td colspan="9" class="loading-cell">Sin operaciones registradas.</td></tr>';
-      return;
-    }
-    body.innerHTML = groups.map(g => {
-      const p = g.earned - g.spent;
-      const perU = g.sellQ > 0 ? p / g.sellQ : null;
-      return `<tr>
-        <td><div class="item-cell">${iconImg(g.id, 'item-icon sm')}<span>${sgEsc(g.name || catalogName(g.id))}</span></div></td>
-        <td class="num">${g.buyQ ? fmt(g.buyQ) : '—'}</td>
-        <td class="num">${g.craftQ ? fmt(g.craftQ) : '—'}</td>
-        <td class="num">${g.sellQ ? fmt(g.sellQ) : '—'}</td>
-        <td class="num">${fmt(g.spent)}</td>
-        <td class="num">${fmt(g.earned)}</td>
-        <td class="num ${p >= 0 ? 'pos' : 'neg'}"><b>${(p > 0 ? '+' : '') + fmt(p)}</b></td>
-        <td class="num ${perU == null ? '' : perU >= 0 ? 'pos' : 'neg'}">${perU == null ? '—' : (perU > 0 ? '+' : '') + fmt(perU)}</td>
-        <td></td>
-      </tr>`;
-    }).join('');
+  const first = opts.first || 'Grupo';
+  thead.innerHTML = `<th>${first}</th><th class="num">Comprado</th><th class="num">Crafteado</th><th class="num">Vendido</th><th class="num">Inversión</th><th class="num">Ingresos netos</th><th class="num">Beneficio neto</th><th class="num">ROI</th><th class="num">Beneficio/u vendida</th>`;
+  if (!groups.length) {
+    body.innerHTML = `<tr><td colspan="9" class="loading-cell">${opts.empty || 'Sin resultados para los filtros actuales.'}</td></tr>`;
     return;
   }
-
-  thead.innerHTML = `<th>Fecha</th><th>Ítem</th><th>Tipo</th>
-    <th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Total</th>
-    <th>Ciudad</th><th>Nota</th><th></th>`;
+  body.innerHTML = groups.map(g => {
+    const label = opts.icon && g.id ? `<div class="item-cell">${iconImg(g.id, 'item-icon sm')}<span>${sgEsc(g.label)}</span></div>` : sgEsc(g.label);
+    return `<tr>
+      <td>${label}<div class="micro muted">${g.rows} operación(es)</div></td>
+      <td class="num">${g.buyQty ? fmt(g.buyQty) : '—'}</td>
+      <td class="num">${g.craftQty ? fmt(g.craftQty) : '—'}</td>
+      <td class="num">${g.sellQty ? fmt(g.sellQty) : '—'}</td>
+      <td class="num">${fmt(g.investment)}</td>
+      <td class="num">${fmt(g.netIncome)}</td>
+      <td class="num ${g.profit >= 0 ? 'pos' : 'neg'}"><b>${llSigned(g.profit)}</b></td>
+      <td class="num ${g.roi == null ? '' : g.roi >= 0 ? 'pos' : 'neg'}">${llRoi(g.roi)}</td>
+      <td class="num ${g.profitPerSold == null ? '' : g.profitPerSold >= 0 ? 'pos' : 'neg'}">${g.profitPerSold == null ? '—' : llSigned(g.profitPerSold)}</td>
+    </tr>`;
+  }).join('');
+}
+function llRenderTimeGroups(groups, first) {
+  const body = document.getElementById('llBody');
+  const thead = document.querySelector('#llTable thead tr');
+  thead.innerHTML = `<th>${first}</th><th class="num">Operaciones</th><th class="num">Comprado</th><th class="num">Crafteado</th><th class="num">Vendido</th><th class="num">Inversión</th><th class="num">Ingresos netos</th><th class="num">Beneficio neto</th><th class="num">ROI</th>`;
+  if (!groups.some(g => g.rows)) {
+    body.innerHTML = '<tr><td colspan="9" class="loading-cell">Sin operaciones para los filtros actuales.</td></tr>';
+    return;
+  }
+  body.innerHTML = groups.filter(g => g.rows).map(g => `<tr>
+    <td><b>${sgEsc(g.label)}</b></td><td class="num">${fmt(g.rows)}</td>
+    <td class="num">${g.buyQty ? fmt(g.buyQty) : '—'}</td><td class="num">${g.craftQty ? fmt(g.craftQty) : '—'}</td><td class="num">${g.sellQty ? fmt(g.sellQty) : '—'}</td>
+    <td class="num">${fmt(g.investment)}</td><td class="num">${fmt(g.netIncome)}</td>
+    <td class="num ${g.profit >= 0 ? 'pos' : 'neg'}"><b>${llSigned(g.profit)}</b></td>
+    <td class="num ${g.roi == null ? '' : g.roi >= 0 ? 'pos' : 'neg'}">${llRoi(g.roi)}</td>
+  </tr>`).join('');
+}
+function llRenderRows(rows) {
+  const body = document.getElementById('llBody');
+  const thead = document.querySelector('#llTable thead tr');
+  thead.innerHTML = `<th>Fecha</th><th>Ítem</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th class="num">Neto op.</th><th>Ciudad</th><th>Nota</th><th></th>`;
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="9" class="loading-cell">Sin operaciones registradas.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="loading-cell">Sin operaciones registradas para los filtros actuales.</td></tr>';
     return;
   }
   body.innerHTML = [...rows].sort((a, b) => b.ts - a.ts).map(r => {
-    const row = CATALOG ? CATALOG.find(c => c[0] === r.id.split('@')[0]) : null;
+    const row = CATALOG ? CATALOG.find(c => c[0] === String(r.id || '').split('@')[0]) : null;
     const name = r.name || (row ? row[1] : r.id);
     const d = new Date(r.ts);
     const fecha = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    const net = LLCore.operationNet(r);
+    const feeTxt = LLCore.fee(r) ? fmt(LLCore.fee(r)) : '—';
+    const extra = LLCore.craftCost(r) ? `<span class="price-sub">crafteo +${fmt(LLCore.craftCost(r))}</span>` : '';
     return `<tr>
       <td class="muted">${fecha}</td>
       <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}<span>${sgEsc(name)}</span></div></td>
-      <td><span class="badge ${r.type === 'sell' ? 'gold' : ''}">${LL_TYPE_ES[r.type]}</span></td>
+      <td><span class="badge ${r.type === 'sell' ? 'gold' : ''}">${LL_TYPE_ES[r.type] || r.type}</span></td>
       <td class="num">${fmt(r.qty)}</td>
       <td class="num">${fmt(r.price)}</td>
-      <td class="num ${r.type === 'sell' ? 'pos' : ''}">${r.type === 'sell' ? '+' : '−'}${fmt(r.qty * r.price)}</td>
+      <td class="num">${feeTxt}${extra}</td>
+      <td class="num ${net >= 0 ? 'pos' : 'neg'}">${llSigned(net)}</td>
       <td>${sgEsc(r.city || '—')}</td>
       <td class="muted micro">${sgEsc(r.note || '')}</td>
-      <td class="num"><button class="reset-price" data-del="${sgEsc(r.ts)}" title="Eliminar">✕</button></td>
+      <td class="num"><button class="reset-price" data-del-uid="${sgEsc(r.uid)}" title="Eliminar">✕</button></td>
     </tr>`;
   }).join('');
+}
+function llRender() {
+  llRefreshCityFilter();
+  const baseRows = llCurrentRows();
+  llRenderStats(baseRows);
+  if (LL.filter === 'all' || LL.filter === 'buy' || LL.filter === 'sell' || LL.filter === 'craft') {
+    llRenderRows(llCurrentRows(LL.filter === 'all' ? '' : LL.filter));
+    return;
+  }
+  let groups = [];
+  if (['byitem', 'profit', 'roi', 'losses'].includes(LL.filter)) {
+    groups = LLCore.itemGroups(baseRows, catalogName);
+    if (LL.filter === 'profit') groups.sort((a, b) => b.profit - a.profit);
+    else if (LL.filter === 'roi') groups = groups.filter(g => g.roi != null).sort((a, b) => b.roi - a.roi);
+    else if (LL.filter === 'losses') groups = groups.filter(g => g.profit < 0).sort((a, b) => a.profit - b.profit);
+    else groups.sort((a, b) => b.profit - a.profit);
+    llRenderGroups(groups, { first: LL.filter === 'losses' ? 'Ítem con pérdida' : 'Ítem', icon: true, empty: LL.filter === 'losses' ? 'No hay pérdidas agregadas para los filtros actuales.' : 'Sin operaciones registradas.' });
+  } else if (LL.filter === 'bycity') {
+    groups = LLCore.cityGroups(baseRows).sort((a, b) => b.profit - a.profit);
+    llRenderGroups(groups, { first: 'Ciudad', empty: 'Sin ciudades para los filtros actuales.' });
+  } else if (LL.filter === 'daily') {
+    llRenderTimeGroups(LLCore.dailyGroups(baseRows), 'Día');
+  } else if (LL.filter === 'weekly') {
+    llRenderTimeGroups(LLCore.weeklyGroups(baseRows), 'Semana');
+  } else if (LL.filter === 'hour') {
+    llRenderTimeGroups(LLCore.hourGroups(baseRows), 'Hora local');
+  }
 }
 function llUpdateCities() {
   const sel = document.getElementById('llCity'), previous = sel.value;
@@ -2920,7 +3183,8 @@ function llUpdateCities() {
 }
 (function initLL() {
   llUpdateCities();
-  document.getElementById('llType').addEventListener('change', llUpdateCities);
+  llSetDefaultDate();
+  document.getElementById('llType').addEventListener('change', () => { llUpdateCities(); });
   const inp = document.getElementById('llItem');
   const res = document.getElementById('llResults');
   inp.addEventListener('input', () => {
@@ -2928,13 +3192,13 @@ function llUpdateCities() {
     if (q.length < 2 || !CATALOG) { res.classList.remove('open'); return; }
     const hits = [];
     for (const [id, es, en, tier] of CATALOG) {
-      if (es.toLowerCase().includes(q) || en.toLowerCase().includes(q)) {
+      if (es.toLowerCase().includes(q) || en.toLowerCase().includes(q) || id.toLowerCase().includes(q)) {
         hits.push([id, es, tier]);
         if (hits.length >= 20) break;
       }
     }
     res.innerHTML = hits.map(([id, es, tier]) =>
-      `<div class="sr-item" data-id="${id}" data-name="${es}">${iconImg(id, 'item-icon sm')}<div><div class="n">${es}</div><div class="m">T${tier}</div></div></div>`).join('');
+      `<div class="sr-item" data-id="${id}" data-name="${es}">${iconImg(id, 'item-icon sm')}<div><div class="n">${es}</div><div class="m">T${tier} · ${id}</div></div></div>`).join('');
     res.classList.toggle('open', hits.length > 0);
   });
   res.addEventListener('click', e => {
@@ -2947,20 +3211,30 @@ function llUpdateCities() {
     llUpdateCities();
     const qty = Math.max(1, parseInt(document.getElementById('llQty').value) || 1);
     const price = parseFloat(document.getElementById('llPrice').value);
-    if (!LL.item || isNaN(price) || price < 0) {
-      alert('Elegí un ítem del buscador y cargá el precio unitario.');
+    const fee = Math.max(0, parseFloat(document.getElementById('llFee').value) || 0);
+    const type = document.getElementById('llType').value;
+    const craftCost = type === 'craft' ? Math.max(0, parseFloat(document.getElementById('llCraftCost').value) || 0) : 0;
+    const dateValue = document.getElementById('llDate').value;
+    const ts = dateValue ? new Date(dateValue).getTime() : Date.now();
+    if (!LL.item || isNaN(price) || price < 0 || !isFinite(ts)) {
+      alert('Elegí un ítem del buscador, cargá el precio unitario y revisá la fecha.');
       return;
     }
     const city = document.getElementById('llCity').value;
     LL.rows.push({
-      ts: Date.now(), id: LL.item, name: document.getElementById('llItem').value,
-      type: document.getElementById('llType').value, qty, price,
+      v: LLCore.VERSION || 2,
+      uid: llUid(),
+      ts, id: LL.item, name: document.getElementById('llItem').value,
+      type, qty, price, fee, craftCost,
       city: city === '—' ? '' : city,
       note: document.getElementById('llNoteTxt').value.trim(),
     });
     llSave(); llRender();
     document.getElementById('llPrice').value = '';
+    document.getElementById('llFee').value = '';
+    document.getElementById('llCraftCost').value = '';
     document.getElementById('llNoteTxt').value = '';
+    document.getElementById('llDate').value = llDateInputValue(Date.now());
   });
   document.getElementById('llFilter').addEventListener('click', e => {
     const chip = e.target.closest('.chip'); if (!chip) return;
@@ -2968,19 +3242,22 @@ function llUpdateCities() {
     document.querySelectorAll('#llFilter .chip').forEach(c => c.classList.toggle('active', c === chip));
     llRender();
   });
+  document.getElementById('llCityFilter').addEventListener('change', e => { LL.cityFilter = e.target.value; llRender(); });
+  document.getElementById('llPeriodFilter').addEventListener('change', e => { LL.period = e.target.value; llRender(); });
   document.getElementById('llBody').addEventListener('click', e => {
-    const del = e.target.closest('[data-del]'); if (!del) return;
-    LL.rows = LL.rows.filter(r => r.ts !== +del.dataset.del);
+    const del = e.target.closest('[data-del-uid]'); if (!del) return;
+    LL.rows = LL.rows.filter(r => r.uid !== del.dataset.delUid);
     llSave(); llRender();
   });
   document.getElementById('llExport').addEventListener('click', () => {
-    const head = 'fecha,item,id,tipo,cantidad,precio_unitario,total,ciudad,nota\n';
+    const head = 'version,fecha,item,id,tipo,cantidad,precio_unitario,bruto,comision_impuesto,coste_extra_crafteo,ingreso_neto,inversion,neto_operacion,ciudad,nota\n';
     const csv = head + LL.rows.map(r =>
-      [new Date(r.ts).toISOString(), csvCell(r.name || r.id), csvCell(r.id), LL_TYPE_ES[r.type], r.qty, r.price, r.qty * r.price, csvCell(r.city), csvCell(r.note || '')].join(',')
+      [LLCore.VERSION || 2, new Date(r.ts).toISOString(), csvCell(r.name || r.id), csvCell(r.id), LL_TYPE_ES[r.type] || r.type,
+       r.qty, r.price, LLCore.gross(r), LLCore.fee(r), LLCore.craftCost(r), LLCore.netIncome(r), LLCore.investment(r), LLCore.operationNet(r), csvCell(r.city), csvCell(r.note || '')].join(',')
     ).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
-    a.download = 'registro-operaciones.csv';
+    a.download = 'registro-operaciones-v2.csv';
     a.click();
   });
   document.getElementById('llClear').addEventListener('click', () => {
@@ -2990,24 +3267,22 @@ function llUpdateCities() {
   });
 
   /* ---- Respaldo completo: exporta/importa TODO el localStorage de la app ---- */
+  const BK_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory', 'kaOn', 'manualPrices',
+    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory', 'tradeLog', 'tradeLogVersion', 'aaSGChar', 'aaSGGuild'];
+  const BK_MAX_BYTES = 5 * 1024 * 1024;
+  const bkKeyOk = k => typeof k === 'string' && (BK_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
   document.getElementById('bkExport').addEventListener('click', () => {
     const data = {};
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (bkKeyOk(k)) data[k] = localStorage.getItem(k);
     }
-    const payload = { app: 'AyudanteAlbion', version: 1, exported: new Date().toISOString(), data };
+    const payload = { app: 'AyudanteAlbion', version: 2, exported: new Date().toISOString(), data };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
     a.download = `ayudante-albion-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   });
-  /* claves que viajan en el respaldo: datos del usuario, nunca la sesión de
-     Discord (se obtiene ingresando) ni la URL del proxy (config de desarrollo) */
-  const BK_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory', 'kaOn', 'manualPrices',
-    'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory', 'tradeLog', 'aaSGChar', 'aaSGGuild'];
-  const BK_MAX_BYTES = 5 * 1024 * 1024;
-  const bkKeyOk = k => typeof k === 'string' && (BK_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
   document.getElementById('bkImport').addEventListener('click', () => document.getElementById('bkFile').click());
   document.getElementById('bkFile').addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
@@ -3947,17 +4222,40 @@ function pfRender(d, kills, deaths, guild) {
    ==================================================================== */
 const WA = {
   list: [], formItem: null,
-  intervalMin: 5, sound: true, browser: false,
+  intervalMin: 5, maxAgeMin: 60, sound: true, browser: false,
   timer: null, running: false, fails: 0, lastError: null, lastCheck: null, nextAt: 0,
   prices: null,
 };
 try { WA.list = JSON.parse(localStorage.getItem('priceAlerts') || '[]'); } catch (e) {}
 try { Object.assign(WA, JSON.parse(localStorage.getItem('alertSettings') || '{}')); } catch (e) {}
 function waSave() { localStorage.setItem('priceAlerts', JSON.stringify(WA.list)); }
-function waSaveCfg() { localStorage.setItem('alertSettings', JSON.stringify({ intervalMin: WA.intervalMin, sound: WA.sound, browser: WA.browser })); }
+function waSaveCfg() { localStorage.setItem('alertSettings', JSON.stringify({ intervalMin: WA.intervalMin, maxAgeMin: waMaxAgeMin(), sound: WA.sound, browser: WA.browser })); }
 
 function waIntervalMin() { return Math.max(1, Math.min(60, parseInt(WA.intervalMin, 10) || 5)); }
 function waIntervalMs() { return waIntervalMin() * 60e3; }
+function waMaxAgeMin() {
+  return window.AAPriceFreshness ? AAPriceFreshness.normalizeLimit(WA.maxAgeMin) : (WA.maxAgeMin === 'none' ? 'none' : Math.max(1, Math.min(1440, parseInt(WA.maxAgeMin, 10) || 60)));
+}
+function waFreshLabel() {
+  return window.AAPriceFreshness ? AAPriceFreshness.shortLimitLabel(waMaxAgeMin()) : (waMaxAgeMin() === 'none' ? 'sin límite de antigüedad' : 'máx. ' + waMaxAgeMin() + ' min');
+}
+function waValidateQuote(price, date, now) {
+  if (window.AAPriceFreshness) return AAPriceFreshness.validate(price, date, waMaxAgeMin(), now);
+  const p = Number(price);
+  const ts = date ? Date.parse(String(date).endsWith('Z') ? date : date + 'Z') : NaN;
+  if (!(p > 0)) return { ok: false, reason: 'nonpositive', price: p || 0 };
+  if (!isFinite(ts)) return { ok: false, reason: 'invalid-timestamp', price: p };
+  const ageMs = Math.max(0, (now || Date.now()) - ts);
+  return waMaxAgeMin() !== 'none' && ageMs > waMaxAgeMin() * 60e3
+    ? { ok: false, reason: 'stale', price: p, ts, ageMs }
+    : { ok: true, reason: 'ok', price: p, ts, ageMs };
+}
+function waWaitingReason(reason) {
+  return window.AAPriceFreshness ? AAPriceFreshness.isWaitingReason(reason) : ['missing-timestamp','invalid-timestamp','stale'].includes(reason);
+}
+function waReasonText(reason) {
+  return window.AAPriceFreshness ? AAPriceFreshness.reasonText(reason) : (reason || 'cotización no válida');
+}
 function waPct(v) { return v == null || isNaN(v) ? '—' : v.toFixed(1).replace('.', ',') + '%'; }
 function waCd(ms) { if (!(ms > 0)) return 'ahora'; const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 
@@ -3965,20 +4263,54 @@ function waCd(ms) { if (!(ms > 0)) return 'ahora'; const s = Math.floor(ms / 100
    datos frescos del motor o, al pintar la tabla, con lo último que se cargó. */
 function waValue(a, src) {
   const map = src || WA.prices || (typeof flipData !== 'undefined' ? flipData : null);
-  if (!map) return { value: null };
+  if (!map) return { value: null, state: 'empty' };
   const d = map[a.id];
-  if (!d) return { value: null };
+  if (!d) return { value: null, state: 'empty' };
+  const now = Date.now();
+
   if (a.metric === 'flip') {
-    const f = marketRoute(d, '', '', document.getElementById('flipPremium').checked,
-      document.getElementById('flipSetup').checked);
-    return isNaN(f.margin) ? { value: null }
-      : { value: f.margin * 100, from: f.bestBuy.city, to: f.bestSell.city };
+    const premium = document.getElementById('flipPremium')?.checked !== false;
+    const setup = document.getElementById('flipSetup')?.checked !== false;
+    const buys = [];
+    const sells = [];
+    const rejected = [];
+
+    for (const city of CITIES) {
+      const q = d[city] || {};
+      const v = waValidateQuote(q.sell, q.sellDate, now);
+      if (v.ok) buys.push({ city, price: v.price, date: q.sellDate, ageMs: v.ageMs });
+      else if (waWaitingReason(v.reason)) rejected.push({ city, side: 'compra', reason: v.reason, price: v.price, ageMs: v.ageMs });
+    }
+    for (const city of SELL_CITIES) {
+      const q = saleQuote(d[city], city);
+      const v = waValidateQuote(q.price, q.date, now);
+      if (v.ok) sells.push({ city, price: v.price, date: q.date, ageMs: v.ageMs, net: v.price * (1 - saleTax(city, premium, setup)) });
+      else if (waWaitingReason(v.reason)) rejected.push({ city, side: 'venta', reason: v.reason, price: v.price, ageMs: v.ageMs });
+    }
+
+    let bestBuy = null, bestSell = null, profit = NaN;
+    for (const buy of buys) for (const sell of sells) {
+      if (buy.city === sell.city) continue;
+      const gain = sell.net - buy.price;
+      if (isNaN(profit) || gain > profit) { bestBuy = buy; bestSell = sell; profit = gain; }
+    }
+    if (!bestBuy || !bestSell || isNaN(profit)) {
+      const wait = rejected.length ? rejected[0] : null;
+      return { value: null, state: wait ? 'waiting' : 'empty', reason: wait?.reason || null, waiting: !!wait, rejected: rejected.length };
+    }
+    return { value: profit / bestBuy.price * 100, from: bestBuy.city, to: bestSell.city,
+      buyDate: bestBuy.date, sellDate: bestSell.date, state: rejected.length ? 'partial' : 'fresh', rejected: rejected.length };
   }
-  if (a.city === BLACK_MARKET && a.metric !== 'buy') return { value: null };
+
+  if (a.city === BLACK_MARKET && a.metric !== 'buy') return { value: null, state: 'empty' };
   const p = d[a.city];
-  if (!p) return { value: null };
-  const v = a.metric === 'sell' ? p.sell : p.buy;
-  return { value: v > 0 ? v : null };
+  if (!p) return { value: null, state: 'empty' };
+  const price = a.metric === 'sell' ? p.sell : p.buy;
+  const date = a.metric === 'sell' ? p.sellDate : p.buyDate;
+  const v = waValidateQuote(price, date, now);
+  if (!v.ok) return { value: null, rawValue: v.price > 0 ? v.price : null, date, ageMs: v.ageMs,
+    state: waWaitingReason(v.reason) ? 'waiting' : 'empty', waiting: waWaitingReason(v.reason), reason: v.reason };
+  return { value: v.price, date, ageMs: v.ageMs, state: 'fresh' };
 }
 function waMet(a, v) {
   if (v == null) return false;
@@ -3999,7 +4331,7 @@ function waDist(a, cur) {
 }
 function waCondText(a) {
   if (a.metric === 'flip') return 'Mejor flip ≥ ' + waPct(a.threshold);
-  return (a.metric === 'sell' ? 'Venta ≤ ' : 'Orden de compra ≥ ') + fmt(a.threshold) + ' en ' + a.city;
+  return (a.metric === 'sell' ? 'Venta ≤ ' : 'Orden de compra ≥ ') + fmt(a.threshold) + ' en ' + sgEsc(a.city);
 }
 
 async function waCheck() {
@@ -4018,14 +4350,21 @@ async function waCheck() {
     for (const a of act) {
       const cur = waValue(a, WA.prices);
       const met = waMet(a, cur.value);
+      const prevState = [a.price, a.from, a.to, a.priceState, a.priceReason, a.rawPrice, a.waiting].join('|');
       a.price = cur.value; a.from = cur.from || null; a.to = cur.to || null;
+      a.priceState = cur.state || (cur.value == null ? 'empty' : 'fresh');
+      a.priceReason = cur.reason || null;
+      a.rawPrice = cur.rawValue || null;
+      a.waiting = !!cur.waiting;
+      a.priceAgeMs = cur.ageMs || null;
       a.lastCheck = Date.now();
+      if ([a.price, a.from, a.to, a.priceState, a.priceReason, a.rawPrice, a.waiting].join('|') !== prevState) dirty = true;
       if (met && !a.fired) {
         a.fired = true; a.firedAt = Date.now();
         if (a.once) a.on = false;
         waNotify(a, cur);
         dirty = true;
-      } else if (!met && a.fired) { a.fired = false; dirty = true; } // re-arma al dejar de cumplirse
+      } else if (!met && !cur.waiting && a.fired) { a.fired = false; dirty = true; } // re-arma solo con una cotización válida que ya no cumple
     }
     if (dirty) waSave();
   } catch (e) {
@@ -4125,16 +4464,20 @@ function waRender() {
   body.innerHTML = WA.list.map(a => {
     const cur = waValue(a);
     const met = waMet(a, cur.value);
+    const waiting = cur.waiting || a.waiting;
+    const reason = cur.reason || a.priceReason;
     const state = !a.on
       ? (a.fired ? '<span class="badge gold">🔔 disparada</span>' : '<span class="badge">apagada</span>')
+      : waiting ? '<span class="badge warn" title="' + sgEsc(waReasonText(reason)) + '">esperando cotización reciente</span>'
       : met ? '<span class="badge gold">🔔 ¡se cumple!</span>'
             : '<span class="badge" style="color:var(--green);border-color:rgba(20,185,138,.4)">vigilando</span>';
-    const valTxt = cur.value == null ? '<span class="badge warn">sin datos</span>'
+    const valTxt = cur.value == null
+      ? (waiting ? '<span class="badge warn">' + sgEsc(waReasonText(reason)) + '</span>' + (cur.rawValue || a.rawPrice ? '<span class="price-sub">último: ' + fmt(cur.rawValue || a.rawPrice) + '</span>' : '') : '<span class="badge warn">sin datos</span>')
       : (a.metric === 'flip' ? waPct(cur.value) : fmt(cur.value));
-    const route = a.metric === 'flip' && a.from ? '<span class="price-sub">' + a.from + ' → ' + a.to + '</span>' : '';
+    const route = a.metric === 'flip' && (cur.from || a.from) ? '<span class="price-sub">' + sgEsc(cur.from || a.from) + ' → ' + sgEsc(cur.to || a.to) + (cur.rejected ? ' · algunas cotizaciones viejas omitidas' : '') + '</span>' : '';
     return `<tr>
       <td><div class="item-cell">${iconImg(a.id, 'item-icon sm')}
-        <div><div class="item-name">${a.name || catalogName(a.id)}</div><div class="item-meta">${a.id}</div></div></div></td>
+        <div><div class="item-name">${sgEsc(a.name || catalogName(a.id))}</div><div class="item-meta">${sgEsc(a.id)}</div></div></div></td>
       <td>${waCondText(a)}${route}</td>
       <td class="num ${met ? 'pos' : ''}">${valTxt}</td>
       <td class="num">${a.metric === 'flip' ? waPct(a.threshold) : fmt(a.threshold)}</td>
@@ -4142,8 +4485,8 @@ function waRender() {
       <td>${state}</td>
       <td class="muted micro">${a.lastCheck ? new Date(a.lastCheck).toLocaleTimeString('es-AR') : '—'}</td>
       <td style="white-space:nowrap">
-        <button class="btn micro-btn" data-wa-on="${a.uid}" title="${a.on ? 'Pausar' : 'Activar (se re-arma)'}">${a.on ? '⏸' : '▶'}</button>
-        <button class="btn micro-btn" data-wa-del="${a.uid}" title="Eliminar">✕</button>
+        <button class="btn micro-btn" data-wa-on="${sgEsc(a.uid)}" title="${a.on ? 'Pausar' : 'Activar (se re-arma)'}">${a.on ? '⏸' : '▶'}</button>
+        <button class="btn micro-btn" data-wa-del="${sgEsc(a.uid)}" title="Eliminar">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -4154,7 +4497,7 @@ function waStatus() {
   const on = WA.list.filter(a => a.on).length;
   if (!on) { el.textContent = 'Sin alertas activas — verificación en pausa.'; return; }
   if (WA.running) { el.textContent = 'Verificando ' + on + ' alerta(s)…'; return; }
-  let t = on + ' alerta(s) activas · cada ' + waIntervalMin() + ' min · próxima en ' + waCd(WA.nextAt - Date.now());
+  let t = on + ' alerta(s) activas · cada ' + waIntervalMin() + ' min · frescura ' + waFreshLabel() + ' · próxima en ' + waCd(WA.nextAt - Date.now());
   if (WA.lastCheck) t += ' · última hace ' + Math.max(0, Math.round((Date.now() - WA.lastCheck) / 6e4)) + ' min';
   if (WA.lastError) t += ' · ⚠ ' + WA.lastError + (WA.fails > 1 ? ' (' + WA.fails + ' fallos seguidos)' : '');
   el.textContent = t;
@@ -4226,6 +4569,7 @@ function waPermUpdate() {
 (function initWA() {
   document.getElementById('waCity').innerHTML = CITIES.map(c => `<option${c === 'Caerleon' ? ' selected' : ''}>${c}</option>`).join('');
   document.getElementById('waInterval').value = waIntervalMin();
+  document.getElementById('waFreshness').value = String(waMaxAgeMin());
   document.getElementById('waSound').checked = WA.sound !== false;
   document.getElementById('waBrowser').checked = !!WA.browser;
   document.getElementById('waMetric').addEventListener('change', waUpdateForm);
@@ -4236,6 +4580,13 @@ function waPermUpdate() {
     e.target.value = waIntervalMin();
     waSaveCfg();
     waRestart();
+  });
+  document.getElementById('waFreshness').addEventListener('change', e => {
+    WA.maxAgeMin = e.target.value === 'none' ? 'none' : Math.max(1, Math.min(1440, parseInt(e.target.value, 10) || 60));
+    e.target.value = String(waMaxAgeMin());
+    waSaveCfg();
+    waRender();
+    waStatus();
   });
   document.getElementById('waSound').addEventListener('change', e => { WA.sound = e.target.checked; waSaveCfg(); });
   document.getElementById('waBrowser').addEventListener('change', e => {
@@ -4298,6 +4649,211 @@ function waPermUpdate() {
   waRestart();
   // primera verificación poco después de cargar (no compite con el fetch inicial de flipping)
   setTimeout(() => { if (WA.list.some(a => a.on)) waTick(); }, 4000);
+})();
+
+/* ====================================================================
+   ÍTEMS OBSERVADOS EN PÉRDIDAS PÚBLICAS
+   Fuente: gameinfo/events vía Worker. Caché local acotada, 7 días.
+   ==================================================================== */
+const PL = { cache: null, prices: {}, loading: false, priceLoading: false, error: null, loadedOnce: false, quotedIds: [] };
+const PL_KEY = 'publicLossesCache';
+function plEmptyCache() { return window.AAPublicLosses ? AAPublicLosses.emptyCache() : { v: 1, updated: 0, events: [], processed: {} }; }
+function plLoadCache() {
+  try { PL.cache = JSON.parse(localStorage.getItem(PL_KEY) || 'null') || plEmptyCache(); }
+  catch (e) { PL.cache = plEmptyCache(); }
+  if (window.AAPublicLosses) PL.cache = AAPublicLosses.prune(PL.cache, Date.now());
+  plSaveCache();
+}
+function plSaveCache() {
+  try { localStorage.setItem(PL_KEY, JSON.stringify(PL.cache || plEmptyCache())); } catch (e) {}
+}
+function plMaybeLoad() {
+  if (!PL.cache) plLoadCache();
+  PL.loadedOnce = true;
+  plRender();
+  if (!PL.cache.events.length && !PL.loading) plRefresh();
+}
+function plCategoryOf(id) {
+  const row = catalogRow(String(id || '').split('@')[0]);
+  return row ? row[5] : 'other';
+}
+function plCategoryName(cat) { return FLIP_BRANCHES[cat] || cat || 'Otros'; }
+function plIsIngredient(id, cat) {
+  const c = cat || plCategoryOf(id);
+  return ['crafting', 'farming', 'gathering'].includes(c);
+}
+function plQualityName(q) { return QUALITY_ES[q] || q || '—'; }
+function plControls() {
+  return {
+    kind: document.getElementById('plKind')?.value || 'all',
+    quality: document.getElementById('plQuality')?.value || 'all',
+    category: document.getElementById('plCategory')?.value || 'all',
+    city: document.getElementById('plValueCity')?.value || 'median',
+    quoteLimit: +(document.getElementById('plQuoteLimit')?.value || 40),
+    minValue: document.getElementById('plMinValue')?.value || '',
+    maxValue: document.getElementById('plMaxValue')?.value || '',
+    ingredientsOnly: !!document.getElementById('plIngredients')?.checked,
+  };
+}
+function plValueOf(id, quality) {
+  const cfg = plControls();
+  const byQ = PL.prices[id] && PL.prices[id][quality];
+  if (!byQ) return null;
+  if (cfg.city === 'median') {
+    const vals = CITIES.map(c => byQ[c]?.sell || 0).filter(v => v > 0).sort((a, b) => a - b);
+    if (!vals.length) return null;
+    const mid = Math.floor(vals.length / 2);
+    return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+  }
+  return byQ[cfg.city]?.sell > 0 ? byQ[cfg.city].sell : null;
+}
+function plFlattenEvents() {
+  if (!PL.cache) plLoadCache();
+  const now = Date.now();
+  if (window.AAPublicLosses) PL.cache = AAPublicLosses.prune(PL.cache, now);
+  return PL.cache.events || [];
+}
+function plAggregate(ignoreValueFilter = false) {
+  const cfg = plControls();
+  if (!window.AAPublicLosses) return [];
+  return AAPublicLosses.aggregate(plFlattenEvents(), {
+    kind: cfg.kind,
+    quality: cfg.quality,
+    category: cfg.category,
+    ingredientsOnly: cfg.ingredientsOnly,
+    minValue: ignoreValueFilter ? '' : cfg.minValue,
+    maxValue: ignoreValueFilter ? '' : cfg.maxValue,
+    categoryOf: plCategoryOf,
+    isIngredient: plIsIngredient,
+    valueOf: plValueOf,
+  });
+}
+async function plFetchEvents() {
+  const raw = pfAsArray(await pfFetchRetry('/events?limit=50'));
+  const now = Date.now();
+  const merged = window.AAPublicLosses ? AAPublicLosses.merge(PL.cache || plEmptyCache(), raw, now) : { cache: PL.cache || plEmptyCache(), added: 0 };
+  PL.cache = merged.cache;
+  plSaveCache();
+  return merged.added;
+}
+async function plQuotePrices() {
+  const cfg = plControls();
+  const base = window.AAPublicLosses ? AAPublicLosses.aggregate(plFlattenEvents(), {
+    kind: 'all', quality: 'all', category: 'all', ingredientsOnly: false, categoryOf: plCategoryOf, valueOf: () => null,
+  }) : [];
+  const ids = Array.from(new Set(base.sort((a, b) => b.totalQty - a.totalQty).map(g => g.id))).slice(0, Math.max(1, Math.min(80, cfg.quoteLimit)));
+  PL.quotedIds = ids;
+  if (!ids.length) return;
+  const locs = cfg.city === 'median' ? CITIES : [cfg.city];
+  const chunks = [];
+  let cur = [];
+  for (const id of ids) {
+    cur.push(id);
+    if (cur.join(',').length > 3200) { chunks.push(cur); cur = []; }
+  }
+  if (cur.length) chunks.push(cur);
+  for (const chunk of chunks) {
+    const url = `${API}/prices/${chunk.join(',')}.json?locations=${locs.map(c => encodeURIComponent(c)).join(',')}&qualities=1,2,3,4,5`;
+    const data = await fetchJSON(url, 25000);
+    for (const row of data || []) {
+      const id = row.item_id;
+      const q = row.quality || 1;
+      PL.prices[id] = PL.prices[id] || {};
+      PL.prices[id][q] = PL.prices[id][q] || {};
+      PL.prices[id][q][row.city] = {
+        sell: row.city === BLACK_MARKET ? 0 : row.sell_price_min || 0,
+        sellDate: row.sell_price_min_date,
+        buy: row.buy_price_max || 0,
+        buyDate: row.buy_price_max_date,
+      };
+    }
+  }
+}
+async function plRefresh() {
+  if (PL.loading) return;
+  if (!PL.cache) plLoadCache();
+  PL.loading = true;
+  PL.error = null;
+  plRender();
+  let added = 0;
+  try {
+    added = await plFetchEvents();
+  } catch (e) {
+    PL.error = 'El killboard no respondió; se conserva la caché local. ' + e.message;
+  }
+  try {
+    PL.priceLoading = true;
+    plRender();
+    await plQuotePrices();
+  } catch (e) {
+    PL.error = (PL.error ? PL.error + ' · ' : '') + 'No se pudieron cotizar algunos ítems: ' + e.message;
+  } finally {
+    PL.loading = false;
+    PL.priceLoading = false;
+    plRender(added);
+  }
+}
+function plRender(added) {
+  const body = document.getElementById('plBody');
+  if (!body) return;
+  const status = document.getElementById('plStatus');
+  const stats = document.getElementById('plStats');
+  if (!PL.cache) plLoadCache();
+  const events = plFlattenEvents();
+  const groups = plAggregate(false);
+  const totalEq = groups.reduce((s, g) => s + g.equipmentQty, 0);
+  const totalInv = groups.reduce((s, g) => s + g.inventoryQty, 0);
+  const totalValue = groups.reduce((s, g) => s + (g.totalValue || 0), 0);
+  const last = PL.cache.updated ? new Date(PL.cache.updated).toLocaleString('es-AR') : '—';
+  const cfg = plControls();
+  if (status) status.textContent = `Fuente: gameinfo/events · ventana 7 días · eventos en caché ${events.length} · última actualización ${last} · cotizados ${PL.quotedIds.length}/${cfg.quoteLimit}${added ? ' · nuevos ' + added : ''}${PL.error ? ' · ⚠ ' + PL.error : ''}`;
+  if (stats) stats.innerHTML = `
+    <div class="stat"><div class="k">Eventos procesados</div><div class="v">${fmt(events.length)}</div><div class="s">deduplicados por ID público</div></div>
+    <div class="stat"><div class="k">Ítems distintos</div><div class="v">${fmt(groups.length)}</div><div class="s">según filtros actuales</div></div>
+    <div class="stat"><div class="k">Equipo observado</div><div class="v">${fmt(totalEq)}</div><div class="s">cantidad en slots de equipo</div></div>
+    <div class="stat"><div class="k">Inventario observado</div><div class="v">${fmt(totalInv)}</div><div class="s">cantidad en inventario</div></div>
+    <div class="stat"><div class="k">Valor orientativo</div><div class="v">${totalValue ? fmt(totalValue) : '—'}</div><div class="s">${cfg.city === 'median' ? 'mediana de ciudades' : sgEsc(cfg.city)}</div></div>`;
+  if (PL.loading || PL.priceLoading) {
+    body.innerHTML = '<tr><td colspan="9" class="loading-cell">Actualizando muestra pública y precios por lote…</td></tr>';
+    return;
+  }
+  if (!events.length) {
+    body.innerHTML = '<tr><td colspan="9" class="loading-cell">Sin eventos recientes en caché. Si el killboard falla, no se borra la caché existente.</td></tr>';
+    return;
+  }
+  if (!groups.length) {
+    body.innerHTML = '<tr><td colspan="9" class="loading-cell">Los filtros actuales no dejan ítems visibles.</td></tr>';
+    return;
+  }
+  body.innerHTML = groups.slice(0, 100).map(g => {
+    const value = g.value == null ? null : g.value;
+    return `<tr>
+      <td><div class="item-cell">${iconImg(g.id, 'item-icon sm')}<div><div class="item-name">${sgEsc(catalogName(g.id))}</div><div class="item-meta">${sgEsc(g.id)}</div></div></div></td>
+      <td>${sgEsc(plCategoryName(g.category))}</td>
+      <td><span class="badge">${sgEsc(plQualityName(g.quality))}</span></td>
+      <td class="num">${g.avgDaily.toFixed(2).replace('.', ',')}</td>
+      <td class="num">${g.equipmentQty ? fmt(g.equipmentQty) : '—'}</td>
+      <td class="num">${g.inventoryQty ? fmt(g.inventoryQty) : '—'}</td>
+      <td class="num">${value == null ? '<span class="badge warn">sin cotizar</span>' : fmt(value)}</td>
+      <td class="num">${g.totalValue == null ? '—' : fmt(g.totalValue)}</td>
+      <td class="num">${fmt(g.eventCount)}</td>
+    </tr>`;
+  }).join('');
+}
+(function initPL() {
+  const cat = document.getElementById('plCategory');
+  if (!cat) return;
+  for (const [value, label] of Object.entries(FLIP_BRANCHES)) cat.appendChild(new Option(label, value));
+  const vc = document.getElementById('plValueCity');
+  CITIES.forEach(c => vc.appendChild(new Option(c, c)));
+  ['plKind', 'plQuality', 'plCategory', 'plMinValue', 'plMaxValue', 'plIngredients'].forEach(id => {
+    document.getElementById(id).addEventListener(id.startsWith('plM') ? 'input' : 'change', () => plRender());
+  });
+  document.getElementById('plValueCity').addEventListener('change', () => { plQuotePrices().then(() => plRender()).catch(e => { PL.error = e.message; plRender(); }); });
+  document.getElementById('plQuoteLimit').addEventListener('change', () => { plQuotePrices().then(() => plRender()).catch(e => { PL.error = e.message; plRender(); }); });
+  document.getElementById('plRefresh').addEventListener('click', plRefresh);
+  plLoadCache();
+  plRender();
 })();
 
 /* ====================================================================
@@ -7982,7 +8538,7 @@ const SY = { available: false, busy: false, remote: null, checked: false };
 /* misma lista que el respaldo en archivo (BK_KEYS), sin la sesión */
 const SY_KEYS = ['alertSettings', 'farmPrefs', 'favorites', 'flipPrefs', 'gearPlan', 'gearInventory',
   'kaOn', 'manualPrices', 'pfPlayer', 'pfSpecs', 'priceAlerts', 'psHistory', 'marketHistory',
-  'tradeLog', 'aaSGChar', 'aaSGGuild'];
+  'tradeLog', 'tradeLogVersion', 'aaSGChar', 'aaSGGuild'];
 const syKeyOk = k => typeof k === 'string' && (SY_KEYS.includes(k) || /^dailyBonus_[A-Za-z_]{1,40}$/.test(k));
 const SY_MAX_BYTES = 512 * 1024;
 

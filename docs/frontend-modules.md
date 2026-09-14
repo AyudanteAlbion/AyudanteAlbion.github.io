@@ -119,3 +119,22 @@ Cada extracción debe mantener la API global que utiliza la aplicación.
   precios que recibe `crafting/recipe.js`).
 - Cada punto de consumo en `app.js` conserva su fallback para mantener la
   compatibilidad con instalaciones que todavía carguen la aplicación de forma aislada.
+
+## Extensiones P1–P4
+
+- `market/price-freshness.js` centraliza la validación que usan las alertas:
+  precio positivo, timestamp válido y antigüedad menor que la frescura máxima
+  configurada por el usuario.
+- `market/api-history.js` normaliza `stats/history` de Albion Online Data
+  Project para ciudad, calidad y rangos 7/30/90/180/365 días. Este historial
+  queda separado de `market/history.js`, que sigue siendo el historial local de
+  capturas del navegador.
+- `ledger/analytics.js` versiona el `tradeLog` a formato 2, migra filas antiguas
+  con comisión 0 y calcula métricas agregadas (ingresos netos, inversión,
+  beneficio, ROI, desglose por ítem/ciudad/tiempo y distribución horaria).
+- `losses/public-losses.js` normaliza `/gameinfo/events`, separa equipo de
+  inventario y mantiene una caché local acotada a 7 días para el explorador de
+  ítems observados en pérdidas públicas.
+
+La prueba sin dependencias `scripts/phase_qa.js` cubre los contratos de estos
+cuatro módulos y complementa `scripts/validate_repo.py`.

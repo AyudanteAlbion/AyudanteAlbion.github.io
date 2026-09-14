@@ -19,7 +19,7 @@
   form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=75">
+<link rel="stylesheet" href="styles.css?v=76">
 <link rel="icon" href="img/logo-app.png">
 <link rel="apple-touch-icon" href="img/logo-app.png">
 <!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
@@ -104,6 +104,10 @@
           <button class="dd-item" data-tab="alerts" role="menuitem">
             <span class="chip-ico dd-chip"><svg><use href="#i-bell"/></svg></span>
             <span><span class="dd-name">Alertas de precio</span></span>
+          </button>
+          <button class="dd-item" data-tab="losses" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-skull"/></svg></span>
+            <span><span class="dd-name">Pérdidas públicas</span></span>
           </button>
         </div>
       </div>
@@ -548,10 +552,48 @@
         <button class="btn primary" id="psRefresh">↻ Actualizar</button>
       </div>
     </div>
-    <div class="micro muted">Precio de venta más barato y mejor orden de compra en las 7 ciudades + Mercado Negro, con todas las calidades. Historial de búsquedas abajo.</div>
+    <div class="micro muted">Precio de venta más barato y mejor orden de compra en las 7 ciudades + Mercado Negro, con todas las calidades.</div>
+    <div class="history-label">Tus consultas guardadas</div>
     <div class="fam-tags" id="psHistory"></div>
   </div>
   <div id="psResult"></div>
+
+  <div class="panel controls" id="psApiHistoryPanel">
+    <div class="flip-head">
+      <div>
+        <h2 class="section-title">Historial de la API</h2>
+        <div class="micro muted">Promedios publicados por Albion Online Data Project (stats/history, órdenes de venta). Es independiente de tus capturas locales.</div>
+      </div>
+      <div class="toggles inline">
+        <div class="control">
+          <label>Ciudad</label>
+          <select id="psHistCity"></select>
+        </div>
+        <div class="control">
+          <label>Calidad</label>
+          <select id="psHistQuality">
+            <option value="1">Normal</option>
+            <option value="2">Buena</option>
+            <option value="3">Notable</option>
+            <option value="4">Excelente</option>
+            <option value="5">Obra maestra</option>
+          </select>
+        </div>
+        <div class="control">
+          <label>Período</label>
+          <select id="psHistDays">
+            <option value="7">7 días</option>
+            <option value="30" selected>30 días</option>
+            <option value="90">90 días</option>
+            <option value="180">180 días</option>
+            <option value="365">365 días</option>
+          </select>
+        </div>
+        <button class="btn" id="psHistRefresh">↻ Historial</button>
+      </div>
+    </div>
+    <div id="psApiHistory"><div class="loading-cell">Buscá un ítem para consultar el historial publicado.</div></div>
+  </div>
 </section>
 
 <!-- ============ TAB: REGISTRO DE OPERACIONES (global) ============ -->
@@ -583,12 +625,24 @@
         <input type="number" id="llPrice" min="0" placeholder="plata">
       </div>
       <div class="control">
+        <label>Comisión / impuesto</label>
+        <input type="number" id="llFee" min="0" step="1" placeholder="total">
+      </div>
+      <div class="control">
+        <label>Coste extra crafteo</label>
+        <input type="number" id="llCraftCost" min="0" step="1" placeholder="opcional">
+      </div>
+      <div class="control">
+        <label>Fecha y hora</label>
+        <input type="datetime-local" id="llDate">
+      </div>
+      <div class="control">
         <label>Ciudad</label>
         <select id="llCity"></select>
       </div>
       <div class="control">
         <label>Nota (opcional)</label>
-        <input type="text" id="llNoteTxt" class="search" placeholder="ej: para regear" maxlength="60">
+        <input type="text" id="llNoteTxt" class="search" placeholder="ej: para regear" maxlength="100">
       </div>
       <div class="control">
         <label>&nbsp;</label>
@@ -604,9 +658,24 @@
         <button class="chip" data-f="buy">Compras</button>
         <button class="chip" data-f="sell">Ventas</button>
         <button class="chip" data-f="craft">Crafteos</button>
-        <button class="chip" data-f="byitem">Resumen por ítem</button>
+        <button class="chip" data-f="byitem">Resultado por ítem</button>
+        <button class="chip" data-f="profit">Ranking beneficio</button>
+        <button class="chip" data-f="roi">Ranking ROI</button>
+        <button class="chip" data-f="losses">Pérdidas</button>
+        <button class="chip" data-f="bycity">Resultado por ciudad</button>
+        <button class="chip" data-f="daily">Serie diaria</button>
+        <button class="chip" data-f="weekly">Serie semanal</button>
+        <button class="chip" data-f="hour">Hora local</button>
       </div>
       <div class="toggles inline">
+        <label class="check">Ciudad
+          <select id="llCityFilter" class="mini-select"><option value="">Todas</option></select>
+        </label>
+        <label class="check">Período
+          <select id="llPeriodFilter" class="mini-select">
+            <option value="all">Todo</option><option value="7">7 días</option><option value="30">30 días</option><option value="90">90 días</option><option value="365">365 días</option>
+          </select>
+        </label>
         <button class="btn" id="llExport">Exportar CSV</button>
         <button class="btn" id="bkExport" title="Descarga un archivo con TODOS tus datos: registro, precios manuales, especializaciones, perfil e historial">Respaldo completo</button>
         <button class="btn" id="bkImport" title="Restaura un respaldo descargado previamente">Importar respaldo</button>
@@ -633,7 +702,7 @@
       <thead>
         <tr>
           <th>Fecha</th><th>Ítem</th><th>Tipo</th>
-          <th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Total</th>
+          <th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th class="num">Neto op.</th>
           <th>Ciudad</th><th>Nota</th><th></th>
         </tr>
       </thead>
@@ -846,6 +915,14 @@
         <input type="number" id="waInterval" min="1" max="60" step="1" value="5">
       </div>
       <div class="control">
+        <label>Frescura máxima de cotización</label>
+        <select id="waFreshness">
+          <option value="15">15 min</option>
+          <option value="60" selected>60 min</option>
+          <option value="none">Sin límite de antigüedad</option>
+        </select>
+      </div>
+      <div class="control">
         <label>&nbsp;</label>
         <div class="toggles" style="gap:14px;flex-wrap:wrap">
           <label class="check"><input type="checkbox" id="waSound" checked> Sonido suave al disparar</label>
@@ -859,7 +936,7 @@
       </div>
     </div>
     <div class="micro muted" style="margin-top:8px">
-
+      Las alertas solo se disparan con precio positivo y timestamp válido; si la cotización está vieja, quedan esperando una cotización reciente.
     </div>
   </div>
 
@@ -872,6 +949,63 @@
       <tbody id="waBody"><tr><td colspan="8" class="loading-cell">Sin alertas todavía.</td></tr></tbody>
     </table>
     <div class="micro muted pad"></div>
+  </div>
+</section>
+
+
+<!-- ============ TAB: PÉRDIDAS PÚBLICAS ============ -->
+<section id="tab-losses" class="tab-panel">
+  <div class="panel controls">
+    <div class="flip-head">
+      <div>
+        <h2 class="section-title">Ítems observados en pérdidas públicas</h2>
+        <div class="micro muted">Muestra reciente del killboard oficial vía Worker. Diferencia equipo e inventario y conserva una caché local acotada de 7 días.</div>
+      </div>
+      <div class="toggles inline">
+        <button class="btn primary" id="plRefresh">↻ Actualizar eventos y cotizar</button>
+      </div>
+    </div>
+    <div class="control-grid secondary">
+      <div class="control">
+        <label>Tipo</label>
+        <select id="plKind"><option value="all">Equipo + inventario</option><option value="equipment">Sólo equipo</option><option value="inventory">Sólo inventario</option></select>
+      </div>
+      <div class="control">
+        <label>Calidad</label>
+        <select id="plQuality"><option value="all">Todas</option><option value="1">Normal</option><option value="2">Buena</option><option value="3">Notable</option><option value="4">Excelente</option><option value="5">Obra maestra</option></select>
+      </div>
+      <div class="control">
+        <label>Categoría</label>
+        <select id="plCategory"><option value="all">Todas</option></select>
+      </div>
+      <div class="control">
+        <label>Valor orientativo</label>
+        <select id="plValueCity"><option value="median">Mediana de ciudades</option></select>
+      </div>
+      <div class="control">
+        <label>Máx. ítems cotizados</label>
+        <select id="plQuoteLimit"><option value="20">20</option><option value="40" selected>40</option><option value="80">80</option></select>
+      </div>
+      <div class="control">
+        <label>Rango de valor/u</label>
+        <div class="range-row"><input type="number" id="plMinValue" min="0" placeholder="mín"><input type="number" id="plMaxValue" min="0" placeholder="máx"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="plIngredients"> Sólo posibles ingredientes de crafteo</label>
+    </div>
+    <div class="micro muted" id="plStatus">Fuente: gameinfo/events. Los valores son orientativos y dependen de cobertura de precios.</div>
+  </div>
+
+  <div class="stat-row" id="plStats"></div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="plTable">
+      <thead><tr>
+        <th>Ítem observado</th><th>Categoría</th><th>Calidad</th><th class="num">Promedio diario observado</th>
+        <th class="num">Equipo</th><th class="num">Inventario</th><th class="num">Valor/u</th><th class="num">Valor total orientativo</th><th class="num">Eventos</th>
+      </tr></thead>
+      <tbody id="plBody"><tr><td colspan="9" class="loading-cell">Tocá “Actualizar eventos y cotizar” para cargar la muestra pública reciente.</td></tr></tbody>
+    </table>
+    <div class="micro muted pad">Fuente: killboard oficial de Albion Online, ruta pública gameinfo/events vía Worker. Es una muestra de ítems observados en pérdidas públicas recientes; no representa el total económico del servidor.</div>
   </div>
 </section>
 
@@ -1081,9 +1215,13 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/core/api.js?v=1"></script>
 <script src="js/core/navigation.js?v=1"></script>
 <script src="js/market/history.js?v=1"></script>
+<script src="js/market/price-freshness.js?v=1"></script>
+<script src="js/market/api-history.js?v=1"></script>
+<script src="js/ledger/analytics.js?v=1"></script>
+<script src="js/losses/public-losses.js?v=1"></script>
 <script src="js/crafting/recipe.js?v=1"></script>
 <script src="js/profile/specs.js?v=1"></script>
 <script src="js/builds/build.js?v=1"></script>
-<script src="app.js?v=77"></script>
+<script src="app.js?v=78"></script>
 </body>
 </html>
