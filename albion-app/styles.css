@@ -1530,3 +1530,128 @@ img { max-width: 100%; }
   .mh-chart { min-width: 480px; }
   .range-row { flex-direction: column; }
 }
+
+/* ====================================================================
+   SESIONES MANUALES Y MODALES (P5)
+   ==================================================================== */
+.ll-active-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  background: linear-gradient(90deg, rgba(20,185,138,.12), rgba(20,185,138,.04));
+  border: 1px solid rgba(20,185,138,.35);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px -4px rgba(20,185,138,.15);
+  flex-wrap: wrap;
+}
+.ll-active-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ll-pulse {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pos);
+  box-shadow: 0 0 0 rgba(20,185,138,.4);
+  animation: llPulse 1.8s infinite;
+}
+@keyframes llPulse {
+  0% { box-shadow: 0 0 0 0 rgba(20,185,138,.7); }
+  70% { box-shadow: 0 0 0 10px rgba(20,185,138,0); }
+  100% { box-shadow: 0 0 0 0 rgba(20,185,138,0); }
+}
+.ll-active-stats {
+  display: flex;
+  gap: 14px;
+  font-size: .84rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ll-active-stats .val { font-weight: 700; }
+.ll-active-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Modales reutilizables */
+.aa-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+  backdrop-filter: blur(4px);
+}
+.aa-modal-box {
+  background: var(--bg);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 12px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(0,0,0,.7);
+}
+.aa-modal-lg { max-width: 780px; }
+.aa-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: var(--panel);
+}
+.aa-modal-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.aa-modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+.aa-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: var(--panel);
+}
+.aa-csv-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: monospace;
+  font-size: .82rem;
+  padding: 10px;
+  resize: vertical;
+}
+.aa-csv-textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+.aa-csv-summary {
+  padding: 8px 12px;
+  background: rgba(255,255,255,.04);
+  border-radius: 6px;
+}
