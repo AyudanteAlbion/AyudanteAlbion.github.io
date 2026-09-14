@@ -141,6 +141,95 @@ def validate_build_inputs() -> None:
         if not (ROOT / value).exists():
             ERRORS.append(f"Entrada del build inexistente: {value}")
 
+def validate_photon_codes() -> None:
+    """Valida la tabla de códigos Photon del tracker.
+
+    La tabla se edita a mano después de cada patch de Albion y la carga el
+    ejecutable sin recompilar, así que un error acá rompe el tracker en
+    producción sin que nadie lo note al compilar. Estas reglas son las mismas
+    que aplica `albion-exe/tracker/codes.go` al cargarla.
+    """
+    source = ROOT / "albion-app" / "data" / "photon_codes.json"
+    if not source.exists():
+        ERRORS.append("Falta albion-app/data/photon_codes.json (tabla del tracker)")
+        return
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        ERRORS.append(f"photon_codes.json: JSON inválido: {exc}")
+        return
+
+    def check_codes(kind: str, section: str) -> dict[int, str]:
+        seen: dict[int, str] = {}
+        entries = data.get(section)
+        if not isinstance(entries, dict):
+            ERRORS.append(f"photon_codes.json: falta la sección '{section}'")
+            return seen
+        for name, value in entries.items():
+            if name.startswith("_"):
+                continue  # clave de documentación
+            if value is None:
+                continue  # entrada desactivada a propósito
+            if not isinstance(value, int) or isinstance(value, bool):
+                ERRORS.append(f"photon_codes.json: {kind} '{name}' no es un número")
+                continue
+            # Los códigos viajan en el parámetro 252/253 como entero de 16 bits.
+            if not 0 <= value <= 65535:
+                ERRORS.append(
+                    f"photon_codes.json: {kind} '{name}' = {value} fuera de rango (0-65535)"
+                )
+                continue
+            if value in seen:
+                ERRORS.append(
+                    f"photon_codes.json: {kind} '{name}' repite el código {value} de '{seen[value]}'"
+                )
+                continue
+            seen[value] = name
+        return seen
+
+    events = check_codes("evento", "events")
+    operations = check_codes("operación", "operations")
+    if not events:
+        ERRORS.append("photon_codes.json: no define ningún evento")
+
+    # Los índices de parámetro sí son un byte del diccionario Photon.
+    params = data.get("eventParameters", {})
+    if isinstance(params, dict):
+        for event, fields in params.items():
+            if event.startswith("_"):
+                continue
+            if event not in data.get("events", {}) and event not in data.get("operations", {}):
+                ERRORS.append(
+                    f"photon_codes.json: eventParameters define '{event}', que no es un evento conocido"
+                )
+                continue
+            if not isinstance(fields, dict):
+                ERRORS.append(f"photon_codes.json: eventParameters['{event}'] debe ser un objeto")
+                continue
+            for field, index in fields.items():
+                if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index <= 255:
+                    ERRORS.append(
+                        f"photon_codes.json: índice inválido en {event}.{field} = {index!r} (0-255)"
+                    )
+
+    self_op = data.get("selfOperation", {})
+    if isinstance(self_op, dict):
+        name = self_op.get("operation")
+        if name and name not in data.get("operations", {}):
+            ERRORS.append(
+                f"photon_codes.json: selfOperation apunta a '{name}', que no está en 'operations'"
+            )
+
+    keys = data.get("parameterKeys", {})
+    if isinstance(keys, dict):
+        for key in ("eventCode", "operationCode"):
+            value = keys.get(key)
+            if value is not None and (not isinstance(value, int) or not 0 <= value <= 255):
+                ERRORS.append(f"photon_codes.json: parameterKeys.{key} = {value!r} inválido (0-255)")
+
+    _ = operations
+
+
 def main() -> int:
     validate_javascript()
     validate_python()
@@ -148,6 +237,7 @@ def main() -> int:
     validate_json_and_toml()
     validate_runtime_references()
     validate_build_inputs()
+    validate_photon_codes()
     if ERRORS:
         print("Validación fallida:")
         print("\n".join(f"- {error}" for error in ERRORS))

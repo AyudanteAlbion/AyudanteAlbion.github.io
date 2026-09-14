@@ -16,6 +16,7 @@ from __future__ import annotations
 import http.server
 import json
 import os
+import pathlib
 import queue
 import random
 import threading
@@ -179,6 +180,64 @@ class State:
 HUB = Hub()
 STATE = State()
 _STOP = threading.Event()
+DIAG_ON = False
+
+CODES_PATH = pathlib.Path(ROOT) / 'data' / 'photon_codes.json'
+_CODES_CACHE: dict | None = None
+
+
+def load_codes(force: bool = False):
+    """Lee photon_codes.json aplicando las mismas reglas que el Go.
+
+    Devuelve (info, advertencia). info es None si la tabla no se pudo usar.
+    """
+    global _CODES_CACHE
+    if _CODES_CACHE is not None and not force:
+        return _CODES_CACHE, ''
+    try:
+        data = json.loads(CODES_PATH.read_text(encoding='utf-8'))
+    except Exception as exc:
+        return None, f'no se pudo leer photon_codes.json: {exc}'
+
+    events, ops = {}, {}
+    for section, dst in (('events', events), ('operations', ops)):
+        for name, value in (data.get(section) or {}).items():
+            if name.startswith('_') or value is None:
+                continue
+            if not isinstance(value, int) or not 0 <= value <= 65535:
+                return None, f"{section}: '{name}' tiene un código inválido"
+            dst[value] = name
+    if not events:
+        return None, 'la tabla no define ningún evento'
+
+    info = {
+        'version': data.get('version', ''),
+        'gameVersion': data.get('gameVersion', ''),
+        'events': len(events),
+        'operations': len(ops),
+        'loadedFrom': str(CODES_PATH),
+        'loadedAt': int(time.time() * 1000),
+    }
+    _CODES_CACHE = info
+    return info, ''
+
+
+def diagnostic_payload():
+    """Simula el conteo de códigos vistos, para poder probar la interfaz."""
+    if not DIAG_ON:
+        return {'enabled': False, 'known': [], 'unknown': []}
+    try:
+        data = json.loads(CODES_PATH.read_text(encoding='utf-8'))
+    except Exception:
+        data = {'events': {}}
+    known = []
+    for name, code in list((data.get('events') or {}).items()):
+        if name.startswith('_') or code is None:
+            continue
+        if name in ('HealthUpdate', 'Move', 'NewCharacter', 'UpdateFame', 'CastStart'):
+            known.append({'code': code, 'name': name, 'count': random.randint(20, 900)})
+    unknown = [{'code': c, 'count': random.randint(1, 60)} for c in (137, 281, 402)]
+    return {'enabled': True, 'known': known, 'unknown': unknown}
 
 
 def simulate() -> None:
@@ -229,9 +288,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith('/api/tracker/status'):
-            return self._json({'edition': 'tracker', 'available': True, 'reason': '',
-                               'source': 'simulador (dev)', 'capturing': STATE.capturing,
-                               'listeners': HUB.count()})
+            body = {'edition': 'tracker', 'available': True, 'reason': '',
+                    'source': 'simulador (dev)', 'capturing': STATE.capturing,
+                    'listeners': HUB.count()}
+            codes, warn = load_codes()
+            if codes:
+                body['codes'] = codes
+            if warn:
+                body['codesWarning'] = warn
+            return self._json(body)
+        if self.path.startswith('/api/tracker/diagnostic'):
+            return self._json(diagnostic_payload())
         if self.path.startswith('/api/tracker/session'):
             return self._json(STATE.snapshot())
         if self.path.startswith('/api/tracker/stream'):
@@ -247,6 +314,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             STATE.capturing = False
             HUB.publish('status', STATE.snapshot())
             return self._json({'ok': True, 'capturing': False})
+        if self.path.startswith('/api/tracker/codes/reload'):
+            codes, warn = load_codes(force=True)
+            if codes is None:
+                return self._json({'ok': False, 'reason': warn}, 400)
+            return self._json({'ok': True, 'codes': codes, 'warning': warn,
+                               'restarted': STATE.capturing})
+        if self.path.startswith('/api/tracker/diagnostic'):
+            global DIAG_ON
+            DIAG_ON = not self.path.endswith('on=0')
+            return self._json(diagnostic_payload())
         if self.path.startswith('/api/tracker/reset'):
             STATE.reset()
             snap = STATE.snapshot()

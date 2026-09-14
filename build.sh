@@ -16,6 +16,25 @@ GO_BIN="${GO_BIN:-/tmp/go/bin/go}"
 
 echo "── 1/4 · Sintaxis de app.js"
 node --check albion-app/app.js
+# La tabla de códigos del tracker se edita a mano y se carga sin recompilar:
+# validarla acá evita publicar una edición Tracker con la tabla rota.
+python3 - <<'PYCHECK'
+import json, sys
+data = json.load(open('albion-app/data/photon_codes.json'))
+seen = {}
+for section in ('events', 'operations'):
+    for name, value in (data.get(section) or {}).items():
+        if name.startswith('_') or value is None:
+            continue
+        if not isinstance(value, int) or not 0 <= value <= 65535:
+            sys.exit(f'   ERROR: {section}.{name} = {value!r} inválido')
+        key = (section, value)
+        if key in seen:
+            sys.exit(f'   ERROR: {section}.{name} repite el código {value} de {seen[key]}')
+        seen[key] = name
+if not any(k[0] == 'events' for k in seen):
+    sys.exit('   ERROR: photon_codes.json no define ningún evento')
+PYCHECK
 echo "   OK"
 
 echo "── 2/4 · Sincronizando albion-exe/app/"
@@ -51,6 +70,9 @@ fi
 ls -lh albion-exe/AyudanteAlbion.exe | awk '{print "   estandar  " $5 "  " $9}'
 
 # Edición Tracker: mismo código + el motor de estadísticas en vivo.
+# La tabla photon_codes.json viaja embebida como copia de fábrica, pero el
+# ejecutable prefiere la que esté junto al .exe: así se actualiza tras un
+# parche de Albion sin recompilar.
 ( cd albion-exe && GOOS=windows GOARCH=amd64 "$GO_BIN" build -tags tracker \
     -ldflags="-s -w -H windowsgui" -o AyudanteAlbion-Tracker.exe . )
 ls -lh albion-exe/AyudanteAlbion-Tracker.exe | awk '{print "   tracker   " $5 "  " $9}'
@@ -63,6 +85,7 @@ zip -q -r AyudanteAlbion.zip \
   albion-exe/LEEME.txt \
   albion-exe/main.go albion-exe/edition_standard.go albion-exe/edition_tracker.go \
   albion-exe/tracker albion-exe/go.mod albion-app tools \
+  albion-app/data/photon_codes.json \
   -x "albion-app/node_modules/*" -x "albion-app/img/logo-opts/*"
 ls -lh AyudanteAlbion.zip | awk '{print "   " $5 "  " $9}'
 

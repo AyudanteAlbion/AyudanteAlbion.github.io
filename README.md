@@ -143,6 +143,10 @@ Solo aparece en la edición Tracker. El frontend es el mismo en las tres formas 
 
 El tracking **arranca apagado** y se activa a mano. Siguiendo la misma línea que otras herramientas de la comunidad: solo monitorea el tráfico, no modifica el cliente del juego, no dibuja overlay y no ve jugadores fuera de tu campo de visión.
 
+La edición Tracker necesita **[Npcap](https://npcap.com/)** instalado y ejecutarse como administrador. Sin Npcap la pestaña sigue disponible con datos simulados, para ver cómo funciona antes de instalar nada.
+
+Cuando un parche de Albion cambia el protocolo del juego, el tracker se arregla **editando un archivo de texto y tocando un botón** — sin recompilar ni reinstalar. Ver [`docs/photon-codes.md`](docs/photon-codes.md).
+
 Detalle técnico completo en [`docs/tracker-escritorio.md`](docs/tracker-escritorio.md).
 
 ---
@@ -212,6 +216,7 @@ pull request que afecte al código o a la infraestructura.
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
 | [`docs/tracker-escritorio.md`](docs/tracker-escritorio.md) | Ediciones del ejecutable y motor de estadísticas en vivo |
+| [`docs/photon-codes.md`](docs/photon-codes.md) | Cómo actualizar los códigos del tracker tras un parche de Albion |
 | [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Formato de mensajes de commit con archivo y hora UTC |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |

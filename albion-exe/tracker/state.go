@@ -130,6 +130,22 @@ func (s *State) SetParty(members []string) {
 	}
 }
 
+// AddPartyMember suma un integrante sin repetir.
+func (s *State) AddPartyMember(name string) {
+	if name == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range s.party {
+		if m == name {
+			return
+		}
+	}
+	s.party = append(s.party, name)
+	s.player(name)
+}
+
 // EnterZone cierra la visita anterior y abre una nueva.
 func (s *State) EnterZone(name string) {
 	s.mu.Lock()

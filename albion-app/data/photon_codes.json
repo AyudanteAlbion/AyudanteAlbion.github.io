@@ -1,0 +1,143 @@
+{
+  "_comment": [
+    "Tabla de codigos del protocolo Photon de Albion Online.",
+    "",
+    "VIVE FUERA DEL EJECUTABLE A PROPOSITO. Los codigos cambian en casi cada",
+    "patch del juego: cuando eso pasa, se edita este archivo y el tracker",
+    "vuelve a funcionar SIN recompilar nada. La edicion Tracker lo lee al",
+    "arrancar y tambien cuando se toca 'Recargar codigos' en la pestana Sesion.",
+    "",
+    "COMO ACTUALIZARLO:",
+    "1. En la pestana Sesion, activar 'Modo diagnostico'. Se listan los codigos",
+    "   de evento que llegan y con que frecuencia, con sus parametros.",
+    "2. Comparar contra la referencia comunitaria (ao-bin-dumps, o el proyecto",
+    "   AlbionOnline-StatisticsAnalysis) y corregir los numeros de abajo.",
+    "3. Guardar y tocar 'Recargar codigos'. No hace falta cerrar la app.",
+    "",
+    "'version' identifica esta tabla; 'gameVersion' es el patch para el que se",
+    "verifico. Si no coinciden con lo que llega, la app avisa en vez de mostrar",
+    "numeros falsos."
+  ],
+
+  "version": "2026.09.14",
+  "gameVersion": "Albion Online — verificar tras cada patch",
+
+  "parameterKeys": {
+    "_comment": "Claves especiales del protocolo, estables entre versiones.",
+    "eventCode": 252,
+    "operationCode": 253,
+    "returnCode": 254
+  },
+
+  "events": {
+    "_comment": [
+      "Nombre logico -> codigo numerico. El nombre es lo que usa el codigo Go;",
+      "el numero es lo que cambia entre patches. Poner null desactiva el evento",
+      "sin borrar la entrada (util para aislar uno que quedo mal)."
+    ],
+    "Leave": 1,
+    "JoinFinished": 2,
+    "Move": 3,
+    "Teleport": 4,
+    "ChangeEquipment": 5,
+    "HealthUpdate": 6,
+    "EnergyUpdate": 7,
+    "DamageShieldUpdate": 8,
+    "CraftingFocusUpdate": 9,
+    "ActiveSpellEffectsUpdate": 10,
+    "ResetCooldowns": 11,
+    "Attack": 12,
+    "CastStart": 13,
+    "CastCancel": 14,
+    "CastTimeUpdate": 15,
+    "CastFinished": 16,
+    "CastSpell": 17,
+    "CastHit": 18,
+    "CastHits": 19,
+    "ChannelingEnded": 20,
+    "AttackBuilding": 21,
+    "InventoryPutItem": 22,
+    "InventoryDeleteItem": 23,
+    "NewCharacter": 24,
+    "NewSimpleItem": 26,
+    "NewEquipmentItem": 28,
+    "NewSimpleHarvestableObject": 39,
+    "NewMob": 45,
+    "HealthUpdates": 68,
+    "RegenerationHealthChanged": 79,
+    "CharacterEquipmentChanged": 84,
+    "UpdateFame": 89,
+    "UpdateLearningPoints": 90,
+    "UpdateReSpecPoints": 91,
+    "UpdateCurrency": 92,
+    "UpdateFactionStanding": 96,
+    "PartyPlayerJoined": 103,
+    "PartyChangedOrder": 104,
+    "PartyPlayerLeft": 105,
+    "PartyDisbanded": 108,
+    "PartyJoinRequestAnswered": 110,
+    "PartySilverGained": 118,
+    "PartyLoot": 120,
+    "UpdateMoney": 148,
+    "TakeSilver": 210,
+    "OtherGrabbedLoot": 273,
+    "InventoryPutItemResult": 304,
+    "SiegeCampClaimStart": 318
+  },
+
+  "operations": {
+    "_comment": "Operaciones cliente -> servidor.",
+    "Join": 2,
+    "Move": 21,
+    "CastStart": 23,
+    "InventoryMoveItem": 35,
+    "ChangeCluster": 38,
+    "AuctionGetOffers": 100,
+    "AuctionGetRequests": 101
+  },
+
+  "eventParameters": {
+    "_comment": [
+      "Indice de parametros dentro de cada evento. Photon entrega un mapa",
+      "byte -> valor, y estos son los indices que le importan al tracker.",
+      "Cambian tanto como los codigos de evento, por eso viven aca tambien."
+    ],
+    "NewCharacter": { "id": 0, "name": 1, "guild": 8, "alliance": 51 },
+    "NewMob": { "id": 0, "typeId": 1 },
+    "Leave": { "id": 0 },
+    "HealthUpdate": {
+      "target": 0,
+      "value": 2,
+      "newHealth": 3,
+      "source": 6
+    },
+    "HealthUpdates": { "targets": 0, "values": 2, "sources": 6 },
+    "CastHit": { "source": 0, "target": 1, "damage": 2 },
+    "UpdateFame": { "total": 1, "gained": 2 },
+    "UpdateReSpecPoints": { "total": 1, "gained": 2 },
+    "UpdateCurrency": { "total": 1, "gained": 2 },
+    "UpdateMoney": { "total": 1 },
+    "TakeSilver": { "amount": 1 },
+    "PartySilverGained": { "amount": 1 },
+    "PartyPlayerJoined": { "id": 0, "name": 2 },
+    "PartyPlayerLeft": { "id": 0 },
+    "PartyDisbanded": {},
+    "OtherGrabbedLoot": {
+      "looter": 1,
+      "lootedFrom": 2,
+      "itemId": 3,
+      "quantity": 4
+    },
+    "JoinFinished": { "zone": 0 },
+    "ChangeCluster": { "zone": 0 }
+  },
+
+  "selfOperation": {
+    "_comment": [
+      "La operacion Join trae los datos del personaje propio: es como el",
+      "tracker sabe quien sos sin preguntarte nada."
+    ],
+    "operation": "Join",
+    "parameters": { "id": 0, "name": 2, "guild": 57, "zone": 8 }
+  }
+}

@@ -85,12 +85,50 @@ type Source interface {
 }
 ```
 
-Hoy la única implementación es `Simulator`, que genera una sesión verosímil sin tocar la red. No es
-un juguete: permite terminar y probar toda la interfaz sin Windows, sin Npcap y sin el juego
-abierto, y le deja al usuario ver cómo se ve la pestaña antes de decidir si instala nada.
+Hay tres implementaciones:
 
-**La captura real de Photon implementa esta misma interfaz y se enchufa en una línea de
-`edition_tracker.go`.** Ni el hub, ni el estado, ni la API HTTP, ni el frontend cambian.
+| Fuente | Cuándo se usa |
+|---|---|
+| `LiveSource` | Npcap instalado: captura real del tráfico del juego |
+| `Simulator` | Sin Npcap: datos verosímiles para ver cómo funciona la interfaz |
+| `FallbackSource` | Envuelve a las dos y elige según disponibilidad |
+
+`edition_tracker.go` arma `LiveSource` y, si Npcap no está, lo envuelve en `FallbackSource` para que
+la pestaña siga siendo usable. En cuanto se instala Npcap, el siguiente arranque usa la captura real
+sin tocar nada.
+
+### 3.1.1 Captura: `tracker/capture`
+
+Llama a **`wpcap.dll` de Npcap por syscall**, no a `gopacket/pcap`. Dos razones, y las dos importan
+para este repositorio:
+
+- **Sin dependencias externas.** `build.sh` compila con una toolchain de Go fija y sin acceso a
+  `proxy.golang.org`; todo lo que necesita el binario viaja en el repo.
+- **Sin cgo.** El `.exe` de Windows se compila desde Linux (`GOOS=windows`). `gopacket/pcap`
+  necesita cgo y un toolchain de C cruzado, que rompería ese flujo.
+
+`pcap_windows.go` tiene la implementación real y `pcap_other.go` un stub, para que el paquete
+compile en Linux y macOS (tests, `go vet`, CI).
+
+Se escuchan **todas las interfaces a la vez** con el filtro BPF
+`udp and (port 5055 or port 5056 or port 5057 or port 5058)`. Cuál usa Albion depende de la PC
+—Wi-Fi, Ethernet, VPN—, y escuchar todas es más simple y más robusto que hacer elegir al usuario.
+El modo promiscuo va **apagado**: alcanza con el tráfico de esta máquina.
+
+### 3.1.2 Protocolo: `tracker/photon`
+
+Implementación propia de Protocol16, también sin dependencias. Dos capas:
+
+- `parser.go` — el envoltorio eNet: comandos, y el **reensamblado de fragmentos** (un mensaje puede
+  venir partido en varios paquetes UDP, desordenados). Los fragmentos incompletos caducan a los 30 s
+  y hay un tope de sets simultáneos, para que un paquete corrupto no haga crecer la memoria.
+- `protocol16.go` — la deserialización de valores. Acota el anidamiento a 8 niveles: un paquete
+  malformado no puede hundir al parser en recursión.
+
+Los mensajes cifrados se detectan y se descartan; no se intenta leerlos.
+
+**La captura real ya está implementada.** Lo que falta es verificarla contra el juego en una PC con
+Windows, que es la parte que no se puede hacer desde este entorno.
 
 ### 3.2 `tracker.State` — agregación
 
@@ -119,6 +157,32 @@ dependencia y trabajo de reconexión para nada.
 
 ---
 
+## 3.5 La tabla de códigos: `photon_codes.json`
+
+El corazón del mantenimiento a largo plazo. Los códigos de evento de Albion cambian en casi cada
+parche, así que **viven fuera del binario** en `albion-app/data/photon_codes.json`.
+
+`tracker/codes.go` la busca en tres lugares, en orden: junto al `.exe`, en `%APPDATA%`, y por último
+la copia embebida de fábrica. Una tabla externa rota **nunca deja al tracker sin tabla**: se informa
+el error y se sigue con la de fábrica.
+
+Dos detalles que no son obvios:
+
+- **Los códigos van de 0 a 65535, no de 0 a 255.** Albion manda el código real en el parámetro 252
+  (eventos) o 253 (operaciones) como entero de 16 bits; el byte del envelope solo alcanza para los
+  códigos bajos y se usa como respaldo. Hay eventos reales con código 273, 304 y 318.
+- **Los índices de `eventParameters` sí son bytes** (0-255): son claves del diccionario Photon.
+
+`POST /api/tracker/codes/reload` relee el archivo y reinicia la captura si estaba activa. **Un
+parche de Albion se arregla editando texto y tocando un botón**, sin recompilar ni reinstalar.
+
+El modo diagnóstico (`/api/tracker/diagnostic`) cuenta los códigos que están llegando, separando los
+que la tabla reconoce de los que no: es la herramienta para saber qué número corregir.
+
+Guía completa de uso en [`photon-codes.md`](photon-codes.md).
+
+---
+
 ## 4. Contrato HTTP
 
 ```
@@ -128,9 +192,12 @@ POST /api/tracker/stop      la detiene
 POST /api/tracker/reset     reinicia contadores conservando personaje y party
 GET  /api/tracker/session   snapshot completo, para el primer render
 GET  /api/tracker/stream    SSE: snapshot inicial + eventos + keepalive cada 10 s
+POST /api/tracker/codes/reload  relee photon_codes.json sin reiniciar la app
+GET  /api/tracker/diagnostic    códigos que están llegando (conocidos y desconocidos)
+POST /api/tracker/diagnostic?on=1|0   enciende o apaga el conteo
 ```
 
-Tipos de evento: `snapshot`, `status`, `damage`, `heal`, `loot`, `map`.
+Tipos de evento: `snapshot`, `status`, `damage`, `heal`, `loot`, `map`, `warning`.
 
 Todo pasa por el guardián de `Host` que ya existía en `main.go` (anti DNS rebinding) y responde
 `Cache-Control: no-store`.
@@ -176,16 +243,14 @@ cambiarlo acá también**, porque es lo que se prueba a diario.
 
 ## 7. Lo que sigue
 
-La base está: separación de ediciones, detección, transporte, agregación e interfaz. Lo que falta
-es **una sola pieza**, la captura real, y después las capacidades se suman de a una sobre esta
-misma estructura.
+Captura, protocolo y tabla de códigos están implementados. Lo que falta:
 
-1. **Captura Photon** — `gopacket` + Npcap, filtro `udp port 5056`, implementando `tracker.Source`.
-   Detección de Npcap ausente con mensaje accionable. Es la pieza incierta del proyecto.
-2. **Tabla de códigos de evento** en `albion-app/data/photon_codes.json`, **fuera del binario**:
-   cambian en cada patch de Albion y tienen que poder actualizarse sin recompilar.
-3. **Persistencia** en `%APPDATA%\AyudanteAlbion\` para que las sesiones sobrevivan al cierre.
-4. **Mazmorras, recolección y almacenamiento** sobre el mismo `State`.
+1. **Verificar contra el juego real** en una PC con Windows y Npcap. Los números de
+   `photon_codes.json` salen de referencias comunitarias y hay que confirmarlos con el modo
+   diagnóstico; es esperable tener que corregir varios la primera vez.
+2. **Persistencia** en `%APPDATA%\AyudanteAlbion\` para que las sesiones sobrevivan al cierre.
+3. **Mazmorras, recolección y almacenamiento** sobre el mismo `State`.
+4. **Valuación del botín** con el motor de precios que ya tiene la app.
 5. **Trades → Registro de operaciones**: la integración más valiosa, porque el P&L, el CSV y la
    sincronización entre dispositivos ya existen y lo reciben gratis.
 

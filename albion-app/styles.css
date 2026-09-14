@@ -1676,3 +1676,7 @@ img { max-width: 100%; }
 .trk-list { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; }
 .trk-list li { padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .trk-meter { overflow-x: auto; }
+.trk-codes code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.trk-warn { color: #e8b339; background: rgba(232,179,57,.08); border: 1px solid rgba(232,179,57,.3); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.trk-actions .btn.active { border-color: var(--gold); color: var(--gold); }
+.small { font-size: 12px; }

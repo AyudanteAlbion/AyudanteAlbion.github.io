@@ -8,12 +8,15 @@ package main
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 )
 
 const editionName = "standard"
 
-func registerEdition(mux *http.ServeMux, touch func()) {
+// appFiles no se usa en esta edición: la firma se comparte con la edición
+// Tracker, que sí necesita leer la tabla de códigos embebida.
+func registerEdition(mux *http.ServeMux, touch func(), appFiles fs.FS) {
 	mux.HandleFunc("/api/tracker/status", func(w http.ResponseWriter, r *http.Request) {
 		touch()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -2,6 +2,7 @@ package tracker
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"time"
 )
@@ -16,6 +17,14 @@ type Source interface {
 	Available() (bool, string)
 	// Run bombea eventos hasta que el contexto se cancela.
 	Run(ctx context.Context, st *State, hub *Hub) error
+}
+
+// Diagnosable la implementan las fuentes que pueden reportar qué códigos de
+// evento están llegando. Es lo que se usa para actualizar la tabla después de
+// un patch de Albion.
+type Diagnosable interface {
+	SetDiagnostic(on bool)
+	Diagnostic() map[string]any
 }
 
 // Simulator genera una sesión verosímil sin necesidad del juego. Sirve para
@@ -99,4 +108,68 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 			hub.Publish(NewEvent("snapshot", st.Snapshot()))
 		}
 	}
+}
+
+// BrokenSource representa un motor que no puede arrancar (por ejemplo, tabla
+// de códigos ilegible). Existe para que la interfaz explique el problema en
+// lugar de mostrar una pestaña muerta sin motivo aparente.
+type BrokenSource struct{ Reason string }
+
+func (b BrokenSource) Name() string { return "no disponible" }
+
+func (b BrokenSource) Available() (bool, string) { return false, b.Reason }
+
+func (b BrokenSource) Run(ctx context.Context, st *State, hub *Hub) error {
+	return errors.New(b.Reason)
+}
+
+// FallbackSource usa la fuente principal cuando está disponible y, si no,
+// la de respaldo. Sirve para que la edición Tracker siga siendo usable sin
+// Npcap instalado: se ve la interfaz real con datos simulados, y en cuanto
+// Npcap aparece, el siguiente arranque usa la captura de verdad.
+type FallbackSource struct {
+	Primary  Source
+	Fallback Source
+}
+
+func (f FallbackSource) active() Source {
+	if ok, _ := f.Primary.Available(); ok {
+		return f.Primary
+	}
+	return f.Fallback
+}
+
+func (f FallbackSource) Name() string {
+	if ok, _ := f.Primary.Available(); ok {
+		return f.Primary.Name()
+	}
+	_, reason := f.Primary.Available()
+	return f.Fallback.Name() + " — " + reason
+}
+
+// Available siempre es true: si la principal no está, corre la de respaldo.
+func (f FallbackSource) Available() (bool, string) {
+	if ok, _ := f.Primary.Available(); ok {
+		return true, ""
+	}
+	_, reason := f.Primary.Available()
+	return true, reason + " Mientras tanto se muestran datos simulados."
+}
+
+func (f FallbackSource) Run(ctx context.Context, st *State, hub *Hub) error {
+	return f.active().Run(ctx, st, hub)
+}
+
+// SetDiagnostic y Diagnostic delegan en la fuente activa si la soporta.
+func (f FallbackSource) SetDiagnostic(on bool) {
+	if d, ok := f.active().(Diagnosable); ok {
+		d.SetDiagnostic(on)
+	}
+}
+
+func (f FallbackSource) Diagnostic() map[string]any {
+	if d, ok := f.active().(Diagnosable); ok {
+		return d.Diagnostic()
+	}
+	return map[string]any{"enabled": false, "known": []any{}, "unknown": []any{}}
 }

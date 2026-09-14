@@ -11,6 +11,8 @@
   var mounted = false;
   var latest = null;
   var dirty = false;
+  var diagOn = false;
+  var diagTimer = null;
 
   function el(id) { return document.getElementById(id); }
 
@@ -65,6 +67,17 @@
       '  <div class="trk-kpis" id="trkKpis"></div>' +
       '</div>' +
       '<div class="card trk-card">' +
+      '  <div class="trk-head">' +
+      '    <h3>Tabla de códigos Photon</h3>' +
+      '    <div class="trk-actions">' +
+      '      <button class="btn ghost" id="trkReload" type="button">Recargar códigos</button>' +
+      '      <button class="btn ghost" id="trkDiag" type="button">Modo diagnóstico</button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div id="trkCodes" class="trk-codes"></div>' +
+      '  <div id="trkDiagOut"></div>' +
+      '</div>' +
+      '<div class="card trk-card">' +
       '  <h3>Medidor de daño</h3>' +
       '  <div id="trkMeter" class="trk-meter"><p class="muted">Sin datos de combate todavía.</p></div>' +
       '</div>' +
@@ -76,6 +89,97 @@
     el('trkToggle').addEventListener('click', onToggle);
     el('trkReset').addEventListener('click', onReset);
     el('trkCopy').addEventListener('click', onCopy);
+    el('trkReload').addEventListener('click', onReloadCodes);
+    el('trkDiag').addEventListener('click', onToggleDiagnostic);
+  }
+
+  /* Recarga photon_codes.json sin cerrar la app: es la forma de arreglar el
+     tracker después de un patch de Albion. */
+  async function onReloadCodes() {
+    var btn = el('trkReload');
+    btn.disabled = true;
+    try {
+      var data = await AATracker.reloadCodes();
+      if (data && data.ok) {
+        setStatus('Tabla de códigos recargada' + (data.restarted ? ' y captura reiniciada.' : '.'));
+        paintCodes();
+      } else {
+        setStatus('No se pudo recargar: ' + ((data && data.reason) || 'error desconocido'));
+      }
+    } catch (e) {
+      setStatus('No se pudo recargar la tabla: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function onToggleDiagnostic() {
+    diagOn = !diagOn;
+    var btn = el('trkDiag');
+    btn.classList.toggle('active', diagOn);
+    try {
+      var data = await AATracker.diagnostic(diagOn);
+      paintDiagnostic(data);
+      if (diagOn) {
+        // Refrescar mientras esté encendido: los códigos aparecen a medida
+        // que el juego los manda.
+        diagTimer = setInterval(async function () {
+          try { paintDiagnostic(await AATracker.diagnostic()); } catch (e) { /* ignorar */ }
+        }, 2000);
+      } else if (diagTimer) {
+        clearInterval(diagTimer);
+        diagTimer = null;
+      }
+    } catch (e) {
+      setStatus('Diagnóstico no disponible: ' + e.message);
+    }
+  }
+
+  function paintCodes() {
+    var node = el('trkCodes');
+    if (!node) return;
+    var info = AATracker.state();
+    var c = info.codes;
+    if (!c) {
+      node.innerHTML = '<p class="muted">Sin información de la tabla de códigos.</p>';
+      return;
+    }
+    var warn = info.codesWarning
+      ? '<p class="trk-warn">' + esc(info.codesWarning) + '</p>'
+      : '';
+    node.innerHTML = warn +
+      '<p class="muted small">Versión <strong>' + esc(c.version || '—') + '</strong> · ' +
+      esc(String(c.events || 0)) + ' eventos · ' + esc(String(c.operations || 0)) + ' operaciones<br>' +
+      'Origen: ' + esc(c.loadedFrom || '—') + '</p>' +
+      '<p class="muted small">Los códigos de Albion cambian con cada parche. ' +
+      'Editá <code>photon_codes.json</code> y tocá <strong>Recargar códigos</strong>: ' +
+      'no hace falta reinstalar ni recompilar nada.</p>';
+  }
+
+  function paintDiagnostic(data) {
+    var node = el('trkDiagOut');
+    if (!node) return;
+    if (!data || !data.enabled) {
+      node.innerHTML = '';
+      return;
+    }
+    function table(title, rows, withName) {
+      if (!rows || !rows.length) return '<p class="muted small">' + title + ': sin datos aún.</p>';
+      rows.sort(function (a, b) { return b.count - a.count; });
+      return '<p class="small"><strong>' + title + '</strong></p>' +
+        '<table class="trk-table"><thead><tr><th>Código</th>' +
+        (withName ? '<th>Nombre</th>' : '') + '<th>Veces</th></tr></thead><tbody>' +
+        rows.slice(0, 25).map(function (r) {
+          return '<tr><td>' + r.code + '</td>' +
+            (withName ? '<td>' + esc(r.name || '') + '</td>' : '') +
+            '<td>' + r.count + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    node.innerHTML =
+      '<p class="muted small">Códigos que está mandando el juego ahora mismo. ' +
+      'Los <em>desconocidos</em> son los que hay que agregar o corregir en la tabla.</p>' +
+      table('Desconocidos', data.unknown, false) +
+      table('Reconocidos', data.known, true);
   }
 
   async function onToggle() {
@@ -237,6 +341,7 @@
     }
     renderShell(panel);
     paintControls();
+    paintCodes();
 
     AATracker.on(function (type, payload) {
       if (type === 'snapshot' || type === 'status') {

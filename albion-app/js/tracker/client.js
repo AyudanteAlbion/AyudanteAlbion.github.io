@@ -17,7 +17,9 @@
     available: false,    // el motor puede capturar en esta PC
     reason: '',
     capturing: false,
-    source: ''
+    source: '',
+    codes: null,          // versión y conteo de la tabla de códigos Photon
+    codesWarning: ''
   };
 
   var listeners = [];
@@ -59,11 +61,15 @@
       state.reason = data.reason || '';
       state.capturing = !!data.capturing;
       state.source = data.source || '';
+      state.codes = data.codes || null;
+      state.codesWarning = data.codesWarning || '';
     } catch (e) {
       state.edition = 'web';
       state.available = false;
       state.reason = 'La versión web no incluye tracking en vivo.';
       state.capturing = false;
+      state.codes = null;
+      state.codesWarning = '';
     }
     emit('edition', snapshotState());
     return snapshotState();
@@ -76,6 +82,8 @@
       reason: state.reason,
       capturing: state.capturing,
       source: state.source,
+      codes: state.codes,
+      codesWarning: state.codesWarning,
       isDesktop: state.edition !== 'web',
       hasTracking: state.edition === 'tracker'
     };
@@ -144,6 +152,29 @@
     return post('/api/tracker/reset');
   }
 
+  /* Recarga photon_codes.json desde disco, sin reiniciar la aplicación. */
+  async function reloadCodes() {
+    var data = await post('/api/tracker/codes/reload');
+    if (data && data.codes) {
+      state.codes = data.codes;
+      state.codesWarning = data.warning || '';
+    }
+    return data;
+  }
+
+  /* Consulta (y opcionalmente activa) el modo diagnóstico de códigos. */
+  async function diagnostic(enable) {
+    var url = '/api/tracker/diagnostic';
+    var opts = { cache: 'no-store' };
+    if (enable !== undefined) {
+      url += '?on=' + (enable ? '1' : '0');
+      opts.method = 'POST';
+    }
+    var res = await fetch(url, opts);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
   async function session() {
     var res = await fetch(SESSION_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -159,6 +190,8 @@
     start: start,
     stop: stop,
     reset: reset,
-    session: session
+    session: session,
+    reloadCodes: reloadCodes,
+    diagnostic: diagnostic
   });
 }(window));

@@ -107,7 +107,7 @@ func main() {
 	// /api/tracker/status diciendo «no disponible»; en la edición Tracker se
 	// suma el motor de estadísticas en vivo. El frontend es el mismo en ambas
 	// y decide qué mostrar con esa respuesta.
-	registerEdition(mux, func() { lastBeat.Store(time.Now().UnixNano()) })
+	registerEdition(mux, func() { lastBeat.Store(time.Now().UnixNano()) }, sub)
 
 	// Proxy hacia la API oficial de jugadores (gameinfo no envía CORS,
 	// así que el navegador no puede llamarla directo). Allowlist de rutas
