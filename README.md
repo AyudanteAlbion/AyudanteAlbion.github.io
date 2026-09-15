@@ -153,19 +153,34 @@ Detalle técnico completo en [`docs/tracker-escritorio.md`](docs/tracker-escrito
 
 ## Publicación de versiones
 
-Las versiones de Windows se publican creando un tag semántico en `main`, por
-ejemplo:
+Para probar Windows sin publicar una versión, el workflow **Test desktop
+releases** ejecuta `./build.sh` completo en cada PR que toca el escritorio y
+también se puede iniciar manualmente. La ejecución deja dos artefactos
+separados durante 7 días:
+
+- `AyudanteAlbion-Desktop-<commit>`: edición estándar.
+- `AyudanteAlbion-Tracker-<commit>`: edición Tracker y su tabla de códigos.
+
+Estos paquetes temporales no crean tags, no aparecen en GitHub Releases y no
+generan avisos en Discord. El check **Analyze (go)** de CodeQL sigue corriendo
+por separado: analiza el código Go, mientras que **Build desktop .exe** prueba
+la compilación cruzada real de las dos ediciones para Windows, incluido
+`-tags tracker`.
+
+Las versiones públicas de Windows se publican únicamente creando un tag
+semántico en `main`, por ejemplo:
 
 ```bash
 git tag v1.2.8
 git push origin v1.2.8
 ```
 
-El workflow **Build release assets** valida el repositorio y compila el `.exe`,
-el `.zip` y sus checksums como artefactos temporales. Cuando termina con éxito,
-**Publish release** descarga esos artefactos, verifica sus SHA-256 y recién
-entonces crea o actualiza la release de GitHub. La compilación y la publicación
-usan workflows y permisos separados.
+El workflow **Build release assets** valida el repositorio y compila los dos
+`.exe`, el `.zip` y sus checksums como artefactos temporales. Cuando termina con
+éxito, **Publish release** descarga esos artefactos, verifica sus SHA-256 y
+recién entonces crea o actualiza la release de GitHub. La compilación y la
+publicación usan workflows y permisos separados; este flujo de producción no
+tiene ejecución manual, para que una prueba no pueda publicar por accidente.
 
 En Discord, el canal de Actualizaciones recibe el changelog de la versión en
 curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica

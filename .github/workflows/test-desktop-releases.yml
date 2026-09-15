@@ -1,0 +1,103 @@
+name: Test desktop releases
+
+# Genera paquetes temporales para probar las dos ediciones de Windows.
+# No crea tags ni GitHub Releases: los resultados quedan únicamente como
+# artefactos de la ejecución y GitHub los elimina después de siete días.
+
+on:
+  pull_request:
+    paths:
+      - 'albion-app/**'
+      - 'albion-exe/**'
+      - 'build.sh'
+      - 'scripts/validate_repo.py'
+      - '.github/workflows/test-desktop-releases.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'albion-app/**'
+      - 'albion-exe/**'
+      - 'build.sh'
+      - 'scripts/validate_repo.py'
+      - '.github/workflows/test-desktop-releases.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-desktop-releases-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build desktop .exe
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.23.4'
+          cache: false
+
+      # Es importante ejecutar el build de distribución completo. Un `go
+      # build` genérico (incluido el autobuild de CodeQL/Analyze (go)) no
+      # prueba la compilación cruzada de Windows ni el build tag `tracker`.
+      - name: Compilar las dos ediciones con build.sh
+        run: GO_BIN="$(command -v go)" ./build.sh
+
+      - name: Verificar y separar paquetes de prueba
+        run: |
+          set -euo pipefail
+          test -s albion-exe/AyudanteAlbion.exe
+          test -s albion-exe/AyudanteAlbion-Tracker.exe
+          file albion-exe/AyudanteAlbion.exe | grep -q 'PE32+'
+          file albion-exe/AyudanteAlbion-Tracker.exe | grep -q 'PE32+'
+          if cmp -s albion-exe/AyudanteAlbion.exe albion-exe/AyudanteAlbion-Tracker.exe; then
+            echo 'Las ediciones estándar y Tracker no pueden ser idénticas'
+            exit 1
+          fi
+
+          mkdir -p test-release-standard test-release-tracker
+          cp albion-exe/AyudanteAlbion.exe test-release-standard/
+          cp albion-exe/AyudanteAlbion-Tracker.exe test-release-tracker/
+          cp albion-app/data/photon_codes.json test-release-tracker/
+
+          (
+            cd test-release-standard
+            sha256sum AyudanteAlbion.exe > SHA256SUMS.txt
+          )
+          (
+            cd test-release-tracker
+            sha256sum AyudanteAlbion-Tracker.exe photon_codes.json > SHA256SUMS.txt
+          )
+
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+            | tee test-release-standard/BUILD_INFO.txt \
+                  test-release-tracker/BUILD_INFO.txt >/dev/null
+          (cd test-release-standard && sha256sum -c SHA256SUMS.txt)
+          (cd test-release-tracker && sha256sum -c SHA256SUMS.txt)
+
+      - name: Guardar edición estándar
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: AyudanteAlbion-Desktop-${{ github.sha }}
+          path: test-release-standard/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Guardar edición Tracker
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: AyudanteAlbion-Tracker-${{ github.sha }}
+          path: test-release-tracker/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

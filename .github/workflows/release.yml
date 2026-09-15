@@ -65,7 +65,12 @@ jobs:
           } > RELEASE_NOTES.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG ya existe; reemplazando assets…"
-            gh release upload "$TAG" release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip release-assets/SHA256SUMS.txt#SHA256SUMS.txt --clobber
+            gh release upload "$TAG" \
+              release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe \
+              release-assets/AyudanteAlbion-Tracker.exe#AyudanteAlbion-Tracker.exe \
+              release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip \
+              release-assets/SHA256SUMS.txt#SHA256SUMS.txt \
+              --clobber
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           else
             # No combinar --generate-notes con notas propias: además de no ser
@@ -74,6 +79,7 @@ jobs:
             # sin publicar después de haber validado todos los artefactos.
             gh release create "$TAG" \
               release-assets/AyudanteAlbion.exe#AyudanteAlbion.exe \
+              release-assets/AyudanteAlbion-Tracker.exe#AyudanteAlbion-Tracker.exe \
               release-assets/AyudanteAlbion.zip#AyudanteAlbion.zip \
               release-assets/SHA256SUMS.txt#SHA256SUMS.txt \
               --target "${{ github.event.workflow_run.head_sha }}" \
