@@ -198,6 +198,22 @@ func (s *State) IsTrackedPlayer(name string) bool {
 	return false
 }
 
+// Character devuelve el personaje detectado, o vacío si todavía no se sabe.
+// Existe para no armar un Snapshot completo (que ordena y copia todo) cada vez
+// que llega un evento.
+func (s *State) Character() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.character
+}
+
+// Zone devuelve el mapa actual, o vacío si todavía no se detectó.
+func (s *State) Zone() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.zone
+}
+
 // EnterZone cierra la visita anterior y abre una nueva.
 func (s *State) EnterZone(name string) {
 	s.mu.Lock()

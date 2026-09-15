@@ -155,7 +155,8 @@
   }
 
   /* Descarta la identidad actual y la detecta de nuevo en la próxima respuesta
-     Join del servidor. Para forzarla hay que cerrar sesión y volver a entrar. */
+     Join del servidor. Para forzarla alcanza con cambiar de zona: el juego
+     manda ChangeCluster y el tracker vuelve a poblar personaje y ubicación. */
   async function refreshCharacter() {
     var data = await post('/api/tracker/character/refresh');
     if (data && data.ok) {
