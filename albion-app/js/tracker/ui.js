@@ -116,7 +116,8 @@
       '  <div class="card trk-card"><h3>Botín reciente</h3><div id="trkLoot"><p class="muted">Sin botín registrado.</p></div></div>' +
       '</div>' +
       '<details class="card trk-card trk-diagnostics"><summary>Diagnóstico avanzado y códigos Photon</summary>' +
-      '  <div class="trk-head"><div><h3>Tabla de códigos Photon</h3><div id="trkCodes" class="trk-codes"></div></div><div class="trk-actions"><button class="btn ghost" id="trkReload" type="button">Recargar códigos</button><button class="btn ghost" id="trkDiag" type="button">Modo diagnóstico</button></div></div>' +
+      '  <div class="trk-head"><div><h3>Tabla de códigos Photon</h3><div id="trkCodes" class="trk-codes"></div></div><div class="trk-actions"><button class="btn ghost" id="trkCodesToggle" type="button">Ver códigos cargados</button><button class="btn ghost" id="trkReload" type="button">Recargar códigos</button><button class="btn ghost" id="trkDiag" type="button">Modo diagnóstico</button></div></div>' +
+      '  <div id="trkCodesList" class="trk-codes-list"></div>' +
       '  <div id="trkDiagOut"></div>' +
       '</details>' +
       '<div id="trkSetupModal" class="trk-setup-modal" hidden></div>';
@@ -126,6 +127,7 @@
     el('trkRefreshCharacter').addEventListener('click', onRefreshCharacter);
     el('trkReset').addEventListener('click', onReset);
     el('trkCopy').addEventListener('click', onCopy);
+    el('trkCodesToggle').addEventListener('click', onToggleCodesList);
     el('trkReload').addEventListener('click', onReloadCodes);
     el('trkDiag').addEventListener('click', onToggleDiagnostic);
     el('trkRestartNetwork').addEventListener('click', onRestartNetwork);
@@ -294,6 +296,49 @@
     }
   }
 
+  var codesListOpen = false;
+
+  /* Tabla código→nombre de lo que trae cargado photon_codes.json ahora mismo
+     (no lo que llegó por red: eso es el modo diagnóstico, más abajo). Sirve
+     para confirmar de un vistazo qué significa cada uno de los «48 eventos»
+     o «7 operaciones» que reporta el resumen. */
+  function codeTable(title, rows) {
+    if (!rows || !rows.length) return '<p class="muted small">' + esc(title) + ': sin entradas.</p>';
+    return '<p class="small"><strong>' + esc(title) + ' (' + rows.length + ')</strong></p>' +
+      '<table class="trk-table"><thead><tr><th>Código</th><th>Nombre</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + esc(String(r.code)) + '</td><td>' + esc(r.name || '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function paintCodesList() {
+    var node = el('trkCodesList');
+    if (!node) return;
+    if (!codesListOpen) { node.innerHTML = ''; return; }
+    var info = AATracker.state();
+    var c = info.codes;
+    if (!c || (!c.eventList && !c.operationList)) {
+      node.innerHTML = '<p class="muted small">Todavía no hay una tabla de códigos cargada.</p>';
+      return;
+    }
+    node.innerHTML =
+      '<p class="muted small">Todo lo que <code>photon_codes.json</code> tiene cargado ahora mismo, ' +
+      'con su nombre lógico. Esto no depende de que el juego esté enviando tráfico: es la tabla tal ' +
+      'como quedó después de la última carga o recarga.</p>' +
+      codeTable('Operaciones cargadas', c.operationList) +
+      codeTable('Eventos cargados', c.eventList);
+  }
+
+  function onToggleCodesList() {
+    codesListOpen = !codesListOpen;
+    var btn = el('trkCodesToggle');
+    if (btn) {
+      btn.classList.toggle('active', codesListOpen);
+      btn.textContent = codesListOpen ? 'Ocultar códigos cargados' : 'Ver códigos cargados';
+    }
+    paintCodesList();
+  }
+
   function paintCodes() {
     var node = el('trkCodes');
     if (!node) return;
@@ -313,6 +358,7 @@
       '<p class="muted small">Los códigos de Albion cambian con cada parche. ' +
       'Editá <code>photon_codes.json</code> y tocá <strong>Recargar códigos</strong>: ' +
       'no hace falta reinstalar ni recompilar nada.</p>';
+    paintCodesList();
   }
 
   function paintDiagnostic(data) {
