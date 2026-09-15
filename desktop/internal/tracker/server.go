@@ -168,6 +168,35 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "capturing": false})
 	})
 
+	// Fuerza una nueva detección del personaje. Se limpia solo la identidad
+	// (no las estadísticas de la sesión) y se reinicia/activa la captura para
+	// que el próximo Join de Albion vuelva a fijarla.
+	mux.HandleFunc("/api/tracker/character/refresh", func(w http.ResponseWriter, r *http.Request) {
+		e.touch()
+		if r.Method != http.MethodPost {
+			http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
+		if ok, reason := e.source.Available(); !ok {
+			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": reason})
+			return
+		}
+		wasRunning := e.running()
+		if wasRunning {
+			e.Stop()
+		}
+		e.state.ClearCharacter()
+		if err := e.Start(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "reason": err.Error()})
+			return
+		}
+		snap := e.state.Snapshot()
+		e.hub.Publish(NewEvent("status", snap))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "capturing": true, "restarted": wasRunning, "snapshot": snap,
+		})
+	})
+
 	mux.HandleFunc("/api/tracker/reset", func(w http.ResponseWriter, r *http.Request) {
 		e.touch()
 		if r.Method != http.MethodPost {

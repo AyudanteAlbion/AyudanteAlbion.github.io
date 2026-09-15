@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"ayudante-albion-desktop/internal/tracker"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App concentra el ciclo de vida de la aplicación de escritorio. Wails llama a
@@ -31,5 +32,26 @@ func (a *App) OnStartup(ctx context.Context) {
 func (a *App) OnShutdown(ctx context.Context) {
 	if a.engine != nil {
 		a.engine.Stop()
+	}
+}
+
+// Minimise, ToggleMaximise y Close son el puente mínimo para la barra de
+// título propia. Se exponen al frontend mediante Bind y conservan en Go las
+// operaciones nativas de la ventana (incluido el cierre ordenado de Wails).
+func (a *App) Minimise() {
+	if a.ctx != nil {
+		runtime.WindowMinimise(a.ctx)
+	}
+}
+
+func (a *App) ToggleMaximise() {
+	if a.ctx != nil {
+		runtime.WindowToggleMaximise(a.ctx)
+	}
+}
+
+func (a *App) Close() {
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
 	}
 }

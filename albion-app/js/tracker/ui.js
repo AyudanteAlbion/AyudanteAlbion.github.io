@@ -13,6 +13,7 @@
   var dirty = false;
   var diagOn = false;
   var diagTimer = null;
+  var detectingCharacter = false;
 
   function el(id) { return document.getElementById(id); }
 
@@ -63,11 +64,16 @@
       '    <h2>Sesión en vivo</h2>' +
       '    <div class="trk-actions">' +
       '      <button class="btn" id="trkToggle" type="button">Activar tracking</button>' +
+      '      <button class="btn ghost" id="trkRefreshCharacter" type="button" title="Volver a detectar tu personaje desde el juego">↻ Refrescar personaje</button>' +
       '      <button class="btn ghost" id="trkReset" type="button">Reiniciar sesión</button>' +
       '      <button class="btn ghost" id="trkCopy" type="button">Copiar ranking</button>' +
       '    </div>' +
       '  </div>' +
       '  <div class="trk-status" id="trkStatus">Tracking detenido.</div>' +
+      '  <div class="trk-safety">' +
+      '    <strong>Modo seguro:</strong> solo lectura, personaje propio y party. No modifica Albion, no automatiza acciones, no usa overlay y no comparte la captura. ' +
+      '    <a href="https://forum.albiononline.com/index.php/Thread/124819-Regarding-3rd-Party-Software-and-Network-Traffic-aka-do-not-cheat-Update-16-45-U/" target="_blank" rel="noopener noreferrer">Criterios de SBI</a>.' +
+      '  </div>' +
       '  <div class="trk-kpis" id="trkKpis"></div>' +
       '</div>' +
       '<div class="card trk-card">' +
@@ -91,6 +97,7 @@
       '</div>';
 
     el('trkToggle').addEventListener('click', onToggle);
+    el('trkRefreshCharacter').addEventListener('click', onRefreshCharacter);
     el('trkReset').addEventListener('click', onReset);
     el('trkCopy').addEventListener('click', onCopy);
     el('trkReload').addEventListener('click', onReloadCodes);
@@ -205,6 +212,27 @@
     }
   }
 
+  async function onRefreshCharacter() {
+    var btn = el('trkRefreshCharacter');
+    if (!btn) return;
+    btn.disabled = true;
+    detectingCharacter = true;
+    setStatus('Reiniciando la detección del personaje…');
+    try {
+      var data = await AATracker.refreshCharacter();
+      if (data && data.snapshot) {
+        latest = data.snapshot;
+        dirty = true;
+      }
+      paintControls();
+    } catch (e) {
+      detectingCharacter = false;
+      setStatus('No se pudo refrescar el personaje: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   async function onReset() {
     try {
       var snap = await AATracker.reset();
@@ -240,6 +268,8 @@
     if (btn) btn.textContent = info.capturing ? 'Detener tracking' : 'Activar tracking';
     if (!info.available) {
       setStatus(info.reason || 'Motor de captura no disponible.');
+    } else if (detectingCharacter) {
+      setStatus('Buscando tu personaje… Entrá o cambiá de zona en Albion para completar la detección.');
     } else if (info.capturing) {
       setStatus('Tracking activo · fuente: ' + (info.source || 'desconocida'));
     } else {
@@ -351,6 +381,7 @@
       if (type === 'snapshot' || type === 'status') {
         latest = payload;
         dirty = true;
+        if (payload && payload.character) detectingCharacter = false;
         paintControls();
       }
     });

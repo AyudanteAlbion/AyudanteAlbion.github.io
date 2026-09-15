@@ -40,13 +40,6 @@ func newRouter() (http.Handler, *tracker.Engine) {
 	engine := buildTrackerEngine(sub)
 	engine.Register(mux)
 
-	// /alive se mantiene como no-op por compatibilidad con el frontend actual
-	// (app.js hace un ping cada 3 s). En la app de escritorio no apaga ni
-	// mantiene nada: responder 204 evita ruido de errores en la consola.
-	mux.HandleFunc("/alive", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	// Proxies hacia servicios sin CORS, con la misma allowlist que el Worker.
 	proxy.Register(mux, nil)
 
