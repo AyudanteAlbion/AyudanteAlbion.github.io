@@ -71,6 +71,28 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 
 ### Corregido
 
+- **El tracker vuelve a detectar el personaje y la ubicación.** La tabla
+  `photon_codes.json` tenía códigos desfasados respecto del protocolo actual
+  (`NewCharacter` 24 → **29**, `UpdateFame` 89 → **82**, `ChangeCluster` 38 →
+  **41**, entre otros): el ejecutable recibía los paquetes de Albion pero no
+  reconocía ninguno, así que mostraba «Datos del juego recibidos» junto a
+  «Personaje no detectado». Los números se recalcularon como el ordinal de cada
+  miembro de los enums `EventCodes.cs` y `OperationCodes.cs` de la app de
+  referencia, y un test nuevo los fija para que no se vuelvan a desfasar.
+- **La ubicación se detecta al entrar, no solo al cambiar de mapa.** La
+  respuesta de `Join` trae el personaje *y* el mapa inicial (parámetro 8), pero
+  solo se leía el nombre.
+- **Cambiar de zona ahora recarga los datos del tracking.** `ChangeCluster` se
+  estaba escuchando como *evento*, y en el protocolo es una *operación*: el
+  `case` nunca se ejecutaba y un cambio de mapa no actualizaba nada. Ahora se
+  atiende como operación (pedido y respuesta), se cierra la visita al mapa
+  anterior, se descartan las entidades de la zona vieja y se conserva la
+  identidad propia. Gracias a esto, quien active el tracking con la sesión ya
+  abierta puede recuperar personaje y ubicación **cambiando de zona**, sin
+  cerrar sesión.
+- **Plata y botín dejan de contar de más.** `TakeSilver` solo suma si la levantó
+  el personaje propio, y el saqueador de `OtherGrabbedLoot` se lee como nombre
+  (que es como lo manda el juego) en lugar de como id de entidad.
 - **Los avisos de cambios vuelven a llegar a Discord**: el workflow ahora
   detecta `CHANGELOG.md` y `README.md` comparando los árboles Git anterior y
   nuevo del push. Antes dependía de la lista `commits` del evento, que podía no

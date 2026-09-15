@@ -210,16 +210,21 @@
     btn.disabled = false; paintControls();
   }
 
-  function statusItem(ok, title, waiting, value) {
-    return '<div class="trk-state-item ' + (ok ? 'ok' : 'waiting') + '"><i></i><div><strong>' + esc(ok ? title : waiting) + '</strong>' + (ok && value ? '<small>' + esc(value) + '</small>' : '') + '</div></div>';
+  function statusItem(ok, title, waiting, value, hint) {
+    var detail = ok ? value : (hint || '');
+    return '<div class="trk-state-item ' + (ok ? 'ok' : 'waiting') + '"><i></i><div><strong>' + esc(ok ? title : waiting) + '</strong>' + (detail ? '<small>' + esc(detail) + '</small>' : '') + '</div></div>';
   }
   function paintState(snap) {
     var node = el('trkStateGrid'); if (!node) return;
     var hasData = !!(snap.packets || snap.character || snap.zone || snap.fame || snap.silver || (snap.combatants && snap.combatants.length));
+    // La identidad y la zona llegan en la respuesta a Join y en ChangeCluster:
+    // si el tracking arrancó con la sesión ya abierta, hay que provocar uno de
+    // los dos. Cambiar de mapa es lo más rápido y no obliga a salir del juego.
+    var joinHint = hasData ? 'Cambiá de zona en Albion para que el juego lo reenvíe' : '';
     node.innerHTML = statusItem(hasData, 'Datos del juego recibidos', 'Esperando datos del juego', '') +
       statusItem(hasData, 'Servidor detectado', 'Servidor no detectado', hasData ? 'Albion Online · UDP' : '') +
-      statusItem(!!snap.character, 'Personaje detectado', 'Personaje no detectado', snap.character) +
-      statusItem(!!snap.zone, 'Ubicación detectada', 'Ubicación no detectada', snap.zone);
+      statusItem(!!snap.character, 'Personaje detectado', 'Personaje no detectado', snap.character, joinHint) +
+      statusItem(!!snap.zone, 'Ubicación detectada', 'Ubicación no detectada', snap.zone, joinHint);
     var badge = el('trkLiveBadge');
     if (badge) { badge.classList.toggle('active', hasData); badge.innerHTML = '<i></i> ' + (hasData ? 'Recibiendo datos' : 'En espera'); }
   }
@@ -471,7 +476,7 @@
     if (!info.available) {
       setStatus(info.reason || 'Motor de captura no disponible.');
     } else if (detectingCharacter) {
-      setStatus('Buscando tu personaje… Cerrá sesión y volvé a entrar en Albion para recibir la respuesta Join.');
+      setStatus('Buscando tu personaje… Cambiá de zona en Albion (o volvé a entrar) para que el juego reenvíe tus datos.');
     } else if (info.capturing) {
       setStatus('Tracking activo · fuente: ' + (info.source || 'desconocida'));
     } else {

@@ -48,11 +48,16 @@ En la pestaña **Sesión**, con el tracking activo, tocá **Modo diagnóstico**.
 - **Reconocidos** — los que sí reconoce, con cuántas veces llegaron.
 
 Un evento muy frecuente en combate y con números grandes es casi seguro `HealthUpdate` (daño y
-curación). Los que llegan una vez al cambiar de mapa son `JoinFinished` o `ChangeCluster`.
+curación). El que llega una vez al entrar a un mapa es `JoinFinished` (evento).
 
-La identidad propia llega en la **respuesta exitosa de la operación `Join`**. Después de activar el
-tracking, cerrá sesión y volvé a entrar; en diagnóstico debe aparecer `Join` entre las operaciones
-reconocidas. El diagnóstico guarda solamente código y frecuencia, nunca nombres ni otros parámetros.
+**`ChangeCluster` no es un evento: es una operación.** Aparece en la tabla de *operaciones*, no en la
+de eventos, y es la que manda el juego cada vez que el personaje cambia de zona.
+
+La identidad propia llega en la **respuesta exitosa de la operación `Join`**, junto con el mapa
+inicial (parámetro 8). Si activás el tracking con la sesión ya abierta, ese mensaje ya pasó: basta
+con **cambiar de zona** para que el juego mande `ChangeCluster` y el tracker vuelva a poblar
+personaje y ubicación, sin cerrar sesión. El diagnóstico guarda solamente código y frecuencia, nunca
+nombres ni otros parámetros.
 
 ### Paso 2 — Corregir el número
 
@@ -61,14 +66,14 @@ Abrí `photon_codes.json` con cualquier editor de texto y cambiá el número:
 ```json
 "events": {
   "HealthUpdate": 6,     ← si el diagnóstico muestra que ahora es 7, poné 7
-  "UpdateFame": 89
+  "UpdateFame": 82
 }
 ```
 
 Para desactivar un evento sin borrarlo, poné `null`:
 
 ```json
-"SiegeCampClaimStart": null
+"InCombatStateUpdate": null
 ```
 
 ### Paso 3 — Recargar
@@ -113,7 +118,14 @@ una edición Tracker con la tabla rota.
   en tu cliente ahora mismo.
 - [`ao-bin-dumps`](https://github.com/broderickhyman/ao-bin-dumps) — volcados de datos del cliente.
 - [`AlbionOnline-StatisticsAnalysis`](https://github.com/Triky313/AlbionOnline-StatisticsAnalysis) —
-  suele actualizar sus códigos rápido después de cada parche.
+  suele actualizar sus códigos rápido después de cada parche. Los números salen de
+  `src/StatisticsAnalysisTool/Network/EventCodes.cs` y `OperationCodes.cs` (rama `main`): son enums
+  de C# **sin valores explícitos**, así que el código de cada entrada es su **posición en la lista**
+  (contando desde `Unused = 0`). Hay que contar los miembros, no leer un número.
+
+  El test `TestShippedCodesMatchReferenceOrdinals`
+  (`desktop/internal/tracker/codes_test.go`) fija los ordinales clave para que un error de conteo no
+  llegue a producción.
 
 ---
 
@@ -123,8 +135,12 @@ una edición Tracker con la tabla rota.
 2. ¿Npcap está instalado y la app corre como administrador?
 3. ¿El diagnóstico muestra *algún* código? Si no llega nada, el problema es la captura, no la tabla
    — revisá que no estés usando VPN o ExitLag, que rompen la captura.
-4. ¿Aparece `Join` entre las **operaciones reconocidas** después de cerrar sesión y volver a entrar?
-   Si aparece y el personaje sigue vacío, revisá `selfOperation.parameters` (el nombre es `2` y el
-   id de entidad es `0` en la referencia actual).
-5. ¿Cambió también el *índice de parámetros*? Si el evento se reconoce pero los números salen mal
+4. ¿Aparece `Join` entre las **operaciones reconocidas** después de cambiar de zona (o de cerrar
+   sesión y volver a entrar)? Si aparece y el personaje sigue vacío, revisá
+   `selfOperation.parameters` (el nombre es `2`, el id de entidad es `0` y el mapa es `8` en la
+   referencia actual).
+5. ¿La ubicación queda vacía pero el personaje aparece? Revisá que `ChangeCluster` esté en
+   **`operations`** (código 41) y que tenga su índice de zona en `eventParameters`. Si está cargado
+   como evento, nunca se dispara.
+6. ¿Cambió también el *índice de parámetros*? Si el evento se reconoce pero los números salen mal
    o en cero, lo que se movió es `eventParameters`, no el código del evento.
