@@ -1,0 +1,15 @@
+{
+  "fixed": {
+    "file_version": "1.3.0.0"
+  },
+  "info": {
+    "0000": {
+      "ProductVersion": "1.3.0",
+      "CompanyName": "Ayudante Albion",
+      "FileDescription": "Ayudante Albion — calculadora de mercado y crafteo para Albion Online",
+      "LegalCopyright": "MIT License",
+      "ProductName": "Ayudante Albion",
+      "Comments": "App de escritorio con tracker en vivo. https://ayudantealbion.github.io"
+    }
+  }
+}
