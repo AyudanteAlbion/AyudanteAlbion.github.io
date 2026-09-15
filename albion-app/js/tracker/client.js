@@ -194,6 +194,23 @@
     return res.json();
   }
 
+  async function devices() {
+    var res = await fetch('/api/tracker/devices', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  async function restart(provider, adapter) {
+    var url = '/api/tracker/restart?provider=' + encodeURIComponent(provider || 'npcap') +
+      '&adapter=' + encodeURIComponent(adapter || '');
+    var data = await post(url);
+    if (!data || !data.ok) throw new Error((data && data.reason) || 'no se pudo reiniciar');
+    state.capturing = true;
+    if (data.source) state.source = data.source;
+    connect();
+    return data;
+  }
+
   root.AATracker = Object.freeze({
     detect: detect,
     state: snapshotState,
@@ -206,6 +223,8 @@
     refreshCharacter: refreshCharacter,
     session: session,
     reloadCodes: reloadCodes,
-    diagnostic: diagnostic
+    diagnostic: diagnostic,
+    devices: devices,
+    restart: restart
   });
 }(window));

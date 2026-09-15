@@ -54,7 +54,9 @@ El escritorio tiene además una **edición Tracker** con estadísticas en vivo d
 
 | Módulo | Qué resuelve |
 |---|---|
-| **Registro de operaciones** | Diario de compras y ventas con P&L, resumen por ítem, exportación CSV, respaldo en archivo y sincronización entre dispositivos |
+| **Registro de operaciones** | Diario de compras y ventas con P&L, filtros por fecha, tier, encantamiento y mercado, selección y borrado por lote, exportación CSV, respaldo y sincronización entre dispositivos |
+| **Recolección** | Seguimiento por recurso, sesión y período, con valor por hora, mapas productivos, distribución por tipo, gráfico temporal e historial detallado |
+| **Mazmorras** | Análisis de runs por tipo, tier, encantamiento y período, con fama, ReSpec, poder, favor, plata, botín, muertes, eficiencia y gestión del historial local |
 | **Perfil** | Fama, kills y muertes de tu personaje desde el killboard oficial, y el costo real de Foco según tus especializaciones |
 | **Fórmulas** | Referencia de todas las cuentas que usa la app, para poder verificarlas |
 
@@ -143,7 +145,7 @@ Solo aparece en la edición Tracker. El frontend es el mismo en las tres formas 
 
 El tracking **arranca apagado** y se activa a mano. Siguiendo los límites públicos aplicados a otras herramientas de la comunidad: solo monitorea el tráfico, no modifica el cliente del juego, no dibuja overlay, no ve jugadores fuera de tu campo de visión y descarta estadísticas de quien no sea tu personaje o parte de tu party. Esto no equivale a una aprobación de SBI ni permite garantizar riesgo cero. Consultá la [auditoría de cumplimiento y sus fuentes](docs/cumplimiento-albion.md).
 
-La edición Tracker necesita **[Npcap](https://npcap.com/)** instalado y ejecutarse como administrador. Sin Npcap la pestaña sigue disponible con datos simulados, para ver cómo funciona antes de instalar nada.
+En el primer inicio, un asistente de seis pasos solicita la carpeta de Albion y el modo de captura. **[Npcap](https://npcap.com/)** es el proveedor recomendado y predeterminado; como alternativa, **Socket** no necesita Npcap pero requiere ejecutar la herramienta como administrador. La pestaña **Sesión** incluye un panel de estado en tiempo real, selección de adaptador, reinicio de red y ajustes generales. Si Npcap no está instalado, su modo conserva el simulador para poder revisar la interfaz antes de instalarlo.
 
 Cuando un parche de Albion cambia el protocolo del juego, el tracker se arregla **editando un archivo de texto y tocando un botón** — sin recompilar ni reinstalar. Ver [`docs/photon-codes.md`](docs/photon-codes.md).
 

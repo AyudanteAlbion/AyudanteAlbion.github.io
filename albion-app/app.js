@@ -3026,6 +3026,10 @@ const LLSessionCore = window.AASessions || (() => {
 })();
 
 const LL = { rows: [], sessions: [], filter: 'all', item: null, cityFilter: '', sessionFilter: '', period: 'all' };
+const COMMERCE = {
+  query: '', from: '2017-01-01', to: '', tier: 'all', ench: 'all', location: 'all',
+  selected: new Set(), visible: []
+};
 try { LL.rows = JSON.parse(localStorage.getItem('tradeLog') || '[]'); } catch (e) {}
 try { LL.sessions = JSON.parse(localStorage.getItem('manualSessions') || '[]'); } catch (e) {}
 
@@ -3095,6 +3099,37 @@ function csvCell(v) {
 }
 function llSigned(n) { return (n > 0 ? '+' : '') + fmt(n); }
 function llRoi(v) { return v == null || !isFinite(v) ? '—' : pct(v); }
+function commerceItemMeta(row) {
+  const id = String(row.id || '');
+  const base = id.split('@')[0];
+  const cat = typeof catalogRow === 'function' ? catalogRow(base) : null;
+  const tierMatch = base.match(/^T([1-8])(?:_|$)/i);
+  const enchMatch = id.match(/@([0-4])$/);
+  return {
+    name: String(row.name || (cat ? cat[1] : id)),
+    tier: row.tier != null ? +row.tier : (tierMatch ? +tierMatch[1] : 0),
+    ench: row.ench != null ? +row.ench : (enchMatch ? +enchMatch[1] : 0)
+  };
+}
+function commerceDate(value, end) {
+  if (!value) return end ? Infinity : -Infinity;
+  const d = new Date(value + (end ? 'T23:59:59.999' : 'T00:00:00'));
+  return isFinite(d.getTime()) ? d.getTime() : (end ? Infinity : -Infinity);
+}
+function commerceFilterRows(rows) {
+  const from = commerceDate(COMMERCE.from, false);
+  const to = commerceDate(COMMERCE.to, true);
+  const q = COMMERCE.query.trim().toLowerCase();
+  return rows.filter(row => {
+    const meta = commerceItemMeta(row);
+    if (row.ts < from || row.ts > to) return false;
+    if (q && !meta.name.toLowerCase().includes(q) && !String(row.id || '').toLowerCase().includes(q)) return false;
+    if (COMMERCE.tier !== 'all' && meta.tier !== +COMMERCE.tier) return false;
+    if (COMMERCE.ench !== 'all' && meta.ench !== +COMMERCE.ench) return false;
+    if (COMMERCE.location !== 'all' && row.city !== COMMERCE.location) return false;
+    return true;
+  });
+}
 function llCurrentRows(type) {
   let rows = LLCore.filterRows(LL.rows, { city: LL.cityFilter, period: LL.period, type: type || '', now: Date.now() });
   if (LL.sessionFilter) {
@@ -3102,7 +3137,7 @@ function llCurrentRows(type) {
     if (sess) rows = LLSessionCore.sessionRows(sess, rows);
     else rows = rows.filter(r => r.sessionId === LL.sessionFilter);
   }
-  return rows;
+  return commerceFilterRows(rows);
 }
 function llRefreshCityFilter() {
   const sel = document.getElementById('llCityFilter');
@@ -3282,9 +3317,11 @@ function llRenderTimeGroups(groups, first) {
 function llRenderRows(rows) {
   const body = document.getElementById('llBody');
   const thead = document.querySelector('#llTable thead tr');
-  thead.innerHTML = `<th>Fecha</th><th>Ítem</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th class="num">Neto op.</th><th>Ciudad</th><th>Nota</th><th></th>`;
+  thead.innerHTML = `<th class="trade-row-check" aria-label="Selección"></th><th>Fecha</th><th>Ítem</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th class="num">Neto op.</th><th>Ciudad</th><th>Nota</th><th></th>`;
+  COMMERCE.visible = rows.map(r => r.uid);
+  commercePaintSelection();
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="10" class="loading-cell">Sin operaciones registradas para los filtros actuales.</td></tr>';
+    body.innerHTML = '<tr><td colspan="11" class="loading-cell">Sin operaciones registradas para los filtros actuales.</td></tr>';
     return;
   }
   body.innerHTML = [...rows].sort((a, b) => b.ts - a.ts).map(r => {
@@ -3299,7 +3336,8 @@ function llRenderRows(rows) {
       const s = LL.sessions.find(x => x.id === r.sessionId);
       return s ? `<span class="badge micro-badge" style="margin-left:4px" title="Sesión: ${sgEsc(s.title)}">⏱️ ${sgEsc(s.title.slice(0, 16))}</span>` : '';
     })() : '';
-    return `<tr>
+    return `<tr class="${COMMERCE.selected.has(r.uid) ? 'trade-row-selected' : ''}">
+      <td class="trade-row-check"><input type="checkbox" data-trade-select="${sgEsc(r.uid)}" ${COMMERCE.selected.has(r.uid) ? 'checked' : ''} aria-label="Seleccionar ${sgEsc(name)}"></td>
       <td class="muted">${fecha}</td>
       <td><div class="item-cell">${iconImg(r.id, 'item-icon sm')}<span>${sgEsc(name)}</span>${sessTag}</div></td>
       <td><span class="badge ${r.type === 'sell' ? 'gold' : ''}">${LL_TYPE_ES[r.type] || r.type}</span></td>
@@ -3318,6 +3356,11 @@ function llRender() {
   llRefreshSessionFilters();
   llRenderActiveSessionBanner();
   const baseRows = llCurrentRows();
+  commercePaintResult(baseRows.length);
+  if (!['all', 'buy', 'sell', 'craft'].includes(LL.filter)) {
+    COMMERCE.visible = [];
+    commercePaintSelection();
+  }
   llRenderStats(baseRows);
 
   const expBtn = document.getElementById('llExport');
@@ -3357,6 +3400,98 @@ function llRender() {
     llRenderTimeGroups(LLCore.hourGroups(baseRows), 'Hora local');
   }
 }
+
+function commerceISODate(date) {
+  const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 10);
+}
+function commercePaintResult(count) {
+  const node = document.getElementById('tradeFilterResult');
+  if (!node) return;
+  const total = LL.rows.length;
+  node.textContent = `${count} transacción${count === 1 ? '' : 'es'} visible${count === 1 ? '' : 's'} de ${total} almacenada${total === 1 ? '' : 's'} localmente.`;
+}
+function commercePaintSelection() {
+  const all = document.getElementById('tradeSelectAll');
+  const del = document.getElementById('tradeDeleteSelected');
+  const count = document.getElementById('tradeSelectedCount');
+  if (!all || !del) return;
+  const visible = COMMERCE.visible.filter(Boolean);
+  const selectedVisible = visible.filter(uid => COMMERCE.selected.has(uid)).length;
+  all.checked = visible.length > 0 && selectedVisible === visible.length;
+  all.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
+  del.disabled = COMMERCE.selected.size === 0;
+  if (count) count.textContent = COMMERCE.selected.size ? `(${COMMERCE.selected.size})` : '';
+}
+function commerceSetChip(group, value) {
+  document.querySelectorAll(`#${group} .chip`).forEach(chip => chip.classList.toggle('active', chip.dataset.value === value));
+}
+function commerceApplyDates(from, to) {
+  COMMERCE.from = from;
+  COMMERCE.to = to;
+  document.getElementById('tradeDateFrom').value = from;
+  document.getElementById('tradeDateTo').value = to;
+  llRender();
+}
+function commerceInit() {
+  const today = new Date();
+  COMMERCE.to = commerceISODate(today);
+  document.getElementById('tradeDateTo').value = COMMERCE.to;
+  document.getElementById('tradeSearch').addEventListener('input', e => { COMMERCE.query = e.target.value; llRender(); });
+  document.getElementById('tradeDateFrom').addEventListener('change', e => { COMMERCE.from = e.target.value; llRender(); });
+  document.getElementById('tradeDateTo').addEventListener('change', e => { COMMERCE.to = e.target.value; llRender(); });
+  document.getElementById('tradeRefresh').addEventListener('click', llRender);
+  document.getElementById('tradePresets').addEventListener('click', e => {
+    const chip = e.target.closest('[data-days]'); if (!chip) return;
+    document.querySelectorAll('#tradePresets .chip').forEach(c => c.classList.toggle('active', c === chip));
+    const days = chip.dataset.days;
+    if (days === 'all') commerceApplyDates('2017-01-01', commerceISODate(today));
+    else {
+      const from = new Date();
+      from.setHours(0, 0, 0, 0);
+      if (+days > 0) from.setDate(from.getDate() - (+days - 1));
+      commerceApplyDates(commerceISODate(from), commerceISODate(today));
+    }
+  });
+  [['tradeTierFilter','tier'], ['tradeEnchFilter','ench'], ['tradeLocationFilter','location']].forEach(([id, key]) => {
+    document.getElementById(id).addEventListener('click', e => {
+      const chip = e.target.closest('[data-value]'); if (!chip) return;
+      COMMERCE[key] = chip.dataset.value;
+      commerceSetChip(id, COMMERCE[key]);
+      llRender();
+    });
+  });
+  document.getElementById('tradeSelectAll').addEventListener('change', e => {
+    COMMERCE.visible.forEach(uid => e.target.checked ? COMMERCE.selected.add(uid) : COMMERCE.selected.delete(uid));
+    llRender();
+  });
+  document.getElementById('tradeDeleteSelected').addEventListener('click', () => {
+    const n = COMMERCE.selected.size;
+    if (!n || !confirm(`¿Eliminar ${n} transacción${n === 1 ? '' : 'es'} seleccionada${n === 1 ? '' : 's'}? Esta acción no se puede deshacer.`)) return;
+    LL.rows = LL.rows.filter(row => !COMMERCE.selected.has(row.uid));
+    COMMERCE.selected.clear();
+    llSave(); llRender();
+  });
+  const toggle = document.getElementById('tradeTrackingToggle');
+  const paintTracking = () => {
+    if (!window.AATracker) return;
+    const on = !!AATracker.state().capturing;
+    toggle.checked = on;
+    document.getElementById('tradeTrackingLabel').textContent = on ? 'El rastreo está activo' : 'El rastreo está inactivo';
+  };
+  if (window.AATracker) {
+    AATracker.detect().then(paintTracking);
+    AATracker.on((type) => { if (type === 'status' || type === 'snapshot') paintTracking(); });
+    toggle.addEventListener('change', async () => {
+      toggle.disabled = true;
+      try { if (toggle.checked) await AATracker.start(); else await AATracker.stop(); }
+      catch (e) { waToast('Seguimiento de comercio', 'No se pudo cambiar el rastreo: ' + e.message, 'err'); }
+      toggle.disabled = false; paintTracking();
+    });
+  } else toggle.disabled = true;
+  commercePaintSelection();
+}
+
 function llUpdateCities() {
   const sel = document.getElementById('llCity'), previous = sel.value;
   const cities = document.getElementById('llType').value === 'sell' ? SELL_CITIES : CITIES;
@@ -3422,6 +3557,8 @@ function llUpdateCities() {
     document.getElementById('llDate').value = llDateInputValue(Date.now());
   });
 
+  commerceInit();
+
   document.getElementById('llFilter').addEventListener('click', e => {
     const chip = e.target.closest('.chip'); if (!chip) return;
     LL.filter = chip.dataset.f;
@@ -3433,9 +3570,18 @@ function llUpdateCities() {
   document.getElementById('llPeriodFilter').addEventListener('change', e => { LL.period = e.target.value; llRender(); });
 
   document.getElementById('llBody').addEventListener('click', e => {
+    const selected = e.target.closest('[data-trade-select]');
+    if (selected) {
+      if (selected.checked) COMMERCE.selected.add(selected.dataset.tradeSelect);
+      else COMMERCE.selected.delete(selected.dataset.tradeSelect);
+      selected.closest('tr')?.classList.toggle('trade-row-selected', selected.checked);
+      commercePaintSelection();
+      return;
+    }
     const del = e.target.closest('[data-del-uid]');
     if (del) {
       LL.rows = LL.rows.filter(r => r.uid !== del.dataset.delUid);
+      COMMERCE.selected.delete(del.dataset.delUid);
       llSave(); llRender();
       return;
     }

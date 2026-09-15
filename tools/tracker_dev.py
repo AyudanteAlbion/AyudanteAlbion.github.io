@@ -28,6 +28,14 @@ PARTY = ['SheniaLiam', 'GrailHealer', 'SpetsnazTank', 'MistRunner']
 ZONES = ['Martlock', 'Mase Knoll', 'Blackthorn Quarry', 'Caerleon', 'Thetford']
 ITEMS = ['T6_BAG', 'T5_MAIN_CURSEDSTAFF', 'T4_2H_BOW', 'T6_ARMOR_LEATHER_SET2']
 ABILITIES = ['Bola de fuego', 'Tajo', 'Flecha perforante', 'Maldición']
+RESOURCES = [
+    ('T5_WOOD', 'Troncos de cedro', 'wood', 5, 620),
+    ('T6_ORE', 'Mineral de titanio', 'ore', 6, 1180),
+    ('T5_FIBER', 'Fibra celeste', 'fiber', 5, 710),
+    ('T6_HIDE', 'Piel gruesa', 'hide', 6, 1320),
+    ('T5_ROCK', 'Granito', 'stone', 5, 430),
+    ('T6_FISH_FRESHWATER_ALL_COMMON', 'Pez de agua dulce', 'fishing', 6, 980),
+]
 
 
 class Hub:
@@ -267,6 +275,27 @@ def simulate() -> None:
             STATE.add_loot({'player': random.choice(PARTY), 'itemId': random.choice(ITEMS),
                             'quantity': random.randint(1, 3), 'quality': random.randint(1, 3),
                             'source': 'mob'})
+            rid, name, kind, tier, unit_value = random.choice(RESOURCES)
+            quantity = random.randint(1, 8)
+            HUB.publish('gathering', {
+                'uid': f'dev-gat-{time.time_ns()}', 'ts': int(time.time() * 1000),
+                'itemId': rid, 'name': name, 'type': kind, 'tier': tier,
+                'quantity': quantity, 'value': quantity * unit_value,
+                'map': random.choice(ZONES),
+            })
+            HUB.publish('dungeonRun', {
+                'uid': f'dev-dng-{time.time_ns()}', 'ts': int(time.time() * 1000),
+                'type': random.choice(['solo', 'standard', 'static', 'avalonian',
+                                       'corrupted', 'hellgate', 'hce', 'mists',
+                                       'knightfall', 'abyssal', 'ancient']),
+                'tier': random.randint(4, 8), 'enchantment': random.randint(0, 4),
+                'map': random.choice(ZONES), 'duration': random.randint(420, 2200),
+                'fame': random.randint(12000, 190000), 'respec': random.randint(0, 18000),
+                'might': random.randint(0, 6000), 'favor': random.randint(0, 2400),
+                'silver': random.randint(5000, 95000),
+                'lootValue': random.randint(15000, 515000),
+                'deaths': random.randint(0, 2), 'chests': random.randint(1, 8),
+            })
             if random.random() < 0.4:
                 STATE.enter_zone(random.choice(ZONES))
         if tick % 2 == 0:
@@ -299,6 +328,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(body)
         if self.path.startswith('/api/tracker/diagnostic'):
             return self._json(diagnostic_payload())
+        if self.path.startswith('/api/tracker/devices'):
+            return self._json({'devices': [
+                {'name': 'dev-ethernet', 'description': 'Ethernet (simulado)'},
+                {'name': 'dev-wifi', 'description': 'Wi-Fi (simulado)'},
+            ]})
         if self.path.startswith('/api/tracker/session'):
             return self._json(STATE.snapshot())
         if self.path.startswith('/api/tracker/stream'):
@@ -306,6 +340,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        if self.path.startswith('/api/tracker/restart'):
+            STATE.capturing = True
+            HUB.publish('status', STATE.snapshot())
+            return self._json({'ok': True, 'capturing': True})
+        if self.path.startswith('/api/tracker/character/refresh'):
+            STATE.character = ''
+            STATE.capturing = True
+            snap = STATE.snapshot()
+            HUB.publish('status', snap)
+            return self._json({'ok': True, 'capturing': True, 'snapshot': snap})
         if self.path.startswith('/api/tracker/start'):
             STATE.capturing = True
             HUB.publish('status', STATE.snapshot())
