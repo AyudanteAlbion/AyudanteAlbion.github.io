@@ -26,6 +26,7 @@ type LiveSource struct {
 	diagSeen  map[int32]int
 	diagOps   map[int32]int
 	lastError string
+	device    string // vacío = todas las interfaces disponibles
 }
 
 // NewLiveSource arma la fuente de captura con la tabla de códigos indicada.
@@ -46,6 +47,18 @@ func (l *LiveSource) Name() string {
 }
 
 // Available informa si se puede capturar en esta PC.
+func (l *LiveSource) Devices() ([]map[string]string, error) {
+	devices, err := capture.Devices()
+	if err != nil { return nil, err }
+	out := make([]map[string]string, 0, len(devices))
+	for _, d := range devices { out = append(out, map[string]string{"name": d.Name, "description": d.Description}) }
+	return out, nil
+}
+
+func (l *LiveSource) SetDevice(name string) {
+	l.mu.Lock(); l.device = name; l.mu.Unlock()
+}
+
 func (l *LiveSource) Available() (bool, string) {
 	ok, reason := capture.Available()
 	if !ok {
@@ -135,8 +148,13 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	}
 
 	devices, err := capture.Devices()
-	if err != nil {
-		return err
+	if err != nil { return err }
+	l.mu.Lock(); selected := l.device; l.mu.Unlock()
+	if selected != "" {
+		filtered := devices[:0]
+		for _, d := range devices { if d.Name == selected { filtered = append(filtered, d) } }
+		if len(filtered) == 0 { return fmt.Errorf("el adaptador seleccionado ya no está disponible") }
+		devices = filtered
 	}
 
 	// Albion habla por una sola interfaz, pero cuál depende de la PC (Wi-Fi,
@@ -206,6 +224,7 @@ func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hu
 				continue // timeout de lectura
 			}
 			if payload := udpPayload(data, handle.LinkType()); payload != nil {
+				st.MarkPacket()
 				parser.Receive(payload)
 			}
 		}

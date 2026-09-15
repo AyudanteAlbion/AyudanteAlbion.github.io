@@ -44,6 +44,7 @@ cp albion-app/app.js albion-app/styles.css albion-exe/app/
 # Módulos del frontend: index.html los carga con <script src="js/...">. Sin
 # esta copia el .exe los pide y recibe 404, y la app cae a los fallbacks.
 rm -rf albion-exe/app/js && cp -r albion-app/js albion-exe/app/
+rm -rf albion-exe/app/css && cp -r albion-app/css albion-exe/app/
 rm -rf albion-exe/app/data && cp -r albion-app/data albion-exe/app/
 rm -rf albion-exe/app/icons && cp -r albion-app/icons albion-exe/app/
 cp -r albion-app/img albion-exe/app/ && rm -rf albion-exe/app/img/logo-opts

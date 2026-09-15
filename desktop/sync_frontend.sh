@@ -21,6 +21,7 @@ find "$DST" -mindepth 1 -not -name 'README.md' -delete 2>/dev/null || true
 cp "$SRC/index.html" "$DST/index.html"
 cp "$SRC/app.js" "$SRC/styles.css" "$DST/"
 cp -r "$SRC/js" "$DST/"
+cp -r "$SRC/css" "$DST/"
 cp -r "$SRC/data" "$DST/"
 cp -r "$SRC/icons" "$DST/"
 cp -r "$SRC/img" "$DST/"
