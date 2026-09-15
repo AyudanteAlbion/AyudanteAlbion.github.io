@@ -180,6 +180,36 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, snap)
 	})
 
+	// Refrescar personaje no intenta adivinar la identidad desde los eventos de
+	// otros jugadores. Borra la identidad previa y espera la próxima respuesta
+	// Join del servidor, la fuente autoritativa del personaje local.
+	mux.HandleFunc("/api/tracker/character/refresh", func(w http.ResponseWriter, r *http.Request) {
+		e.touch()
+		if r.Method != http.MethodPost {
+			http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
+		if ok, reason := e.source.Available(); !ok {
+			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": reason})
+			return
+		}
+		if !e.running() {
+			if err := e.Start(); err != nil {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": err.Error()})
+				return
+			}
+		}
+		e.state.ForgetIdentity()
+		e.state.Reset()
+		snap := e.state.Snapshot()
+		e.hub.Publish(NewEvent("snapshot", snap))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":       true,
+			"capturing": e.running(),
+			"snapshot":  snap,
+		})
+	})
+
 	mux.HandleFunc("/api/tracker/session", func(w http.ResponseWriter, r *http.Request) {
 		e.touch()
 		writeJSON(w, http.StatusOK, e.state.Snapshot())

@@ -24,12 +24,17 @@ type LiveSource struct {
 	mu        sync.Mutex
 	diag      bool
 	diagSeen  map[int32]int
+	diagOps   map[int32]int
 	lastError string
 }
 
 // NewLiveSource arma la fuente de captura con la tabla de códigos indicada.
 func NewLiveSource(store *CodeStore) *LiveSource {
-	return &LiveSource{store: store, diagSeen: make(map[int32]int)}
+	return &LiveSource{
+		store:    store,
+		diagSeen: make(map[int32]int),
+		diagOps:  make(map[int32]int),
+	}
 }
 
 // Name identifica la fuente en la interfaz.
@@ -64,35 +69,53 @@ func (l *LiveSource) SetDiagnostic(on bool) {
 	l.diag = on
 	if on {
 		l.diagSeen = make(map[int32]int)
+		l.diagOps = make(map[int32]int)
 	}
 	l.mu.Unlock()
 }
 
-// Diagnostic devuelve el conteo de códigos vistos, separando los conocidos de
-// los que no están en la tabla. Es lo que se mira para corregir los números
-// después de un patch de Albion.
+// Diagnostic devuelve el conteo de códigos vistos, separados por tipo de
+// mensaje. Las operaciones son importantes para diagnosticar la identidad:
+// Albion entrega el personaje propio en la respuesta a Join, no en un evento.
 func (l *LiveSource) Diagnostic() map[string]any {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	codes, _ := l.store.Current()
-	known := make([]map[string]any, 0)
-	unknown := make([]map[string]any, 0)
-	for code, count := range l.diagSeen {
-		row := map[string]any{"code": code, "count": count}
-		if codes != nil {
-			if name, ok := codes.EventName(code); ok {
-				row["name"] = name
-				known = append(known, row)
-				continue
+	rows := func(seen map[int32]int, lookup func(int32) (string, bool)) map[string]any {
+		known := make([]map[string]any, 0)
+		unknown := make([]map[string]any, 0)
+		for code, count := range seen {
+			row := map[string]any{"code": code, "count": count}
+			if codes != nil {
+				if name, ok := lookup(code); ok {
+					row["name"] = name
+					known = append(known, row)
+					continue
+				}
 			}
+			unknown = append(unknown, row)
 		}
-		unknown = append(unknown, row)
+		return map[string]any{"known": known, "unknown": unknown}
 	}
+
+	events := rows(l.diagSeen, func(code int32) (string, bool) {
+		if codes == nil {
+			return "", false
+		}
+		return codes.EventName(code)
+	})
+	operations := rows(l.diagOps, func(code int32) (string, bool) {
+		if codes == nil {
+			return "", false
+		}
+		return codes.OperationName(code)
+	})
 	return map[string]any{
-		"enabled": l.diag,
-		"known":   known,
-		"unknown": unknown,
+		"enabled":    l.diag,
+		"known":      events["known"],
+		"unknown":    events["unknown"],
+		"operations": operations,
 	}
 }
 
@@ -157,8 +180,9 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hub, codes *Codes) {
 	h := newHandlers(l, st, hub, codes)
 	parser := photon.NewParser(photon.Handler{
-		OnEvent:   h.event,
-		OnRequest: h.request,
+		OnEvent:    h.event,
+		OnRequest:  h.request,
+		OnResponse: h.response,
 	})
 
 	for ctx.Err() == nil {
@@ -371,36 +395,76 @@ func (h *handlers) nameOf(id int64) string {
 	return h.names[id]
 }
 
+// request se conserva como respaldo para versiones que incluyan la identidad
+// en el pedido del cliente. La fuente principal es response: Albion devuelve
+// los datos del personaje propio en la respuesta exitosa a Join.
 func (h *handlers) request(op *photon.OperationRequest) {
-	// El código real viene en el parámetro 253; el byte del envelope suele
-	// venir en 0 y no alcanza para distinguir operaciones por encima de 255.
 	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
 	if !ok {
 		return
 	}
+	h.recordOperation(code)
+	h.identify(code, op.Parameters)
+}
+
+// response procesa las respuestas del servidor. La aplicación de referencia
+// resuelve el personaje local desde JoinResponse (operación 2): parámetros 0
+// para el id de entidad, 1 para GUID, 2 para el nombre y 8 para el mapa.
+func (h *handlers) response(op *photon.OperationResponse) {
+	if op.ReturnCode != 0 {
+		return
+	}
+	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
+	if !ok {
+		return
+	}
+	h.recordOperation(code)
+	h.identify(code, op.Parameters)
+}
+
+// recordOperation mantiene el diagnóstico libre de contenido: registra solo
+// el código y la frecuencia, nunca nombres, GUIDs ni parámetros del juego.
+func (h *handlers) recordOperation(code int32) {
+	if h.src == nil {
+		return
+	}
+	h.src.mu.Lock()
+	if h.src.diag {
+		h.src.diagOps[code]++
+	}
+	h.src.mu.Unlock()
+}
+
+// identify aplica la configuración selfOperation a una operación Join. Tanto
+// pedidos como respuestas pasan por acá, pero la respuesta es la que Albion
+// usa para entregar los datos completos del personaje local.
+func (h *handlers) identify(code int32, params map[byte]any) {
 	name, ok := h.codes.OperationName(code)
 	if !ok || name != h.codes.SelfOp.Operation {
 		return
 	}
-	// La operación Join trae los datos del personaje propio.
-	if idx, ok := h.codes.SelfOp.Parameters["name"]; ok && idx >= 0 && idx <= 255 {
-		if v, ok := op.Parameters[byte(idx)]; ok {
-			if character, ok := str(v); ok && character != "" {
-				h.st.SetCharacter(character)
-				if idIdx, ok := h.codes.SelfOp.Parameters["id"]; ok && idIdx >= 0 && idIdx <= 255 {
-					if idv, ok := op.Parameters[byte(idIdx)]; ok {
-						if id, ok := num(idv); ok {
-							h.mu.Lock()
-							h.selfID = id
-							h.names[id] = character
-							h.mu.Unlock()
-						}
-					}
-				}
-				h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+
+	nameIdx, ok := h.codes.SelfOp.Parameters["name"]
+	if !ok || nameIdx < 0 || nameIdx > 255 {
+		return
+	}
+	character, ok := str(params[byte(nameIdx)])
+	if !ok || character == "" {
+		return
+	}
+
+	h.st.SetCharacter(character)
+	if idIdx, ok := h.codes.SelfOp.Parameters["id"]; ok && idIdx >= 0 && idIdx <= 255 {
+		if idv, ok := params[byte(idIdx)]; ok {
+			if id, ok := num(idv); ok {
+				h.mu.Lock()
+				h.selfID = id
+				h.names[id] = character
+				h.mu.Unlock()
 			}
 		}
 	}
+	h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 }
 
 func (h *handlers) event(ev *photon.EventData) {

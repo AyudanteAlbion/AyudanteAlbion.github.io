@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Source es cualquier productor de eventos de juego. Hoy existe el simulador;
-// la captura real de paquetes Photon implementará esta misma interfaz y se
-// enchufa sin tocar ni el hub, ni el estado, ni el frontend.
+// Source es cualquier productor de eventos de juego. LiveSource captura
+// paquetes Photon y Simulator permite usar la interfaz sin el juego; ambos se
+// enchufan sin tocar ni el hub, ni el estado, ni el frontend.
 type Source interface {
 	// Name identifica la fuente en la UI («simulador», «npcap»…).
 	Name() string

@@ -52,6 +52,12 @@ jobs:
       - name: Compilar las dos ediciones con build.sh
         run: GO_BIN="$(command -v go)" ./build.sh
 
+      # build.sh sincroniza albion-app/ en albion-exe/app/, requerido por
+      # go:embed antes de que el paquete pueda compilarse para sus tests.
+      - name: Ejecutar tests del tracker
+        working-directory: albion-exe
+        run: go test ./...
+
       - name: Verificar y separar paquetes de prueba
         run: |
           set -euo pipefail

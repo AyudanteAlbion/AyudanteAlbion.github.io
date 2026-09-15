@@ -8,6 +8,7 @@ import (
 // Cabeceras y tipos de comando del envoltorio Photon (capa eNet).
 const (
 	headerLength         = 12
+	crcLength            = 4
 	commandHeaderLength  = 12
 	fragmentHeaderLength = 20
 
@@ -23,6 +24,7 @@ const (
 	fragmentTTL      = 30 * time.Second
 	maxFragmentSets  = 64
 	maxPayloadLength = 1 << 20 // 1 MB: tope defensivo contra longitudes absurdas
+	maxFragmentCount = 4096
 )
 
 // Handler recibe los mensajes ya decodificados.
@@ -32,11 +34,23 @@ type Handler struct {
 	OnResponse func(*OperationResponse)
 }
 
+type fragmentKey struct {
+	peerID    uint16
+	challenge uint32
+	channel   byte
+	sequence  int32
+}
+
+type fragmentChunk struct {
+	offset int32
+	data   []byte
+}
+
 type fragmentSet struct {
 	total    int32
 	received int32
 	length   int32
-	chunks   map[int32][]byte
+	chunks   map[int32]fragmentChunk
 	seen     time.Time
 }
 
@@ -44,39 +58,118 @@ type fragmentSet struct {
 // No es seguro para uso concurrente: usar uno por goroutine de captura.
 type Parser struct {
 	handler   Handler
-	fragments map[int32]*fragmentSet
+	fragments map[fragmentKey]*fragmentSet
 	lastSweep time.Time
 }
 
 // NewParser crea un parser con los callbacks indicados.
 func NewParser(h Handler) *Parser {
-	return &Parser{handler: h, fragments: make(map[int32]*fragmentSet), lastSweep: time.Now()}
+	return &Parser{
+		handler:   h,
+		fragments: make(map[fragmentKey]*fragmentSet),
+		lastSweep: time.Now(),
+	}
 }
 
-// Receive procesa el payload UDP de un paquete. Devuelve false si el paquete
-// no era Photon válido o si algo vino cortado; el llamador simplemente sigue
-// con el próximo, porque en UDP perder paquetes es lo normal.
+// Receive procesa uno o varios paquetes Photon presentes en el payload UDP.
+// Devuelve false si encuentra un paquete inválido o incompleto; el llamador
+// sigue con la siguiente captura porque perder paquetes es normal en UDP.
 func (p *Parser) Receive(payload []byte) bool {
 	p.sweep()
+	if len(payload) == 0 {
+		return false
+	}
 
+	ok := true
+	for offset := 0; offset < len(payload); {
+		packetLength, frameOK := photonPacketLength(payload[offset:])
+		if !frameOK {
+			return false
+		}
+		if !p.receivePacket(payload[offset : offset+packetLength]) {
+			ok = false
+		}
+		offset += packetLength
+	}
+	return ok
+}
+
+// photonPacketLength reads just enough of a Photon envelope to split a
+// coalesced UDP payload without trusting a length outside the current buffer.
+func photonPacketLength(payload []byte) (int, bool) {
+	if len(payload) < headerLength {
+		return 0, false
+	}
+	flags := payload[2]
+	// Cipher text cannot be framed as individual commands. It is intentionally
+	// ignored by receivePacket, so preserve the rest of this UDP payload as one.
+	if flags == 1 {
+		return len(payload), true
+	}
+
+	offset := headerLength
+	if flags == 0xcc {
+		if len(payload) < offset+crcLength {
+			return 0, false
+		}
+		offset += crcLength
+	} else if flags != 0 {
+		return 0, false
+	}
+
+	for i := 0; i < int(payload[3]); i++ {
+		if offset+commandHeaderLength > len(payload) {
+			return 0, false
+		}
+		commandLength := int(binary.BigEndian.Uint32(payload[offset+4 : offset+8]))
+		if commandLength < commandHeaderLength || commandLength > len(payload)-offset {
+			return 0, false
+		}
+		offset += commandLength
+	}
+	return offset, true
+}
+
+func (p *Parser) receivePacket(payload []byte) bool {
 	if len(payload) < headerLength {
 		return false
 	}
-	commandCount := int(binary.BigEndian.Uint16(payload[2:4]))
-	offset := headerLength
-	ok := true
+	flags := payload[2]
+	if flags == 1 {
+		// El contenido está cifrado y el tracker nunca intenta descifrarlo.
+		return false
+	}
+	if flags != 0 && flags != 0xcc {
+		return false
+	}
 
-	for i := 0; i < commandCount; i++ {
+	peerID := binary.BigEndian.Uint16(payload[0:2])
+	challenge := binary.BigEndian.Uint32(payload[8:12])
+	offset := headerLength
+	if flags == 0xcc {
+		if len(payload) < offset+crcLength {
+			return false
+		}
+		want := binary.BigEndian.Uint32(payload[offset : offset+crcLength])
+		if want != photonCRC(payload, offset, crcLength) {
+			return false
+		}
+		offset += crcLength
+	}
+
+	ok := true
+	for i := 0; i < int(payload[3]); i++ {
 		if offset+commandHeaderLength > len(payload) {
 			return false
 		}
 		cmdType := payload[offset]
-		cmdLength := int32(binary.BigEndian.Uint32(payload[offset+4 : offset+8]))
-		if cmdLength < commandHeaderLength || int(cmdLength) > len(payload)-offset {
+		channel := payload[offset+1]
+		cmdLength := int(binary.BigEndian.Uint32(payload[offset+4 : offset+8]))
+		if cmdLength < commandHeaderLength || cmdLength > len(payload)-offset {
 			return false
 		}
-		body := payload[offset+commandHeaderLength : offset+int(cmdLength)]
-		offset += int(cmdLength)
+		body := payload[offset+commandHeaderLength : offset+cmdLength]
+		offset += cmdLength
 
 		switch cmdType {
 		case cmdDisconnect:
@@ -95,102 +188,157 @@ func (p *Parser) Receive(payload []byte) bool {
 				ok = false
 			}
 		case cmdSendFragment:
-			if !p.fragment(body) {
+			key := fragmentKey{
+				peerID:    peerID,
+				challenge: challenge,
+				channel:   channel,
+			}
+			if !p.fragment(body, key) {
 				ok = false
 			}
 		}
 	}
-	return ok
+	return offset == len(payload) && ok
 }
 
-// fragment acumula las partes de un mensaje partido en varios paquetes.
-func (p *Parser) fragment(body []byte) bool {
-	if len(body) < fragmentHeaderLength-commandHeaderLength+8 {
+// photonCRC is Photon/eNet's reflected CRC-32 over the full packet. The CRC
+// field itself is treated as four zero bytes during calculation.
+func photonCRC(payload []byte, zeroOffset, zeroLength int) uint32 {
+	crc := ^uint32(0)
+	zeroEnd := zeroOffset + zeroLength
+	for i, b := range payload {
+		if i >= zeroOffset && i < zeroEnd {
+			b = 0
+		}
+		crc ^= uint32(b)
+		for bit := 0; bit < 8; bit++ {
+			if crc&1 != 0 {
+				crc = (crc >> 1) ^ 0xedb88320
+			} else {
+				crc >>= 1
+			}
+		}
+	}
+	return crc
+}
+
+// fragment accumula las partes de un mensaje partido en varios paquetes.
+func (p *Parser) fragment(body []byte, key fragmentKey) bool {
+	if len(body) <= fragmentHeaderLength {
 		return false
 	}
-	seq := int32(binary.BigEndian.Uint32(body[0:4]))
+	key.sequence = int32(binary.BigEndian.Uint32(body[0:4]))
 	count := int32(binary.BigEndian.Uint32(body[4:8]))
 	number := int32(binary.BigEndian.Uint32(body[8:12]))
-	total := int32(binary.BigEndian.Uint32(body[12:16]))
-	offset := int32(binary.BigEndian.Uint32(body[16:20]))
+	totalLength := int32(binary.BigEndian.Uint32(body[12:16]))
+	chunkOffset := int32(binary.BigEndian.Uint32(body[16:20]))
 	data := body[20:]
 
-	if count <= 0 || number < 0 || number >= count || total <= 0 || total > maxPayloadLength {
+	if count <= 0 || count > maxFragmentCount || number < 0 || number >= count ||
+		totalLength <= 0 || totalLength > maxPayloadLength {
 		return false
 	}
-	if offset < 0 || offset > total || int32(len(data)) > total-offset {
+	if chunkOffset < 0 || chunkOffset > totalLength || int32(len(data)) > totalLength-chunkOffset {
 		return false
 	}
 
-	set, ok := p.fragments[seq]
-	if !ok {
+	set, found := p.fragments[key]
+	if !found {
 		if len(p.fragments) >= maxFragmentSets {
 			// Tope defensivo: fragmentos huérfanos no pueden crecer sin fin.
 			p.dropOldest()
 		}
-		set = &fragmentSet{total: count, length: total, chunks: make(map[int32][]byte, count)}
-		p.fragments[seq] = set
+		set = &fragmentSet{total: count, length: totalLength, chunks: make(map[int32]fragmentChunk, count)}
+		p.fragments[key] = set
+	} else if set.total != count || set.length != totalLength {
+		delete(p.fragments, key)
+		return false
 	}
 	set.seen = time.Now()
-	if _, dup := set.chunks[number]; dup {
+	if _, duplicate := set.chunks[number]; duplicate {
 		return true
 	}
+
 	// Copia: el búfer de captura se reutiliza en la próxima lectura.
 	chunk := make([]byte, len(data))
 	copy(chunk, data)
-	set.chunks[number] = chunk
+	set.chunks[number] = fragmentChunk{offset: chunkOffset, data: chunk}
 	set.received++
-
 	if set.received < set.total {
 		return true
 	}
 
-	full := make([]byte, 0, set.length)
+	full := make([]byte, set.length)
+	nextOffset := int32(0)
 	for i := int32(0); i < set.total; i++ {
-		part, ok := set.chunks[i]
-		if !ok {
-			delete(p.fragments, seq)
+		part, exists := set.chunks[i]
+		if !exists || part.offset != nextOffset || int32(len(part.data)) > set.length-nextOffset {
+			delete(p.fragments, key)
 			return false
 		}
-		full = append(full, part...)
+		copy(full[nextOffset:], part.data)
+		nextOffset += int32(len(part.data))
 	}
-	delete(p.fragments, seq)
+	delete(p.fragments, key)
+	if nextOffset != set.length {
+		return false
+	}
 	return p.message(full)
 }
 
-// message decodifica un mensaje Photon ya completo.
+// message decodifica un mensaje Photon ya completo. Protocol18 usa cero como
+// primer byte de la cabecera confiable; Protocol16 conserva la firma F3. El
+// marcador selecciona el decodificador para conservar capturas antiguas.
 func (p *Parser) message(data []byte) bool {
 	if len(data) < 2 {
 		return false
 	}
-	// data[0] es el byte significador (0xF3); data[1] el tipo de mensaje.
 	msgType := data[1] & 0x7f
 	// El bit alto marca payload cifrado: no se puede leer y no se intenta.
 	if data[1]&0x80 != 0 {
 		return false
 	}
 	r := &reader{buf: data, pos: 2}
+	protocol18 := data[0] == 0
 
 	switch msgType {
 	case msgEventData:
-		ev, err := r.eventData(0)
-		if err != nil {
+		var ev *EventData
+		var err error
+		if protocol18 {
+			ev, err = r.p18EventData(0)
+		} else {
+			ev, err = r.eventData(0)
+		}
+		if err != nil || r.left() != 0 {
 			return false
 		}
 		if p.handler.OnEvent != nil {
 			p.handler.OnEvent(ev)
 		}
 	case msgOperationRequest:
-		op, err := r.operationRequest(0)
-		if err != nil {
+		var op *OperationRequest
+		var err error
+		if protocol18 {
+			op, err = r.p18OperationRequest(0)
+		} else {
+			op, err = r.operationRequest(0)
+		}
+		if err != nil || r.left() != 0 {
 			return false
 		}
 		if p.handler.OnRequest != nil {
 			p.handler.OnRequest(op)
 		}
 	case msgOperationResponse:
-		op, err := r.operationResponse(0)
-		if err != nil {
+		var op *OperationResponse
+		var err error
+		if protocol18 {
+			op, err = r.p18OperationResponse(0)
+		} else {
+			op, err = r.operationResponse(0)
+		}
+		if err != nil || r.left() != 0 {
 			return false
 		}
 		if p.handler.OnResponse != nil {
@@ -209,23 +357,23 @@ func (p *Parser) sweep() {
 		return
 	}
 	p.lastSweep = now
-	for seq, set := range p.fragments {
+	for key, set := range p.fragments {
 		if now.Sub(set.seen) > fragmentTTL {
-			delete(p.fragments, seq)
+			delete(p.fragments, key)
 		}
 	}
 }
 
 func (p *Parser) dropOldest() {
-	var oldestSeq int32
+	var oldestKey fragmentKey
 	var oldest time.Time
 	first := true
-	for seq, set := range p.fragments {
+	for key, set := range p.fragments {
 		if first || set.seen.Before(oldest) {
-			oldestSeq, oldest, first = seq, set.seen, false
+			oldestKey, oldest, first = key, set.seen, false
 		}
 	}
 	if !first {
-		delete(p.fragments, oldestSeq)
+		delete(p.fragments, oldestKey)
 	}
 }

@@ -40,14 +40,19 @@ y se sigue usando la copia de fábrica.
 
 ### Paso 1 — Ver qué está llegando
 
-En la pestaña **Sesión**, con el tracking activo, tocá **Modo diagnóstico**. Aparecen dos tablas:
+En la pestaña **Sesión**, con el tracking activo, tocá **Modo diagnóstico**. Aparecen tablas para
+**eventos** y para **operaciones** del cliente/servidor:
 
 - **Desconocidos** — códigos que el juego está mandando y la tabla no reconoce. Acá está el evento
-  que se movió.
+  u operación que se movió.
 - **Reconocidos** — los que sí reconoce, con cuántas veces llegaron.
 
 Un evento muy frecuente en combate y con números grandes es casi seguro `HealthUpdate` (daño y
 curación). Los que llegan una vez al cambiar de mapa son `JoinFinished` o `ChangeCluster`.
+
+La identidad propia llega en la **respuesta exitosa de la operación `Join`**. Después de activar el
+tracking, cerrá sesión y volvé a entrar; en diagnóstico debe aparecer `Join` entre las operaciones
+reconocidas. El diagnóstico guarda solamente código y frecuencia, nunca nombres ni otros parámetros.
 
 ### Paso 2 — Corregir el número
 
@@ -85,7 +90,7 @@ Si el archivo tiene un error, la app lo dice y sigue funcionando con la tabla an
 | `events` | Nombre lógico → número. **Lo que más cambia** |
 | `operations` | Igual, para mensajes del cliente al servidor |
 | `eventParameters` | Dentro de cada evento, en qué índice está cada dato (quién, a quién, cuánto) |
-| `selfOperation` | De qué operación se saca tu personaje |
+| `selfOperation` | De qué respuesta de operación se saca tu personaje (por defecto, `Join`) |
 
 Las claves que empiezan con `_` son comentarios y se ignoran.
 
@@ -118,5 +123,8 @@ una edición Tracker con la tabla rota.
 2. ¿Npcap está instalado y la app corre como administrador?
 3. ¿El diagnóstico muestra *algún* código? Si no llega nada, el problema es la captura, no la tabla
    — revisá que no estés usando VPN o ExitLag, que rompen la captura.
-4. ¿Cambió también el *índice de parámetros*? Si el evento se reconoce pero los números salen mal
+4. ¿Aparece `Join` entre las **operaciones reconocidas** después de cerrar sesión y volver a entrar?
+   Si aparece y el personaje sigue vacío, revisá `selfOperation.parameters` (el nombre es `2` y el
+   id de entidad es `0` en la referencia actual).
+5. ¿Cambió también el *índice de parámetros*? Si el evento se reconoce pero los números salen mal
    o en cero, lo que se movió es `eventParameters`, no el código del evento.

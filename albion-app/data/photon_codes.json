@@ -134,10 +134,11 @@
 
   "selfOperation": {
     "_comment": [
-      "La operacion Join trae los datos del personaje propio: es como el",
-      "tracker sabe quien sos sin preguntarte nada."
+      "La RESPUESTA del servidor a la operacion Join trae los datos del",
+      "personaje propio: es como el tracker sabe quien sos sin preguntarte nada.",
+      "Indices verificados contra JoinResponse de la app de referencia."
     ],
     "operation": "Join",
-    "parameters": { "id": 0, "name": 2, "guild": 57, "zone": 8 }
+    "parameters": { "id": 0, "name": 2, "guild": 58, "zone": 8 }
   }
 }

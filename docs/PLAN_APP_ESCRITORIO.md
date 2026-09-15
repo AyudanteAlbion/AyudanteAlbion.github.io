@@ -29,7 +29,7 @@ albion-exe/
     ├── hub.go               Pub/sub de eventos → SSE
     ├── state.go             Estado de sesión (daño, fama, plata, loot, mapas)
     ├── codes.go             CodeStore (tabla photon_codes.json, recargable)
-    ├── photon/              Parser Photon (protocol16)
+    ├── photon/              Parser Photon (Protocol18 actual + fallback Protocol16)
     └── capture/             Npcap vía syscall (pcap_windows.go) + stub (pcap_other.go)
 ```
 

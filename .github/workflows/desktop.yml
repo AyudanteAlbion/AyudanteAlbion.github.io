@@ -66,6 +66,11 @@ jobs:
         working-directory: desktop
         run: go mod tidy
 
+      - name: Ejecutar tests del tracker
+        shell: bash
+        working-directory: desktop
+        run: go test ./...
+
       - name: Diagnóstico de Wails (wails doctor)
         shell: bash
         working-directory: desktop
