@@ -152,6 +152,17 @@
     return post('/api/tracker/reset');
   }
 
+  /* Descarta la identidad actual y reinicia la escucha para detectar de nuevo
+     el personaje en el próximo evento Join del juego. */
+  async function refreshCharacter() {
+    var data = await post('/api/tracker/character/refresh');
+    if (data && data.ok) {
+      state.capturing = true;
+      connect();
+    }
+    return data;
+  }
+
   /* Recarga photon_codes.json desde disco, sin reiniciar la aplicación. */
   async function reloadCodes() {
     var data = await post('/api/tracker/codes/reload');
@@ -190,6 +201,7 @@
     start: start,
     stop: stop,
     reset: reset,
+    refreshCharacter: refreshCharacter,
     session: session,
     reloadCodes: reloadCodes,
     diagnostic: diagnostic

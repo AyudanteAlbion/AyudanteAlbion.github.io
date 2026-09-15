@@ -27,6 +27,10 @@ func main() {
 		Height:    800,
 		MinWidth:  1024,
 		MinHeight: 640,
+		// La barra blanca nativa rompe la continuidad del tema oscuro. La
+		// ventana queda sin marco y el frontend aporta una barra integrada con
+		// arrastre, doble clic y controles de ventana accesibles.
+		Frameless: true,
 
 		// AssetServer.Handler: la WebView pide http://wails/… y todo se resuelve
 		// dentro del proceso, sin abrir un puerto TCP público. El frontend sigue

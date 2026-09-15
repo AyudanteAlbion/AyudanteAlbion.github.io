@@ -122,6 +122,67 @@ a:hover { text-decoration: underline; }
 .micro { font-size: 0.78rem; }
 .pad { padding: 8px 14px 14px; }
 
+/* ---- barra de ventana propia (solo Wails) ---- */
+.desktop-titlebar { display: none; }
+body.desktop-app .desktop-titlebar {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  height: 40px;
+  color: #aeb5c3;
+  background: linear-gradient(180deg, #171c26 0%, #11151d 100%);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  box-shadow: 0 1px 0 rgba(0,0,0,.5);
+  user-select: none;
+}
+.desktop-titlebar-drag {
+  --wails-draggable: drag;
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.desktop-titlebar-drag img { width: 22px; height: 22px; border-radius: 50%; }
+.desktop-titlebar-edition {
+  padding: 2px 7px;
+  color: #a88749;
+  border: 1px solid rgba(228,175,83,.2);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.desktop-window-controls {
+  --wails-draggable: no-drag;
+  display: flex;
+  height: 40px;
+}
+.desktop-window-controls button {
+  width: 46px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #aeb5c3;
+  font: 16px/1 "Segoe UI", sans-serif;
+  cursor: default;
+  transition: color .1s, background .1s;
+}
+.desktop-window-controls button:hover { color: #fff; background: rgba(255,255,255,.09); }
+.desktop-window-controls .desktop-close:hover { background: #c42b1c; color: #fff; }
+.desktop-max-icon { width: 10px; height: 10px; border: 1px solid currentColor; }
+body.desktop-app .topbar { top: 40px; }
+
 /* ---- topbar ---- */
 .topbar {
   border-bottom: 1px solid var(--border);
@@ -1661,6 +1722,11 @@ img { max-width: 100%; }
 .trk-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .trk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .trk-status { margin: 10px 0 4px; color: var(--muted); font-size: 13px; }
+.trk-safety {
+  margin-top: 10px; padding: 8px 10px; border: 1px solid rgba(20,185,138,.24);
+  border-radius: 8px; background: rgba(20,185,138,.06); color: var(--muted); font-size: 12px;
+}
+.trk-safety strong { color: var(--green); }
 .trk-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
 .trk-kpi { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .trk-kpi-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }

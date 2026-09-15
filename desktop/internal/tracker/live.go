@@ -478,6 +478,12 @@ func (h *handlers) event(ev *photon.EventData) {
 			h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 		}
 
+	case "PartyPlayerLeft":
+		if id, ok := h.paramNum(name, p, "id"); ok {
+			h.st.RemovePartyMember(h.nameOf(id))
+			h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+		}
+
 	case "PartyDisbanded":
 		h.st.SetParty(nil)
 		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
@@ -510,8 +516,8 @@ func (h *handlers) health(event string, p map[byte]any) {
 	}
 
 	if amount < 0 {
-		if source == "" {
-			return // daño de algo que no tenemos identificado
+		if !h.st.IsTrackedPlayer(source) {
+			return // nunca medir enemigos ni jugadores ajenos a la party
 		}
 		h.st.AddDamage(source, target, -amount)
 		h.hub.Publish(NewEvent("damage", map[string]any{
@@ -520,8 +526,8 @@ func (h *handlers) health(event string, p map[byte]any) {
 		return
 	}
 
-	if source == "" {
-		return
+	if !h.st.IsTrackedPlayer(source) {
+		return // la curación ajena tampoco debe perfilar a terceros
 	}
 	h.st.AddHealing(source, amount, 0)
 	h.hub.Publish(NewEvent("heal", map[string]any{
@@ -537,8 +543,8 @@ func (h *handlers) loot(event string, p map[byte]any) {
 		return
 	}
 	looter := h.nameOf(looterID)
-	if looter == "" {
-		looter = "desconocido"
+	if !h.st.IsTrackedPlayer(looter) {
+		return // botín únicamente propio o de la party actual
 	}
 	if qty <= 0 {
 		qty = 1

@@ -114,10 +114,22 @@ func (s *State) SetCapturing(on, simulated bool) {
 func (s *State) SetCharacter(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Solo puede haber una fila propia. Esto también cubre un cambio de
+	// personaje sin reiniciar la aplicación.
+	for _, player := range s.players {
+		player.Self = false
+	}
 	s.character = name
 	if name != "" {
 		s.player(name).Self = true
 	}
+}
+
+// ClearCharacter descarta la detección actual sin tocar los contadores de la
+// sesión. La captura volverá a completarla al recibir el próximo Join del
+// juego (al entrar o cambiar de zona/personaje).
+func (s *State) ClearCharacter() {
+	s.SetCharacter("")
 }
 
 // SetParty reemplaza la lista de miembros de la party.
@@ -144,6 +156,44 @@ func (s *State) AddPartyMember(name string) {
 	}
 	s.party = append(s.party, name)
 	s.player(name)
+}
+
+// RemovePartyMember deja de aceptar estadísticas nuevas de quien salió de la
+// party. Su fila histórica se conserva en la sesión, igual que en un medidor
+// de grupo convencional.
+func (s *State) RemovePartyMember(name string) {
+	if name == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.party[:0]
+	for _, member := range s.party {
+		if member != name {
+			out = append(out, member)
+		}
+	}
+	s.party = out
+}
+
+// IsTrackedPlayer limita el análisis al personaje propio y su party. Aunque
+// el protocolo anuncie otros personajes visibles, nunca se agregan enemigos o
+// jugadores ajenos al medidor ni al registro de botín.
+func (s *State) IsTrackedPlayer(name string) bool {
+	if name == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if name == s.character {
+		return true
+	}
+	for _, member := range s.party {
+		if member == name {
+			return true
+		}
+	}
+	return false
 }
 
 // EnterZone cierra la visita anterior y abre una nueva.

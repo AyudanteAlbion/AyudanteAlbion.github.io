@@ -230,6 +230,42 @@ def validate_photon_codes() -> None:
     _ = operations
 
 
+def validate_tracker_safety() -> None:
+    """Evita que cambios futuros eliminen límites básicos del tracker.
+
+    No demuestra cumplimiento legal, pero vuelve visibles en CI las regresiones
+    técnicas más peligrosas: inyección, acceso al proceso, overlay y pérdida
+    del filtro propio/party.
+    """
+    desktop = ROOT / "desktop"
+    sources = "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore")
+        for path in desktop.rglob("*")
+        if path.is_file() and path.suffix in {".go", ".js", ".json"}
+    )
+    forbidden = {
+        "pcap_sendpacket": "envío de paquetes",
+        "pcap_inject": "inyección de paquetes",
+        "WriteProcessMemory": "escritura de memoria del juego",
+        "ReadProcessMemory": "lectura de memoria del juego",
+        "SendInput": "automatización de entradas",
+        "WindowSetAlwaysOnTop": "overlay/ventana siempre visible",
+    }
+    for symbol, description in forbidden.items():
+        if symbol in sources:
+            ERRORS.append(f"Tracker: se detectó {description} ({symbol}); requiere revisión de cumplimiento")
+
+    live = (desktop / "internal" / "tracker" / "live.go").read_text(encoding="utf-8")
+    required_guards = {
+        "if !h.st.IsTrackedPlayer(source)": "filtro propio/party para combate",
+        "if !h.st.IsTrackedPlayer(looter)": "filtro propio/party para botín",
+        'case "PartyPlayerLeft"': "baja de integrantes que salen de la party",
+    }
+    for marker, description in required_guards.items():
+        if marker not in live:
+            ERRORS.append(f"Tracker: falta {description}")
+
+
 def main() -> int:
     validate_javascript()
     validate_python()
@@ -238,6 +274,7 @@ def main() -> int:
     validate_runtime_references()
     validate_build_inputs()
     validate_photon_codes()
+    validate_tracker_safety()
     if ERRORS:
         print("Validación fallida:")
         print("\n".join(f"- {error}" for error in ERRORS))

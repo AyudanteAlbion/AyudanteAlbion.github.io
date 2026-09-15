@@ -141,7 +141,7 @@ La separación es real, no un interruptor: el motor de estadísticas se compila 
 
 Solo aparece en la edición Tracker. El frontend es el mismo en las tres formas y decide qué mostrar preguntando `GET /api/tracker/status`: la web responde 404, la estándar responde «no disponible» y la Tracker responde con el motor listo.
 
-El tracking **arranca apagado** y se activa a mano. Siguiendo la misma línea que otras herramientas de la comunidad: solo monitorea el tráfico, no modifica el cliente del juego, no dibuja overlay y no ve jugadores fuera de tu campo de visión.
+El tracking **arranca apagado** y se activa a mano. Siguiendo los límites públicos aplicados a otras herramientas de la comunidad: solo monitorea el tráfico, no modifica el cliente del juego, no dibuja overlay, no ve jugadores fuera de tu campo de visión y descarta estadísticas de quien no sea tu personaje o parte de tu party. Esto no equivale a una aprobación de SBI ni permite garantizar riesgo cero. Consultá la [auditoría de cumplimiento y sus fuentes](docs/cumplimiento-albion.md).
 
 La edición Tracker necesita **[Npcap](https://npcap.com/)** instalado y ejecutarse como administrador. Sin Npcap la pestaña sigue disponible con datos simulados, para ver cómo funciona antes de instalar nada.
 

@@ -261,5 +261,7 @@ Captura, protocolo y tabla de códigos están implementados. Lo que falta:
 - No se modifica el cliente del juego, ni se lee su memoria, ni se inyecta nada.
 - No hay overlay sobre el juego.
 - No se rastrean jugadores fuera del campo de visión del personaje.
+- Daño, curación y botín se agregan solo para el personaje propio y la party actual; los demás jugadores se descartan.
 - El tracking arranca apagado y se activa a mano.
 - Nada sale de la PC salvo lo que el usuario suba a la nube deliberadamente.
+- Estas barreras están auditadas en [`cumplimiento-albion.md`](cumplimiento-albion.md) y la validación del repositorio bloquea APIs de inyección, memoria, automatización y always-on-top.
