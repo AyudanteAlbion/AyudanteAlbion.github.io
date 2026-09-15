@@ -46,15 +46,17 @@ jobs:
           go-version: '1.23.4'
           cache: false
 
-      - name: Ejecutar tests del tracker
-        working-directory: albion-exe
-        run: go test ./...
-
       # Es importante ejecutar el build de distribución completo. Un `go
       # build` genérico (incluido el autobuild de CodeQL/Analyze (go)) no
       # prueba la compilación cruzada de Windows ni el build tag `tracker`.
       - name: Compilar las dos ediciones con build.sh
         run: GO_BIN="$(command -v go)" ./build.sh
+
+      # build.sh sincroniza albion-app/ en albion-exe/app/, requerido por
+      # go:embed antes de que el paquete pueda compilarse para sus tests.
+      - name: Ejecutar tests del tracker
+        working-directory: albion-exe
+        run: go test ./...
 
       - name: Verificar y separar paquetes de prueba
         run: |
