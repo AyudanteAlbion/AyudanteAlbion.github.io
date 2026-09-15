@@ -120,6 +120,19 @@ func (s *State) SetCharacter(name string) {
 	}
 }
 
+// ForgetIdentity elimina la identidad y party detectadas para esperar una
+// nueva respuesta Join. Se usa al pedir que se refresque el personaje: las
+// estadísticas se reinician después para no mezclar dos identidades.
+func (s *State) ForgetIdentity() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.character = ""
+	s.party = nil
+	for _, c := range s.players {
+		c.Self = false
+	}
+}
+
 // SetParty reemplaza la lista de miembros de la party.
 func (s *State) SetParty(members []string) {
 	s.mu.Lock()

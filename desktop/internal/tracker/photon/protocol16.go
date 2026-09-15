@@ -1,8 +1,9 @@
 // Package photon decodifica el protocolo de red Photon que usa Albion Online.
 //
-// Implementación propia y sin dependencias externas: el ejecutable se compila
-// con la toolchain fija de build.sh y sin acceso a proxy.golang.org, así que
-// todo lo que necesita viaja en este repositorio.
+// Implementación propia y sin dependencias externas: Protocol18 es el formato
+// vigente y Protocol16 se conserva para leer capturas históricas. El ejecutable
+// se compila con la toolchain fija de build.sh y sin acceso a proxy.golang.org,
+// así que todo lo que necesita viaja en este repositorio.
 package photon
 
 import (

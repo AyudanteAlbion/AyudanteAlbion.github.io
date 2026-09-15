@@ -186,11 +186,16 @@
             '<td>' + r.count + '</td></tr>';
         }).join('') + '</tbody></table>';
     }
+    var operations = data.operations || {};
     node.innerHTML =
       '<p class="muted small">Códigos que está mandando el juego ahora mismo. ' +
       'Los <em>desconocidos</em> son los que hay que agregar o corregir en la tabla.</p>' +
-      table('Desconocidos', data.unknown, false) +
-      table('Reconocidos', data.known, true);
+      table('Eventos desconocidos', data.unknown, false) +
+      table('Eventos reconocidos', data.known, true) +
+      '<p class="muted small">La identidad llega en la respuesta de la operación <code>Join</code>. ' +
+      'Estas tablas registran solo código y frecuencia; no exponen nombres, GUIDs ni otros parámetros.</p>' +
+      table('Operaciones desconocidas', operations.unknown, false) +
+      table('Operaciones reconocidas', operations.known, true);
   }
 
   async function onToggle() {
@@ -269,7 +274,7 @@
     if (!info.available) {
       setStatus(info.reason || 'Motor de captura no disponible.');
     } else if (detectingCharacter) {
-      setStatus('Buscando tu personaje… Entrá o cambiá de zona en Albion para completar la detección.');
+      setStatus('Buscando tu personaje… Cerrá sesión y volvé a entrar en Albion para recibir la respuesta Join.');
     } else if (info.capturing) {
       setStatus('Tracking activo · fuente: ' + (info.source || 'desconocida'));
     } else {

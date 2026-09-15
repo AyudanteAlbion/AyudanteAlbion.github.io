@@ -117,18 +117,21 @@ El modo promiscuo va **apagado**: alcanza con el tráfico de esta máquina.
 
 ### 3.1.2 Protocolo: `tracker/photon`
 
-Implementación propia de Protocol16, también sin dependencias. Dos capas:
+Implementación propia y sin dependencias externas de **Protocol18**, el formato compacto que usa
+Albion actualmente, con compatibilidad de lectura para capturas históricas Protocol16. Tiene dos
+capas:
 
-- `parser.go` — el envoltorio eNet: comandos, y el **reensamblado de fragmentos** (un mensaje puede
-  venir partido en varios paquetes UDP, desordenados). Los fragmentos incompletos caducan a los 30 s
-  y hay un tope de sets simultáneos, para que un paquete corrupto no haga crecer la memoria.
-- `protocol16.go` — la deserialización de valores. Acota el anidamiento a 8 niveles: un paquete
-  malformado no puede hundir al parser en recursión.
+- `parser.go` — el envoltorio eNet: separa datagramas Photon coalescidos, verifica CRC cuando está
+  presente, procesa comandos y reensambla fragmentos por conexión, canal y secuencia. Los fragmentos
+  incompletos caducan a los 30 s y sus cantidades/tamaños tienen topes defensivos.
+- `protocol18.go` — deserializa los valores compactos Protocol18: enteros varint, cadenas, valores
+  personalizados, colecciones y tablas de parámetros de un byte. Acota profundidad, longitudes y
+  colecciones antes de asignar memoria. `protocol16.go` conserva el decoder ASCII anterior para
+  capturas viejas.
 
-Los mensajes cifrados se detectan y se descartan; no se intenta leerlos.
-
-**La captura real ya está implementada.** Lo que falta es verificarla contra el juego en una PC con
-Windows, que es la parte que no se puede hacer desde este entorno.
+Los mensajes cifrados se detectan y se descartan; no se intenta descifrarlos. Una prueba de
+integración entrega un datagrama Photon Protocol18 completo con `JoinResponse` al handler del motor
+y verifica la detección de personaje. Falta validarlo en una PC Windows con Albion y Npcap reales.
 
 ### 3.2 `tracker.State` — agregación
 
@@ -176,8 +179,10 @@ Dos detalles que no son obvios:
 `POST /api/tracker/codes/reload` relee el archivo y reinicia la captura si estaba activa. **Un
 parche de Albion se arregla editando texto y tocando un botón**, sin recompilar ni reinstalar.
 
-El modo diagnóstico (`/api/tracker/diagnostic`) cuenta los códigos que están llegando, separando los
-que la tabla reconoce de los que no: es la herramienta para saber qué número corregir.
+El modo diagnóstico (`/api/tracker/diagnostic`) cuenta los códigos de eventos y operaciones que están
+llegando, separando los que la tabla reconoce de los que no. También permite comprobar que llegó la
+respuesta `Join` de la que se obtiene el personaje propio; solo expone código y frecuencia, no el
+contenido de los paquetes.
 
 Guía completa de uso en [`photon-codes.md`](photon-codes.md).
 
@@ -190,6 +195,7 @@ GET  /api/tracker/status    edición, disponibilidad, fuente, si está capturand
 POST /api/tracker/start     arranca la captura (opt-in explícito)
 POST /api/tracker/stop      la detiene
 POST /api/tracker/reset     reinicia contadores conservando personaje y party
+POST /api/tracker/character/refresh  olvida la identidad para esperar la próxima respuesta Join
 GET  /api/tracker/session   snapshot completo, para el primer render
 GET  /api/tracker/stream    SSE: snapshot inicial + eventos + keepalive cada 10 s
 POST /api/tracker/codes/reload  relee photon_codes.json sin reiniciar la app

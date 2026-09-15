@@ -154,8 +154,8 @@
     return post('/api/tracker/reset');
   }
 
-  /* Descarta la identidad actual y reinicia la escucha para detectar de nuevo
-     el personaje en el próximo evento Join del juego. */
+  /* Descarta la identidad actual y la detecta de nuevo en la próxima respuesta
+     Join del servidor. Para forzarla hay que cerrar sesión y volver a entrar. */
   async function refreshCharacter() {
     var data = await post('/api/tracker/character/refresh');
     if (data && data.ok) {
