@@ -182,6 +182,7 @@ body.desktop-app .desktop-titlebar {
 .desktop-window-controls .desktop-close:hover { background: #c42b1c; color: #fff; }
 .desktop-max-icon { width: 10px; height: 10px; border: 1px solid currentColor; }
 body.desktop-app .topbar { top: 40px; }
+body.desktop-app #kaBtn { display: none; }
 
 /* ---- topbar ---- */
 .topbar {

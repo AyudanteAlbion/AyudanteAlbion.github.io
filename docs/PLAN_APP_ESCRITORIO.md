@@ -241,10 +241,10 @@ desktop/                         (nuevo proyecto Wails)
   `desktop/internal/tracker/`, motor montado siempre (edición unificada) con
   `FallbackSource{Live, Simulator}`. Falta validar `EventSource` bajo el
   AssetServer (plan B: servidor TCP local o `EventsEmit`).
-- **Fase 4 — Ciclo de vida.** Heartbeat/watchdog ya eliminados en el backend
-  (`/alive` queda como no-op). Pendiente: detección de entorno de escritorio en
-  el frontend (desactivar keep-alive/anti-pausa), opcional bandeja del sistema
-  y "abrir como admin".
+- **Fase 4 — Ciclo de vida. ✅ Base resuelta.** Heartbeat/watchdog eliminados
+  del backend; `AAEnvironment` es la fuente única de `isDesktop` y capacidades.
+  Wails no inicia `/alive`, Web Lock ni Wake Lock, y oculta el botón anti-pausa.
+  Quedan como mejoras opcionales la bandeja del sistema y "abrir como admin".
 - **Fase 5 — Build & release.** El workflow ya produce el `.exe` como artefacto.
   Pendiente: sumarlo al pipeline de release formal y LEEME/README actualizados.
 - **Fase 6 — QA.** Probar sin Npcap (simulador), con Npcap (captura real),

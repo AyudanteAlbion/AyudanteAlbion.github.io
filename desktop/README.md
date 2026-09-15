@@ -16,7 +16,7 @@ Ventana nativa (WebView2)
    │  pide http://wails/…  →  AssetServer.Handler (router.go)
    ▼
 Frontend (albion-app/, sincronizado en frontend/) — rutas relativas sin cambios
-   │  fetch('/gameinfo/…'), EventSource('/api/tracker/stream'), fetch('/alive')…
+   │  fetch('/gameinfo/…'), EventSource('/api/tracker/stream')…
    ▼
 Router Go (router.go):
    • Estáticos     → embed all:frontend
@@ -29,8 +29,8 @@ y el tracking se enciende desde la interfaz. Sin Npcap instalado, cae al
 simulador (la UI se ve real con datos de ejemplo).
 
 **Sin heartbeat ni watchdog:** la app se apaga al cerrar la ventana (lo maneja
-Wails). El endpoint `/alive` se mantiene como no-op solo por compatibilidad con
-el frontend actual.
+Wails). `AAEnvironment` detecta el contenedor una sola vez, por lo que Wails no
+crea el temporizador de `/alive` ni activa Web Lock/Wake Lock.
 
 ## Estructura
 
@@ -76,5 +76,5 @@ que `//go:embed` la incluya. No se edita `frontend/` a mano.
   Si el streaming no funciona a través del AssetServer de Wails, el plan B es
   un servidor TCP local en `127.0.0.1` (como el ejecutable anterior) o migrar a
   `EventsEmit` de Wails. Validar en la primera compilación.
-- **Detección de entorno de escritorio** en el frontend (desactivar keep-alive
-  / anti-pausa del navegador). Ver `docs/PLAN_APP_ESCRITORIO.md`, Fase 4.
+La detección central del entorno, la eliminación del heartbeat y la
+inactivación del anti-pausa dentro de Wails quedaron resueltas en la Fase 4.

@@ -35,13 +35,10 @@ document.addEventListener('error', e => {
   else if (img.hasAttribute('data-sg-avatar')) sgAvatarFail(img);
 }, true);
 
-/* Latido para el ejecutable de escritorio: avisa al servidor local que la
-   pestaña sigue abierta (tolera 15 min sin latidos). En GitHub Pages y en
-   server.py /alive responde 404 y no hace nada. Vive acá y no como <script>
-   inline para cumplir la CSP (script-src 'self'). */
-if (location.hostname === '127.0.0.1' || location.hostname === 'localhost') {
-  setInterval(() => { fetch('/alive').catch(() => {}); }, 3000);
-}
+/* El entorno central decide si hace falta el latido del ejecutable clásico.
+   En Wails esta capacidad está desactivada: la ventana usa ciclo de vida
+   nativo y no crea ningún temporizador ni petición a /alive. */
+if (window.AAEnvironment) window.AAEnvironment.startLegacyHeartbeat();
 
 window.imgRetry = function (img) {
   if (img.dataset.local === '1') {
@@ -5337,16 +5334,30 @@ async function twCheckAll() {
    Lo que NO se combate es el throttling de timers en segundo plano: con
    la pestaña de fondo un ciclo de verificación puede demorar hasta 1 min
    más. kaRunDue() lo amortigua: todo lo vencido corre en cuanto la
-   pestaña vuelve a estar visible o enfocada. Con el .exe el latido
-   /alive sigue saliendo (1/min bajo throttle) y la gracia de 15 min lo
-   banca sin problema.
+   pestaña vuelve a estar visible o enfocada. En Wails el módulo queda
+   completamente inactivo porque WebView2 no congela ni descarta una pestaña.
    ==================================================================== */
-const KA = { on: true, lockCtl: null, lockHeld: false, wake: null };
-try { KA.on = localStorage.getItem('kaOn') !== '0'; } catch (e) {}
+const KA = {
+  supported: !window.AAEnvironment || window.AAEnvironment.capabilities.antiPause,
+  on: true,
+  lockCtl: null,
+  lockHeld: false,
+  wake: null
+};
+KA.on = KA.supported;
+if (KA.supported) {
+  try { KA.on = localStorage.getItem('kaOn') !== '0'; } catch (e) {}
+}
 
 function kaPaint() {
   const b = document.getElementById('kaBtn');
   if (!b) return;
+  if (!KA.supported) {
+    b.hidden = true;
+    b.disabled = true;
+    b.setAttribute('aria-hidden', 'true');
+    return;
+  }
   b.classList.toggle('ka-on', KA.on);
   b.setAttribute('aria-pressed', String(KA.on));
   b.title = KA.on
@@ -5354,7 +5365,7 @@ function kaPaint() {
     : '⚡ Anti-pausa apagado: el navegador puede limitar la app con la pestaña de fondo. Clic para activar.';
 }
 function kaLock() {
-  if (!navigator.locks || !navigator.locks.request || KA.lockHeld || KA.lockCtl) return;
+  if (!KA.supported || !navigator.locks || !navigator.locks.request || KA.lockHeld || KA.lockCtl) return;
   try {
     KA.lockCtl = new AbortController();
     navigator.locks.request('albion-app-keep-alive', { signal: KA.lockCtl.signal }, () => {
@@ -5365,7 +5376,7 @@ function kaLock() {
 }
 function kaLockStop() { try { if (KA.lockCtl) KA.lockCtl.abort(); } catch (e) {} KA.lockHeld = false; KA.lockCtl = null; }
 function kaWake() {
-  if (!('wakeLock' in navigator) || !KA.on || document.hidden || KA.wake) return;
+  if (!KA.supported || !('wakeLock' in navigator) || !KA.on || document.hidden || KA.wake) return;
   navigator.wakeLock.request('screen').then(w => {
     KA.wake = w;
     // Chrome lo suelta solo al ocultar la pestaña: se vuelve a pedir al volver
@@ -5393,13 +5404,14 @@ function kaRunDue() {
 }
 function kaStart() {
   kaPaint();
-  if (!KA.on) return;
+  if (!KA.supported || !KA.on) return;
   kaLock();
   kaWake();
 }
 function kaStop() { kaLockStop(); kaWakeStop(); }
 
 document.getElementById('kaBtn').addEventListener('click', () => {
+  if (!KA.supported) return;
   KA.on = !KA.on;
   try { localStorage.setItem('kaOn', KA.on ? '1' : '0'); } catch (e) {}
   if (KA.on) kaStart(); else kaStop();

@@ -84,7 +84,9 @@
       source: state.source,
       codes: state.codes,
       codesWarning: state.codesWarning,
-      isDesktop: state.edition !== 'web',
+      // AAEnvironment es la única fuente para saber si existe una ventana
+      // Wails. La edición del tracker describe al backend, no al contenedor.
+      isDesktop: !!(root.AAEnvironment && root.AAEnvironment.isDesktop),
       hasTracking: state.edition === 'tracker'
     };
   }
