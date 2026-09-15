@@ -218,6 +218,12 @@ def load_codes(force: bool = False):
     if not events:
         return None, 'la tabla no define ningún evento'
 
+    # Listas completas código->nombre, ordenadas por código: es lo que
+    # necesita el diagnóstico avanzado para mostrar la tabla cargada, no solo
+    # el conteo. Espejo de Codes.Events()/Codes.Operations() en Go.
+    event_list = [{'code': code, 'name': name} for code, name in sorted(events.items())]
+    op_list = [{'code': code, 'name': name} for code, name in sorted(ops.items())]
+
     info = {
         'version': data.get('version', ''),
         'gameVersion': data.get('gameVersion', ''),
@@ -225,6 +231,8 @@ def load_codes(force: bool = False):
         'operations': len(ops),
         'loadedFrom': str(CODES_PATH),
         'loadedAt': int(time.time() * 1000),
+        'eventList': event_list,
+        'operationList': op_list,
     }
     _CODES_CACHE = info
     return info, ''
