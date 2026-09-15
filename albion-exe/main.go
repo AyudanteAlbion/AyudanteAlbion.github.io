@@ -103,6 +103,12 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	// Rutas propias de la edición compilada. En la estándar solo se publica
+	// /api/tracker/status diciendo «no disponible»; en la edición Tracker se
+	// suma el motor de estadísticas en vivo. El frontend es el mismo en ambas
+	// y decide qué mostrar con esa respuesta.
+	registerEdition(mux, func() { lastBeat.Store(time.Now().UnixNano()) }, sub)
+
 	// Proxy hacia la API oficial de jugadores (gameinfo no envía CORS,
 	// así que el navegador no puede llamarla directo). Allowlist de rutas
 	// y parámetros, igual que el Worker de Cloudflare: el proxy local

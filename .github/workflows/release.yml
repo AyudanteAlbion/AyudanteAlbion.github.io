@@ -39,6 +39,7 @@ jobs:
       - name: Verificar artefactos
         run: |
           test -s release-assets/AyudanteAlbion.exe
+          test -s release-assets/AyudanteAlbion-Tracker.exe
           test -s release-assets/AyudanteAlbion.zip
           test -s release-assets/SHA256SUMS.txt
           test -s release-assets/RELEASE_TAG.txt
@@ -52,9 +53,15 @@ jobs:
           fi
           {
             echo '### ⬇️ Instalación'
-            echo 'Descargá **`AyudanteAlbion.exe`** y hacé doble clic: la app se abre sola en tu navegador'
-            echo 'y se apaga al cerrar la pestaña. **`AyudanteAlbion.zip`** trae el ejecutable + código fuente completo.'
-            echo 'Requisito: Windows 10/11 x64. No necesita instalación ni permisos de admin.'
+            echo 'Hay **dos ediciones**. Las dos se abren solas en tu navegador y se apagan al cerrar la pestaña.'
+            echo ''
+            echo '| Edición | Archivo | Qué trae |'
+            echo '|---|---|---|'
+            echo '| **Estándar** | `AyudanteAlbion.exe` | Todo lo de la web: crafteo, flipping, precios, registro y SG |'
+            echo '| **Tracker** | `AyudanteAlbion-Tracker.exe` | Lo mismo **+ estadísticas en vivo**: medidor de daño, sesión, mapas y botín |'
+            echo ''
+            echo '**`AyudanteAlbion.zip`** trae las dos ediciones + el código fuente completo.'
+            echo 'Requisito: Windows 10/11 x64. La edición estándar no necesita instalación ni permisos de admin.'
           } > RELEASE_NOTES.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG ya existe; reemplazando assets…"

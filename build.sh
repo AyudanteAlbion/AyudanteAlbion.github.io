@@ -3,7 +3,9 @@
 # Build de distribución de Ayudante Albion
 #   1. Verifica sintaxis de app.js
 #   2. Sincroniza la app dentro de albion-exe/app/ (el heartbeat vive en app.js)
-#   3. Compila AyudanteAlbion.exe (Windows, sin consola)
+#   3. Compila las DOS ediciones (Windows, sin consola):
+#        - AyudanteAlbion.exe          estándar, idéntica a la web
+#        - AyudanteAlbion-Tracker.exe  estándar + estadísticas en vivo
 #   4. Genera AyudanteAlbion.zip
 # Uso: ./build.sh
 # ============================================================
@@ -14,6 +16,25 @@ GO_BIN="${GO_BIN:-/tmp/go/bin/go}"
 
 echo "── 1/4 · Sintaxis de app.js"
 node --check albion-app/app.js
+# La tabla de códigos del tracker se edita a mano y se carga sin recompilar:
+# validarla acá evita publicar una edición Tracker con la tabla rota.
+python3 - <<'PYCHECK'
+import json, sys
+data = json.load(open('albion-app/data/photon_codes.json'))
+seen = {}
+for section in ('events', 'operations'):
+    for name, value in (data.get(section) or {}).items():
+        if name.startswith('_') or value is None:
+            continue
+        if not isinstance(value, int) or not 0 <= value <= 65535:
+            sys.exit(f'   ERROR: {section}.{name} = {value!r} inválido')
+        key = (section, value)
+        if key in seen:
+            sys.exit(f'   ERROR: {section}.{name} repite el código {value} de {seen[key]}')
+        seen[key] = name
+if not any(k[0] == 'events' for k in seen):
+    sys.exit('   ERROR: photon_codes.json no define ningún evento')
+PYCHECK
 echo "   OK"
 
 echo "── 2/4 · Sincronizando albion-exe/app/"
@@ -28,7 +49,7 @@ rm -rf albion-exe/app/icons && cp -r albion-app/icons albion-exe/app/
 cp -r albion-app/img albion-exe/app/ && rm -rf albion-exe/app/img/logo-opts
 echo "   OK"
 
-echo "── 3/4 · Compilando AyudanteAlbion.exe"
+echo "── 3/4 · Compilando las dos ediciones"
 GO_VERSION="1.23.4"
 # SHA256 oficial del tarball, publicado en https://go.dev/dl/?mode=json&include=all
 # (verificado además contra los pines de buildroot y bazel). El .exe que se
@@ -42,16 +63,29 @@ if [[ ! -x "$GO_BIN" ]]; then
     || { echo "   ERROR: el checksum de Go no coincide (tarball corrupto o alterado). Abortando."; exit 1; }
   tar -C /tmp -xzf /tmp/go.tar.gz
 fi
+# Edición estándar: sin build tag, no compila nada del paquete tracker.
+# Es el binario de siempre y sigue pesando lo mismo.
 ( cd albion-exe && GOOS=windows GOARCH=amd64 "$GO_BIN" build \
     -ldflags="-s -w -H windowsgui" -o AyudanteAlbion.exe . )
-ls -lh albion-exe/AyudanteAlbion.exe | awk '{print "   " $5 "  " $9}'
+ls -lh albion-exe/AyudanteAlbion.exe | awk '{print "   estandar  " $5 "  " $9}'
+
+# Edición Tracker: mismo código + el motor de estadísticas en vivo.
+# La tabla photon_codes.json viaja embebida como copia de fábrica, pero el
+# ejecutable prefiere la que esté junto al .exe: así se actualiza tras un
+# parche de Albion sin recompilar.
+( cd albion-exe && GOOS=windows GOARCH=amd64 "$GO_BIN" build -tags tracker \
+    -ldflags="-s -w -H windowsgui" -o AyudanteAlbion-Tracker.exe . )
+ls -lh albion-exe/AyudanteAlbion-Tracker.exe | awk '{print "   tracker   " $5 "  " $9}'
 
 echo "── 4/4 · Generando AyudanteAlbion.zip"
 rm -f AyudanteAlbion.zip
 zip -q -r AyudanteAlbion.zip \
   LICENSE \
-  albion-exe/AyudanteAlbion.exe albion-exe/LEEME.txt \
-  albion-exe/main.go albion-exe/go.mod albion-app tools \
+  albion-exe/AyudanteAlbion.exe albion-exe/AyudanteAlbion-Tracker.exe \
+  albion-exe/LEEME.txt \
+  albion-exe/main.go albion-exe/edition_standard.go albion-exe/edition_tracker.go \
+  albion-exe/tracker albion-exe/go.mod albion-app tools \
+  albion-app/data/photon_codes.json \
   -x "albion-app/node_modules/*" -x "albion-app/img/logo-opts/*"
 ls -lh AyudanteAlbion.zip | awk '{print "   " $5 "  " $9}'
 
