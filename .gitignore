@@ -58,3 +58,9 @@ dev.vars
 docs/deploy-worker.md
 
 
+
+# App de escritorio (Wails) — contenido sincronizado y binarios (se regeneran)
+desktop/frontend/*
+!desktop/frontend/README.md
+desktop/build/bin/
+desktop/AyudanteAlbion.exe

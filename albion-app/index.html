@@ -19,7 +19,7 @@
   form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=76">
+<link rel="stylesheet" href="styles.css?v=77">
 <link rel="icon" href="img/logo-app.png">
 <link rel="apple-touch-icon" href="img/logo-app.png">
 <!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
@@ -111,9 +111,10 @@
           </button>
         </div>
       </div>
-      <!-- Solo la edición de escritorio la muestra: js/tracker/ui.js la revela
-           cuando /api/tracker/status confirma que corre dentro del ejecutable. -->
-      <button class="tab" data-tab="tracker" hidden><svg class="tab-ico"><use href="#i-chart"/></svg>Sesión</button>
+      <!-- Visible en web y escritorio. En la web pública js/tracker/ui.js pinta
+           el cartel "En desarrollo en App de Escritorio" y no da acceso a las
+           funciones; dentro del ejecutable se muestra la sesión en vivo completa. -->
+      <button class="tab" data-tab="tracker"><svg class="tab-ico"><use href="#i-chart"/></svg>Sesión</button>
       <button class="tab" data-tab="profile"><svg class="tab-ico"><use href="#i-user"/></svg>Perfil</button>
       <button class="tab" data-tab="sg"><svg class="tab-ico"><use href="#i-shield"/></svg>SG</button>
       <button class="tab" data-tab="formulas"><svg class="tab-ico"><use href="#i-rule"/></svg>Fórmulas</button>
@@ -1337,7 +1338,7 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/profile/specs.js?v=1"></script>
 <script src="js/builds/build.js?v=1"></script>
 <script src="js/tracker/client.js?v=1"></script>
-<script src="js/tracker/ui.js?v=1"></script>
+<script src="js/tracker/ui.js?v=2"></script>
 <script src="app.js?v=78"></script>
 </body>
 </html>

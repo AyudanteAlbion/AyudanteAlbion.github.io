@@ -1,0 +1,102 @@
+name: Build desktop app (Wails)
+
+# Compila la app de escritorio nativa (Wails v2 + WebView2) para Windows.
+# A diferencia del build cross-compile desde Linux del ejecutable anterior,
+# Wails necesita compilarse EN Windows (WebView2 + toolchain nativa), por eso
+# este workflow corre en windows-latest.
+#
+# No publica una release: deja el .exe como artefacto de la ejecución para
+# probarlo. La publicación formal se sumará al pipeline de release más adelante.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'albion-app/**'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'albion-app/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build AyudanteAlbion.exe (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.23.4'
+          cache: false
+
+      - name: Verificar sintaxis de la app web (app.js)
+        shell: bash
+        run: node --check albion-app/app.js
+
+      - name: Sincronizar frontend embebido
+        shell: bash
+        run: ./desktop/sync_frontend.sh
+
+      - name: Instalar Wails CLI
+        shell: bash
+        working-directory: desktop
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Resolver dependencias Go
+        shell: bash
+        working-directory: desktop
+        run: go mod tidy
+
+      - name: Diagnóstico de Wails (wails doctor)
+        shell: bash
+        working-directory: desktop
+        run: wails doctor || true
+
+      - name: Compilar la app (wails build)
+        shell: bash
+        working-directory: desktop
+        # -webview2 download: si al usuario le falta el runtime WebView2, el
+        # instalador lo descarga solo. -s: build de producción (sin dev tooling).
+        run: wails build -platform windows/amd64 -webview2 download -s
+
+      - name: Verificar el binario
+        shell: bash
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          test -s build/bin/AyudanteAlbion.exe
+          ls -lh build/bin/
+
+      - name: Publicar información del build
+        shell: bash
+        working-directory: desktop
+        run: |
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > build/bin/BUILD_INFO.txt
+
+      - name: Guardar artefacto
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: AyudanteAlbion-Desktop-${{ github.sha }}
+          path: desktop/build/bin/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
