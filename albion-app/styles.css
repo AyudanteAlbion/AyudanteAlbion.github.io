@@ -1679,4 +1679,14 @@ img { max-width: 100%; }
 .trk-codes code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .trk-warn { color: #e8b339; background: rgba(232,179,57,.08); border: 1px solid rgba(232,179,57,.3); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
 .trk-actions .btn.active { border-color: var(--gold); color: var(--gold); }
+.trk-wip { border-color: rgba(229,180,91,.35); background: linear-gradient(180deg, rgba(229,180,91,.06), transparent 60%); text-align: center; }
+.trk-wip .trk-wip-badge {
+  display: inline-block; margin-bottom: 12px; padding: 8px 16px;
+  border: 1px solid rgba(229,180,91,.45); border-radius: 999px;
+  background: rgba(229,180,91,.1); color: var(--gold);
+  font-weight: 700; font-size: 14px; letter-spacing: .02em;
+}
+.trk-wip h2 { margin: 4px 0 10px; }
+.trk-wip p { max-width: 560px; margin-left: auto; margin-right: auto; }
+.trk-wip .btn { margin-top: 6px; }
 .small { font-size: 12px; }

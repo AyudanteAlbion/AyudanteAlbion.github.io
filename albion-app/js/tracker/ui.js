@@ -36,16 +36,20 @@
     });
   }
 
-  /* Aviso para la web pública: explica la diferencia entre ediciones. */
+  /* Cartel para la web pública: la pestaña Sesión está en desarrollo en la
+     aplicación de escritorio y no ofrece funciones desde el navegador. */
   function renderWebNotice(panel, info) {
     panel.innerHTML = '' +
-      '<div class="card trk-card">' +
+      '<div class="card trk-card trk-wip">' +
+      '  <div class="trk-wip-badge">🚧 En desarrollo en App de Escritorio</div>' +
       '  <h2>Sesión en vivo</h2>' +
-      '  <p class="muted">' + esc(info.reason || 'Disponible solo en la aplicación de escritorio.') + '</p>' +
+      '  <p class="muted">Esta sección está <strong>en desarrollo en la App de Escritorio</strong> ' +
+      '  y no está disponible desde el navegador.</p>' +
       '  <p>El <strong>medidor de daño</strong>, el historial de mapas, la fama y la plata por hora ' +
       '  y el registro de botín necesitan leer el tráfico del juego en tu PC. ' +
-      '  El navegador no puede hacerlo, así que viven en la edición <strong>Tracker</strong> del ejecutable.</p>' +
-      '  <p><a class="btn" href="' + EXE_URL + '" target="_blank" rel="noopener">Descargar la edición Tracker</a></p>' +
+      '  El navegador no puede hacerlo, así que estas funciones viven en la ' +
+      '  <strong>App de Escritorio</strong>.</p>' +
+      '  <p><a class="btn" href="' + EXE_URL + '" target="_blank" rel="noopener">Descargar la App de Escritorio</a></p>' +
       '  <p class="muted small">Solo monitorea el tráfico de red: no modifica el cliente del juego, ' +
       '  no dibuja nada encima y no ve jugadores fuera de tu campo de visión.</p>' +
       '</div>';
@@ -362,10 +366,11 @@
     }).catch(function () { /* el stream va a traerlo igual */ });
   }
 
-  /* Muestra u oculta el botón de la pestaña según la edición. */
+  /* La pestaña Sesión es visible siempre: en la web pública muestra el cartel
+     "En desarrollo en App de Escritorio"; en el ejecutable, la sesión completa. */
   function applyVisibility(info) {
     var tab = document.querySelector('.tab[data-tab="tracker"]');
-    if (tab) tab.hidden = !info.isDesktop;
+    if (tab) tab.hidden = false;
   }
 
   async function init() {
