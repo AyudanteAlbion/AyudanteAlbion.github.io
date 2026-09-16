@@ -52,7 +52,9 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	}
 	defer conn.Close()
 
-	h := newHandlers(nil, st, hub, codes)
+	// Socket has one reader, but it uses the same GUID/ObjectId entity model as
+	// Npcap so local identity and party correlation behave identically.
+	h := newHandlersWithEntities(nil, st, hub, codes, NewEntityStore())
 	parser := photon.NewParser(photon.Handler{OnEvent: h.event, OnRequest: h.request, OnResponse: h.response})
 	st.SetCapturing(true, false)
 	hub.Publish(NewEvent("status", st.Snapshot()))

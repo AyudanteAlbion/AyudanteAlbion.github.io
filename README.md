@@ -164,8 +164,8 @@ Cada producto se publica por su lado, con su propio workflow:
   `albion-app/` (workflow **Web**). Nada que hacer.
 - **La app de escritorio** se compila en Windows con cada cambio de `desktop/`
   o de los datos compartidos (workflow **Escritorio**). El paquete —`.exe`,
-  `photon_codes.json`, `SHA256SUMS.txt` y `BUILD_INFO.txt`— queda como
-  **artefacto de la ejecución** durante 7 días en la pestaña *Actions*, listo
+  `photon_codes.json`, `LICENSE`, `NOTICE`, `SOURCE_CODE.txt`, `SHA256SUMS.txt`
+  y `BUILD_INFO.txt`— queda como **artefacto de la ejecución** durante 7 días en la pestaña *Actions*, listo
   para bajar y usar. No crea tags ni releases.
 
 Las versiones públicas se publican **a mano**: se crea un tag semántico en
@@ -239,7 +239,7 @@ infraestructura, y el workflow **Escritorio** suma los tests de Go del tracker.
 
 ## Licencia y créditos
 
-Código bajo licencia MIT (ver [`LICENSE`](LICENSE)). La licencia cubre únicamente el código propio: los íconos, nombres y datos del juego pertenecen a Sandbox Interactive, y las tablas extraídas de `ao-bin-dumps` siguen las condiciones de ese proyecto comunitario.
+Código bajo licencia **GPL-3.0-only** (ver [`LICENSE`](LICENSE)). El tracker de escritorio incorpora adaptaciones de [AlbionOnline-StatisticsAnalysis (SAT)](https://github.com/Triky313/AlbionOnline-StatisticsAnalysis), también GPL-3.0; los avisos de atribución y la forma de obtener el código fuente correspondiente están en [`NOTICE`](NOTICE) y [`docs/licencia-gpl.md`](docs/licencia-gpl.md). La licencia cubre únicamente el código: los íconos, nombres y datos del juego pertenecen a Sandbox Interactive, y las tablas extraídas de `ao-bin-dumps` siguen las condiciones de ese proyecto comunitario.
 
 Desarrollado por **SheniaLiam** para el gremio **Spetsnaz Grail**. Los íconos y datos provienen de proyectos comunitarios; el killboard es de Sandbox Interactive.
 

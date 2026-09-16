@@ -18,6 +18,12 @@ El artefacto es **`AyudanteAlbionDesktop.exe`**, un binario único.
 > `.github/workflows/desktop.yml`). Wails requiere compilar **en Windows**
 > (WebView2 + toolchain nativa), por eso no se cross-compila desde Linux.
 
+> **GPL-3.0-only:** el ejecutable y su fuente se distribuyen bajo GPL v3. El
+> ciclo de entidades del tracker contiene adaptaciones de
+> [AlbionOnline-StatisticsAnalysis (SAT)](https://github.com/Triky313/AlbionOnline-StatisticsAnalysis).
+> Consultá [`../NOTICE`](../NOTICE) para la atribución, el commit de referencia
+> y cómo obtener el código fuente correspondiente de un artefacto.
+
 ## Arquitectura
 
 ```

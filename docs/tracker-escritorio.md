@@ -9,6 +9,12 @@ de la app nativa, en [`PLAN_APP_ESCRITORIO.md`](PLAN_APP_ESCRITORIO.md). Este
 documento describe **lo que ya está construido** y los contratos que hay que
 respetar al seguir.
 
+> **Licencia:** el repositorio y el ejecutable se distribuyen bajo
+> **GPL-3.0-only**. El tracker contiene adaptaciones del ciclo de entidades de
+> [AlbionOnline-StatisticsAnalysis (SAT)](https://github.com/Triky313/AlbionOnline-StatisticsAnalysis);
+> la atribución, el commit de referencia y el código fuente correspondiente se
+> documentan en [`../NOTICE`](../NOTICE) y [`licencia-gpl.md`](licencia-gpl.md).
+
 ---
 
 ## 1. Dos productos independientes
@@ -81,8 +87,10 @@ desarrollo local todo queda apagado.
 Compilación: **solo en Windows** (workflow `desktop.yml` sobre
 `windows-latest`; Wails + WebView2 son nativos). El pipeline valida la tabla
 Photon, corre `go test ./...`, prepara `frontend/` con `sync_frontend.sh` y
-empaqueta el `.exe` con `photon_codes.json`, `SHA256SUMS.txt` y
-`BUILD_INFO.txt` como artefacto de la ejecución (7 días).
+empaqueta el `.exe` con `photon_codes.json`, `LICENSE`, `NOTICE`,
+`SOURCE_CODE.txt`, `SHA256SUMS.txt` y `BUILD_INFO.txt` como artefacto de la
+ejecución (7 días). `SOURCE_CODE.txt` enlaza el commit exacto que contiene el
+código fuente correspondiente de ese binario.
 
 ---
 
@@ -94,9 +102,10 @@ Source ──publica──► Hub ──SSE──► WebView
    └──actualiza──► State ──REST──► WebView (primer render)
 ```
 
-Todo el paquete vive en `desktop/internal/tracker/` — es el mismo motor que
-tenía el ejecutable clásico, movido tal cual y validado por sus tests
-(`go test ./...` corre en el workflow Escritorio).
+Todo el paquete vive en `desktop/internal/tracker/` y se valida con
+`go test ./...` en el workflow Escritorio. Las capas de captura, Photon y
+agregación son propias; el ciclo de identidad/entidades y party contiene
+adaptaciones GPL-3.0 de SAT, señaladas en los archivos fuente y en `NOTICE`.
 
 ### 3.1 `tracker.Source` — la pieza reemplazable
 
@@ -134,7 +143,7 @@ Llama a **`wpcap.dll` de Npcap por syscall**, no a `gopacket/pcap`:
 que el paquete compile en Linux y macOS (tests, `go vet`, CI).
 
 Se escuchan **todas las interfaces a la vez** con el filtro BPF
-`udp and (port 5055 or port 5056 or port 5057 or port 5058)`. Cuál usa Albion
+`udp and (port 5055 or port 5056 or port 5058)`. Cuál usa Albion
 depende de la PC —Wi-Fi, Ethernet, VPN—, y escuchar todas es más simple y más
 robusto que hacer elegir al usuario. El modo promiscuo va **apagado**: alcanza
 con el tráfico de esta máquina. El usuario puede reducir la escucha a un
@@ -157,7 +166,31 @@ capturas históricas Protocol16. Tiene dos capas:
 
 Los mensajes cifrados se detectan y se descartan; no se intenta descifrarlos.
 
-### 3.2 `tracker.State` — agregación
+### 3.2 Identidad, entidades y party
+
+`entity.go` mantiene el modelo de correlación adaptado de SAT: una respuesta
+exitosa de **Join** registra el personaje local con `GUID`, `ObjectId`, nombre,
+gremio y alianza. El GUID es estable y el `ObjectId` es el índice de corta vida
+que usan los eventos de combate, botín y salida.
+
+`NewCharacter` actualiza o vuelve a enlazar un `ObjectId` por GUID; al entrar a
+otra zona se invalidan los ObjectId de las entidades visibles no locales, pero
+se conserva el GUID, el nombre y la party. `PartyJoined` recibe el roster de
+GUIDs/nombres; `PartyPlayerJoined`, `PartyPlayerLeft` y `PartyDisbanded` lo
+actualizan. Tras un disband queda únicamente el personaje local, como en SAT.
+
+El campo opcional **Nombre de personaje a rastrear** se pasa al motor al
+reiniciar la captura. Replica el filtro de personaje principal de SAT: no
+crea identidad; hasta que Join detecta un personaje permite la sesión, y luego
+solo agrega estadísticas si el nombre detectado coincide.
+
+Esto evita dos errores del modelo anterior: depender solo del nombre y usar un
+ObjectId de una zona pasada. No cambia el requisito de arranque: si la captura
+comienza cuando ya se está dentro de un personaje, **ChangeCluster solo puede
+detectar la zona**. La identidad automática requiere una nueva respuesta Join,
+por ejemplo al volver al selector de personaje y entrar otra vez.
+
+### 3.3 `tracker.State` — agregación
 
 Protegido por `sync.RWMutex` porque la fuente escribe desde su goroutine y los
 handlers HTTP leen desde las suyas. Acumula por jugador daño, curación,
@@ -173,13 +206,13 @@ Detalle que importa: el daño recibido solo se acumula para jugadores conocidos
 (vos y tu party). Sin eso, cada mob golpeado aparecería como una fila más en el
 medidor.
 
-### 3.3 `tracker.Hub` — reparto
+### 3.4 `tracker.Hub` — reparto
 
 Pub/sub mínimo. Cada suscriptor tiene un canal con buffer de 256 y el `Publish`
 **nunca bloquea**: si una pestaña se atrasa, pierde eventos, pero el motor de
 captura —que corre en tiempo real— no se frena jamás.
 
-### 3.4 Transporte: SSE, no WebSocket
+### 3.5 Transporte: SSE, no WebSocket
 
 El flujo es unidireccional (servidor → WebView), lo resuelve la librería
 estándar de Go sin dependencias, y `EventSource` reconecta solo desde el
@@ -188,7 +221,7 @@ para nada.
 
 ---
 
-## 3.5 La tabla de códigos: `photon_codes.json`
+## 3.6 La tabla de códigos: `photon_codes.json`
 
 El corazón del mantenimiento a largo plazo. Los códigos de evento de Albion
 cambian en casi cada parche, así que la fuente de verdad es texto plano en
@@ -230,12 +263,12 @@ Lo monta `Engine.Register` (`desktop/internal/tracker/server.go`) sobre el
 mismo mux que los estáticos y los proxies; nada escucha en un puerto externo.
 
 ```
-GET  /api/tracker/status    fuente activa, disponibilidad, si está capturando, info de la tabla
+GET  /api/tracker/status    fuente activa, disponibilidad, si está capturando, error del último Run e info de la tabla
 POST /api/tracker/start     arranca la captura (opt-in explícito)
 POST /api/tracker/stop      la detiene
-POST /api/tracker/restart   reinicia la fuente actual
+POST /api/tracker/restart?provider=&adapter=&character=   aplica la configuración y reinicia la fuente actual
 POST /api/tracker/reset     reinicia contadores conservando personaje y party
-POST /api/tracker/character/refresh  olvida la identidad para esperar la próxima respuesta Join
+POST /api/tracker/character/refresh  olvida la identidad para esperar la próxima respuesta Join (no se recupera al cambiar de zona)
 GET  /api/tracker/session   snapshot completo, para el primer render
 GET  /api/tracker/stream    SSE: snapshot inicial + eventos + keepalive cada 10 s
 POST /api/tracker/codes/reload  relee photon_codes.json sin reiniciar la app

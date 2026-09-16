@@ -87,8 +87,7 @@
       '  <div class="trk-form-grid">' +
       '   <label>Proveedor de paquetes<select id="trkProvider"><option value="npcap">Npcap (recomendado)</option><option value="socket">Socket (requiere administrador)</option></select><small>Los cambios del proveedor requieren reiniciar la herramienta.</small></label>' +
       '   <label>Adaptador de red<select id="trkAdapter"><option value="">Automático · escuchar todos</option></select><small>Dejá Automático si no sabés qué interfaz usa el juego.</small></label>' +
-      '   <label class="trk-full">Nombre de personaje a rastrear<input id="trkCharacterName" type="text" maxlength="32" placeholder="Detección automática"></label>' +
-      '   <label>Jugador con mismo nombre en la base local<div class="trk-inline-field"><input id="trkCharacterIndex" type="number" min="0" value="0"><button class="btn ghost" id="trkCharacterReset" type="button">Reiniciar</button></div></label>' +
+      '   <label class="trk-full">Nombre de personaje a rastrear<input id="trkCharacterName" type="text" maxlength="32" placeholder="Detección automática"><small>Opcional: se aplica al reiniciar seguimiento y filtra estadísticas, no la detección.</small></label>' +
       '  </div>' +
       '  <button class="btn" id="trkRestartNetwork" type="button">↻ Reiniciar seguimiento de red</button>' +
       '  <p class="trk-note">Npcap usa un controlador de bajo nivel. Socket no necesita Npcap, pero exige ejecutar la herramienta como administrador.</p>' +
@@ -146,7 +145,7 @@
   function saveSettings() {
     var data = {
       provider: el('trkProvider').value, adapter: el('trkAdapter').value,
-      character: el('trkCharacterName').value.trim(), characterIndex: +(el('trkCharacterIndex').value || 0),
+      character: el('trkCharacterName').value.trim(),
       language: el('trkLanguage').value, nav: el('trkNavVisibility').value,
       notifications: el('trkNotifications').value, proxy: el('trkProxy').value.trim(),
       gamePath: el('trkGamePath').value.trim(), companionPath: el('trkCompanionPath').value.trim(),
@@ -157,15 +156,14 @@
   }
   function wireSettings() {
     var s = readSettings();
-    ['Provider','Adapter','CharacterName','CharacterIndex','Language','NavVisibility','Notifications','Proxy','GamePath','CompanionPath'].forEach(function (name) {
+    ['Provider','Adapter','CharacterName','Language','NavVisibility','Notifications','Proxy','GamePath','CompanionPath'].forEach(function (name) {
       var node = el('trk' + name); if (!node) return;
-      var key = {Provider:'provider',Adapter:'adapter',CharacterName:'character',CharacterIndex:'characterIndex',Language:'language',NavVisibility:'nav',Notifications:'notifications',Proxy:'proxy',GamePath:'gamePath',CompanionPath:'companionPath'}[name];
+      var key = {Provider:'provider',Adapter:'adapter',CharacterName:'character',Language:'language',NavVisibility:'nav',Notifications:'notifications',Proxy:'proxy',GamePath:'gamePath',CompanionPath:'companionPath'}[name];
       if (s[key] !== undefined) node.value = s[key];
       node.addEventListener('change', saveSettings);
     });
     el('trkPrerelease').checked = !!s.prerelease;
     el('trkPrerelease').addEventListener('change', saveSettings);
-    el('trkCharacterReset').addEventListener('click', function () { el('trkCharacterIndex').value = 0; saveSettings(); });
     el('trkBrowseGame').addEventListener('click', chooseGameFolder);
     el('trkOpenTool').addEventListener('click', function () { nativeCall('OpenToolDirectory'); });
     el('trkOpenData').addEventListener('click', function () { nativeCall('OpenUserDataDirectory'); });
@@ -194,7 +192,7 @@
     try {
       if (want) {
         var cfg = readSettings();
-        await AATracker.restart(cfg.provider || 'npcap', cfg.adapter || '');
+        await AATracker.restart(cfg.provider || 'npcap', cfg.adapter || '', cfg.character || '');
       } else await AATracker.stop();
     }
     catch (err) { setStatus('No se pudo cambiar el rastreo: ' + err.message); }
@@ -204,7 +202,7 @@
     var btn = el('trkRestartNetwork'); btn.disabled = true;
     var cfg = saveSettings();
     try {
-      await AATracker.restart(cfg.provider, cfg.adapter);
+      await AATracker.restart(cfg.provider, cfg.adapter, cfg.character || '');
       setStatus('Seguimiento de red reiniciado.');
     } catch (e) { setStatus('No se pudo reiniciar: ' + e.message); }
     btn.disabled = false; paintControls();
@@ -223,10 +221,10 @@
     // que la captura está leyendo Albion y no tráfico residual/cifrado.
     var hasData = !!(decoded || snap.character || snap.zone || snap.fame || snap.silver || (snap.combatants && snap.combatants.length));
     var hasPacketsOnly = packets > 0 && !hasData;
-    // La identidad y la zona llegan en la respuesta a Join y en ChangeCluster:
-    // si el tracking arrancó con la sesión ya abierta, hay que provocar uno de
-    // los dos. Cambiar de mapa es lo más rápido y no obliga a salir del juego.
-    var joinHint = hasData ? 'Cambiá de zona en Albion para que el juego lo reenvíe' : '';
+    // Join identifica al personaje; ChangeCluster solo actualiza la zona. Si
+    // la captura empezó con la sesión ya abierta, cambiar de mapa no puede
+    // recuperar la identidad: hay que volver al selector y entrar de nuevo.
+    var joinHint = hasData ? 'Volvé al selector de personaje y entrá de nuevo para recibir Join; cambiar de zona no alcanza.' : '';
     var dataHint = hasPacketsOnly
       ? 'Hay ' + packets + ' paquete(s) UDP, pero ninguno se pudo interpretar como mensaje Photon. Revisá Npcap/adaptador, puertos o cifrado.'
       : (hasData ? 'Photon decodificados: ' + decoded + ' · UDP: ' + packets : '');
@@ -245,7 +243,7 @@
       '<span class="trk-setup-icon">▣</span><h2>Seleccioná la carpeta del juego</h2><p>Elegí la carpeta raíz de Albion Online, no la subcarpeta <code>game</code>.</p><div class="trk-launcher-grid"><div><b>Launcher independiente</b><code>C:\\AlbionOnline</code><small>Debe contener game, launcher, staging, EasyAntiCheat_Setup.exe y uninstall.exe.</small></div><div><b>Launcher de Steam</b><code>D:\\SteamLibrary\\steamapps\\common\\Albion Online</code><small>Normalmente está dentro de steamapps\\common.</small></div></div><div class="trk-path-row"><input id="trkSetupPath" type="text" value="' + esc(s.gamePath || '') + '" placeholder="C:\\AlbionOnline"><button class="btn" id="trkSetupBrowse" type="button">Examinar…</button></div>',
       '<span class="trk-setup-icon">✓</span><h2>Antes de continuar</h2><p>Albion Online debe estar instalado y poder iniciarse normalmente. El asistente no modifica los archivos del juego.</p><div class="trk-setup-callout">La captura es de solo lectura y se limita al tráfico UDP de Albion en los puertos <b>5055, 5056 y 5058</b>.</div>',
       '<span class="trk-setup-icon">⌁</span><h2>Elegí el modo de seguimiento</h2><p>Podés cambiar el proveedor más adelante; hacerlo requiere reiniciar la herramienta.</p><div class="trk-provider-grid"><button data-provider="npcap" class="trk-provider-card ' + ((s.provider || 'npcap') === 'npcap' ? 'selected' : '') + '"><span>RECOMENDADO</span><b>NPCap</b><small>Controlador de red de bajo nivel. Requiere instalar NPCap por separado.</small><a href="https://npcap.com/#download" target="_blank" rel="noopener">Descargar NPCap ↗</a></button><button data-provider="socket" class="trk-provider-card ' + (s.provider === 'socket' ? 'selected' : '') + '"><b>Socket</b><small>Usa sockets sin procesar de Windows. No requiere NPCap, pero la app debe ejecutarse como administrador.</small></button></div>',
-      '<span class="trk-setup-icon">◎</span><h2>Personaje a rastrear</h2><p>La detección es automática al entrar al juego. Si querés, podés indicar un nombre para filtrar la sesión.</p><input id="trkSetupCharacter" class="trk-setup-input" type="text" maxlength="32" value="' + esc(s.character || '') + '" placeholder="Nombre del personaje (opcional)">',
+      '<span class="trk-setup-icon">◎</span><h2>Personaje a rastrear</h2><p>La detección es automática al entrar al juego. Si indicás un nombre, solo se acumularán estadísticas cuando el Join detectado coincida con ese personaje.</p><input id="trkSetupCharacter" class="trk-setup-input" type="text" maxlength="32" value="' + esc(s.character || '') + '" placeholder="Nombre del personaje (opcional)">',
       '<span class="trk-setup-icon">✓</span><h2>Todo listo</h2><p>Al activar el rastreo, el panel de Estado se actualizará cuando Albion empiece a enviar paquetes. Si no aparecen datos, revisá el adaptador de red y los permisos.</p><div class="trk-setup-summary"><span>Carpeta <b>' + esc(s.gamePath || 'Sin seleccionar') + '</b></span><span>Proveedor <b>' + esc((s.provider || 'npcap') === 'npcap' ? 'NPCap' : 'Socket') + '</b></span></div>'
     ];
     return pages[step];
@@ -416,7 +414,7 @@
         await AATracker.stop();
       } else {
         var cfg = readSettings();
-        await AATracker.restart(cfg.provider || 'npcap', cfg.adapter || '');
+        await AATracker.restart(cfg.provider || 'npcap', cfg.adapter || '', cfg.character || '');
       }
     } catch (e) {
       setStatus('No se pudo cambiar el estado del tracking: ' + e.message);
@@ -484,8 +482,10 @@
     var sl = el('trkSwitchLabel'); if (sl) sl.textContent = info.capturing ? 'El rastreo está activo' : 'El rastreo está inactivo';
     if (!info.available) {
       setStatus(info.reason || 'Motor de captura no disponible.');
+    } else if (info.runError) {
+      setStatus('La captura se detuvo: ' + info.runError);
     } else if (detectingCharacter) {
-      setStatus('Buscando tu personaje… Cambiá de zona en Albion (o volvé a entrar) para que el juego reenvíe tus datos.');
+      setStatus('Esperando un nuevo ingreso de personaje… Volvé al selector y entrá de nuevo; cambiar de zona no alcanza.');
     } else if (info.capturing) {
       setStatus('Tracking activo · fuente: ' + (info.source || 'desconocida'));
     } else {
@@ -601,6 +601,8 @@
         dirty = true;
         if (payload && payload.character) detectingCharacter = false;
         paintControls();
+      } else if (type === 'warning' && payload && payload.message) {
+        setStatus(String(payload.message));
       }
     });
 

@@ -3,6 +3,7 @@ package tracker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -15,8 +16,10 @@ type Engine struct {
 	source Source
 	codes  *CodeStore
 
-	mu     sync.Mutex
-	cancel context.CancelFunc
+	mu        sync.Mutex
+	cancel    context.CancelFunc
+	runID     uint64
+	lastError string
 	// touch renueva el latido de vida del proceso: mientras una pestaña
 	// escucha el stream, el ejecutable no debe apagarse solo.
 	touch func()
@@ -31,35 +34,70 @@ func NewEngine(src Source, codes *CodeStore, touch func()) *Engine {
 	return &Engine{hub: NewHub(), state: NewState(), source: src, codes: codes, touch: touch}
 }
 
-func (e *Engine) running() bool {
+func (e *Engine) runStatus() (bool, string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.cancel != nil
+	return e.cancel != nil, e.lastError
 }
 
-// Start arranca la captura si no estaba corriendo.
+func (e *Engine) running() bool {
+	running, _ := e.runStatus()
+	return running
+}
+
+// Start arranca la captura si no estaba corriendo. Source.Run lives in its own
+// goroutine, but a normal return (for example a closed raw socket) must clear
+// the running state and reach the UI rather than leaving "capturing" stuck on.
 func (e *Engine) Start() error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.cancel != nil {
+		e.mu.Unlock()
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
+	e.runID++
+	runID := e.runID
+	e.lastError = ""
+	e.mu.Unlock()
+
 	go func() {
-		_ = e.source.Run(ctx, e.state, e.hub)
+		e.finishRun(runID, e.source.Run(ctx, e.state, e.hub))
 	}()
 	return nil
+}
+
+func (e *Engine) finishRun(runID uint64, err error) {
+	e.mu.Lock()
+	if runID != e.runID {
+		e.mu.Unlock()
+		return // a stopped/restarted source must not overwrite the new run state
+	}
+	e.cancel = nil
+	if err != nil && !errors.Is(err, context.Canceled) {
+		e.lastError = err.Error()
+	}
+	e.mu.Unlock()
+
+	e.state.SetCapturing(false, false)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		e.hub.Publish(NewEvent("warning", map[string]any{"message": "La captura se detuvo: " + err.Error()}))
+	}
+	e.hub.Publish(NewEvent("status", e.state.Snapshot()))
 }
 
 // Stop detiene la captura.
 func (e *Engine) Stop() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.cancel != nil {
 		e.cancel()
 		e.cancel = nil
 	}
+	// Invalidate the goroutine being stopped, so a late return cannot clear a
+	// source that a subsequent Start has already installed.
+	e.runID++
+	e.lastError = ""
+	e.mu.Unlock()
 	e.state.SetCapturing(false, false)
 }
 
@@ -75,13 +113,18 @@ func (e *Engine) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tracker/status", func(w http.ResponseWriter, r *http.Request) {
 		e.touch()
 		ok, reason := e.source.Available()
+		running, runError := e.runStatus()
 		body := map[string]any{
 			"edition":   "tracker",
 			"available": ok,
 			"reason":    reason,
-			"source":    e.source.Name(),
-			"capturing": e.running(),
+			"source":            e.source.Name(),
+			"trackingCharacter": e.state.TrackingCharacter(),
+			"capturing":         running,
 			"listeners": e.hub.Subscribers(),
+		}
+		if runError != "" {
+			body["runError"] = runError
 		}
 		if e.codes != nil {
 			if codes, warn := e.codes.Current(); codes != nil {
@@ -176,6 +219,7 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		if configurable, ok := e.source.(DeviceConfigurable); ok {
 			configurable.SetDevice(r.URL.Query().Get("adapter"))
 		}
+		e.state.SetTrackingCharacter(r.URL.Query().Get("character"))
 		if ok, reason := e.source.Available(); !ok {
 			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": reason})
 			return

@@ -25,6 +25,9 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'docs/licencia-gpl.md'
       - 'albion-app/data/**'
       - 'albion-app/icons/**'
       - 'albion-app/img/**'
@@ -32,6 +35,9 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'docs/licencia-gpl.md'
       - 'albion-app/data/**'
       - 'albion-app/icons/**'
       - 'albion-app/img/**'
@@ -122,9 +128,10 @@ jobs:
           # La tabla de códigos viaja embebida, pero también suelta junto al
           # .exe: así se arregla el tracker tras un patch de Albion sin
           # recompilar (el binario prefiere la copia externa).
-          cp ../albion-app/data/photon_codes.json build/bin/
+          cp ../albion-app/data/photon_codes.json ../LICENSE ../NOTICE build/bin/
           printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > build/bin/BUILD_INFO.txt
-          (cd build/bin && sha256sum AyudanteAlbionDesktop.exe photon_codes.json > SHA256SUMS.txt)
+          printf 'Ayudante Albion is licensed under GPL-3.0-only.\n\nCorresponding source for this executable:\nhttps://github.com/AyudanteAlbion/AyudanteAlbion.github.io/tree/%s\n\nThe exact commit is also recorded in BUILD_INFO.txt. LICENSE and NOTICE accompany this file.\n' "$GITHUB_SHA" > build/bin/SOURCE_CODE.txt
+          (cd build/bin && sha256sum AyudanteAlbionDesktop.exe photon_codes.json LICENSE NOTICE BUILD_INFO.txt SOURCE_CODE.txt > SHA256SUMS.txt)
           (cd build/bin && sha256sum -c SHA256SUMS.txt)
 
       - name: Guardar artefacto

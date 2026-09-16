@@ -121,6 +121,7 @@
     "UpdateMoney": { "total": 1 },
     "TakeSilver": { "id": 0, "target": 2, "amount": 3, "clusterTax": 4 },
     "PartySilverGained": { "target": 1, "amount": 2, "amountPreTax": 3 },
+    "PartyJoined": { "guids": 8, "names": 9 },
     "PartyPlayerJoined": { "id": 0, "guid": 1, "name": 2 },
     "PartyPlayerLeft": { "id": 0, "guid": 1 },
     "PartyDisbanded": {},

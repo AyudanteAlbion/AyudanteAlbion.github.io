@@ -56,10 +56,10 @@ curación). El que llega una vez al entrar a un mapa es `JoinFinished` (evento).
 de eventos, y es la que manda el juego cada vez que el personaje cambia de zona.
 
 La identidad propia llega en la **respuesta exitosa de la operación `Join`**, junto con el mapa
-inicial (parámetro 8). Si activás el tracking con la sesión ya abierta, ese mensaje ya pasó: basta
-con **cambiar de zona** para que el juego mande `ChangeCluster` y el tracker vuelva a poblar
-personaje y ubicación, sin cerrar sesión. El diagnóstico guarda solamente código y frecuencia, nunca
-nombres ni otros parámetros.
+inicial (parámetro 8). Si activás el tracking con la sesión ya abierta, ese mensaje ya pasó:
+**cambiar de zona no lo repite**; `ChangeCluster` solo actualiza la ubicación. Volvé al selector de
+personaje y entrá otra vez para recibir un nuevo Join. El diagnóstico guarda solamente código y
+frecuencia, nunca nombres ni otros parámetros.
 
 ### Paso 2 — Corregir el número
 
@@ -135,13 +135,13 @@ publique un `.exe` con la tabla rota.
 ## 6. Si actualizaste bien y aun así no anda
 
 1. ¿El tracking está activo? Arranca apagado a propósito.
-2. ¿Npcap está instalado y la app corre como administrador?
+2. ¿Npcap está instalado? Con Npcap la app no necesita elevación; si usás **Socket**, sí debe ejecutarse como administrador.
 3. ¿El diagnóstico muestra *algún* código? Si no llega nada, el problema es la captura, no la tabla
    — revisá que no estés usando VPN o ExitLag, que rompen la captura.
-4. ¿Aparece `Join` entre las **operaciones reconocidas** después de cambiar de zona (o de cerrar
-   sesión y volver a entrar)? Si aparece y el personaje sigue vacío, revisá
-   `selfOperation.parameters` (el nombre es `2`, el id de entidad es `0` y el mapa es `8` en la
-   referencia actual).
+4. ¿Aparece `Join` entre las **operaciones reconocidas** después de volver al selector de
+   personaje y entrar otra vez? Un cambio de zona no genera Join. Si aparece y el personaje sigue
+   vacío, revisá `selfOperation.parameters` (el nombre es `2`, el id de entidad es `0`, el GUID es
+   `1` y el mapa es `8` en la referencia actual).
 5. ¿La ubicación queda vacía pero el personaje aparece? Revisá que `ChangeCluster` esté en
    **`operations`** (código 41) y que tenga su índice de zona en `eventParameters`. Si está cargado
    como evento, nunca se dispara.
