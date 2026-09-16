@@ -40,7 +40,7 @@ type DeviceConfigurable interface {
 // de instalar Npcap, y para las pruebas automáticas.
 type Simulator struct{}
 
-func (Simulator) Name() string { return "simulador" }
+func (Simulator) Name() string { return "Demo — NO ES TRACKING REAL" }
 
 func (Simulator) Available() (bool, string) { return true, "" }
 

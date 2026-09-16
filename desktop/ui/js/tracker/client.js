@@ -31,7 +31,14 @@
   var stream = null;
   var retryDelay = 1000;
 
+  var METRIC_EVENTS = { damage:1, heal:1, loot:1, gathering:1, dungeon:1, dungeonRun:1, trade:1, vault:1 };
+  function metricsAccepted() {
+    return state.capture && state.capture.phase === 'demo' || (state.identityValid && state.filterMatched);
+  }
   function emit(type, payload) {
+    // Defense in depth for every browser-side statistics/persistence consumer.
+    // The backend already applies the same gate before publishing real metrics.
+    if (METRIC_EVENTS[type] && !metricsAccepted()) return;
     for (var i = 0; i < listeners.length; i++) {
       try {
         listeners[i](type, payload);

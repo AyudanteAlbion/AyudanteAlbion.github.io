@@ -315,6 +315,11 @@ def validate_tracker_safety() -> None:
         if marker not in live:
             ERRORS.append(f"Tracker: falta {description}")
 
+    client = (desktop / "ui" / "js" / "tracker" / "client.js").read_text(encoding="utf-8")
+    for marker in ("METRIC_EVENTS", "state.identityValid && state.filterMatched"):
+        if marker not in client:
+            ERRORS.append("Tracker: falta la compuerta de identidad/filtro para consumidores persistentes del frontend")
+
 
 def main() -> int:
     validate_javascript()
