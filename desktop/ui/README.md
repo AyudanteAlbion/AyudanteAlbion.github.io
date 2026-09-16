@@ -26,8 +26,10 @@ comercio» del Registro de operaciones también es exclusivo del escritorio.
 
 | | Origen | Versionado |
 |---|---|---|
-| `index.html`, `app.js`, `styles.css`, `js/`, `css/` | **esta carpeta** | sí |
+| `index.html`, `app.js`, `styles.css`, `js/`, `css/`, `data/` | **esta carpeta** | sí |
 | `data/`, `icons/`, `img/` | `albion-app/` (compartido) | no — se copian al compilar |
+
+`data/tracker_map_names.json` es una excepción deliberada: es el índice propio de la app de escritorio que convierte los IDs técnicos de cluster que entrega Photon (por ejemplo `0006`) en el nombre visible del mapa. Se genera a partir de `cluster/world.xml` junto con la actualización de mapas.
 
 Los **assets** (íconos de ítems, tablas de datos de Albion) se siguen tomando
 de `albion-app/` en tiempo de build, en una sola dirección. Son ~18 MB y más de

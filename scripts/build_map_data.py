@@ -20,6 +20,7 @@ suele estar bloqueado; la API de contenidos sirve el blob tal cual).
 import json
 import re
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -27,6 +28,7 @@ WORLD_XML_URL = ("https://api.github.com/repos/broderickhyman/ao-bin-dumps/"
                  "contents/cluster/world.xml")
 REPO = Path(__file__).resolve().parent.parent
 DATA = REPO / "albion-app" / "data" / "albion_map_connections.json"
+TRACKER_MAP_NAMES = REPO / "desktop" / "ui" / "data" / "tracker_map_names.json"
 
 # zonas que siempre deberían quedar con posición (control de sanidad).
 # Bancos/mercados son interiores sin posición en el mapa del mundo, y Brecilien
@@ -47,10 +49,15 @@ def load_world_xml():
         return r.read().decode("utf-8")
 
 
+def cluster_attributes(xml):
+    """Itera los atributos de cada <cluster> de world.xml."""
+    return re.findall(r"<cluster\s+([^>]+?)>", xml)
+
+
 def parse_positions(xml):
     """cluster displayname -> (x, y). Solo clusters con worldmapposition."""
     pos = {}
-    for attrs in re.findall(r"<cluster\s+([^>]+?)>", xml):
+    for attrs in cluster_attributes(xml):
         name = re.search(r'displayname="([^"]*)"', attrs)
         wmp = re.search(r'worldmapposition="([^"]*)"', attrs)
         if not name or not wmp:
@@ -70,10 +77,24 @@ def parse_positions(xml):
     return pos
 
 
+def parse_tracker_names(xml):
+    """cluster id -> displayname para los IDs que entrega Photon al tracker."""
+    names = {}
+    for attrs in cluster_attributes(xml):
+        cluster_id = re.search(r'\bid="([^"]+)"', attrs)
+        display_name = re.search(r'\bdisplayname="([^"]*)"', attrs)
+        if not cluster_id or not display_name or not display_name.group(1).strip():
+            continue
+        names[cluster_id.group(1)] = display_name.group(1).strip()
+    return dict(sorted(names.items(), key=lambda item: item[0].lower()))
+
+
 def main():
     xml = load_world_xml()
     positions = parse_positions(xml)
-    print(f"world.xml: {len(positions)} clusters con worldmapposition")
+    tracker_names = parse_tracker_names(xml)
+    print(f"world.xml: {len(positions)} clusters con worldmapposition · "
+          f"{len(tracker_names)} nombres para el tracker")
 
     data = json.loads(DATA.read_text(encoding="utf-8"))
     maps = data.get("maps", [])
@@ -103,8 +124,20 @@ def main():
 
     DATA.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")),
                     encoding="utf-8")
+    # Este índice pequeño acompaña al frontend de escritorio. Así un MapIndex
+    # como "0006" se presenta como "Bank of Thetford" en vez de filtrar el
+    # identificador técnico que llega por Photon a la pantalla del usuario.
+    TRACKER_MAP_NAMES.parent.mkdir(parents=True, exist_ok=True)
+    TRACKER_MAP_NAMES.write_text(json.dumps({
+        "_comment": "Índice id de cluster -> nombre visible, generado desde cluster/world.xml de broderickhyman/ao-bin-dumps. Se actualiza con scripts/build_map_data.py.",
+        "source": "broderickhyman/ao-bin-dumps · cluster/world.xml",
+        "generatedAt": time.strftime("%Y-%m-%d", time.gmtime()),
+        "names": tracker_names,
+    }, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     kb = DATA.stat().st_size / 1024
-    print(f"✓ {DATA.name} actualizado ({kb:.0f} KB)")
+    names_kb = TRACKER_MAP_NAMES.stat().st_size / 1024
+    print(f"✓ {DATA.name} actualizado ({kb:.0f} KB) · "
+          f"{TRACKER_MAP_NAMES.name} ({names_kb:.0f} KB)")
 
 
 if __name__ == "__main__":
