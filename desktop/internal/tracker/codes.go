@@ -237,6 +237,7 @@ func (c *Codes) validateContract() error {
 		"Leave":              {"id"},
 		"JoinFinished":       {"zone"},
 		"HealthUpdate":       {"target", "value", "source"},
+		"HealthUpdates":      {"targets", "values", "sources"},
 		"UpdateFame":         {"gained"},
 		"UpdateReSpecPoints": {"gained"},
 		"TakeSilver":         {"id", "amount"},
@@ -360,7 +361,7 @@ func (s *CodeStore) Load() (*Codes, error) {
 		if err != nil {
 			continue // no existe: es lo normal
 		}
-		codes, err := parseCodes(raw, path)
+		codes, err := parseCodes(raw, safeCodeOrigin(path))
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -369,6 +370,16 @@ func (s *CodeStore) Load() (*Codes, error) {
 		}
 		s.set(codes, "")
 		return codes, nil
+	}
+
+	if firstErr != nil {
+		s.mu.Lock()
+		if s.codes != nil {
+			s.err = firstErr.Error() + " — se conserva la última tabla válida"
+			s.mu.Unlock()
+			return nil, firstErr
+		}
+		s.mu.Unlock()
 	}
 
 	raw, err := fs.ReadFile(s.embedded, "data/photon_codes.json")

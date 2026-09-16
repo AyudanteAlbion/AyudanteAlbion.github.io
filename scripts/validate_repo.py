@@ -297,6 +297,7 @@ def validate_tracker_safety() -> None:
         "ReadProcessMemory": "lectura de memoria del juego",
         "SendInput": "automatización de entradas",
         "WindowSetAlwaysOnTop": "overlay/ventana siempre visible",
+        "FallbackSource": "fallback silencioso de captura real a simulador",
     }
     for symbol, description in forbidden.items():
         if symbol in sources:

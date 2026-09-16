@@ -2,6 +2,8 @@
 
 package tracker
 
+import "sort"
+
 // Typed operation/event models keep protocol parameter indexes at the edge.
 // Handlers below this boundary no longer pass unstructured maps around.
 type JoinResponseData struct {
@@ -30,6 +32,14 @@ type PartyPlayerLeftData struct {
 	HasObjectID bool
 }
 type ChangeClusterData struct{ Zone string }
+type JoinFinishedData struct{ Zone string }
+type PartyDisbandedData struct{}
+type HealthUpdateData struct {
+	TargetID int64
+	SourceID int64
+	Value    int64
+}
+type HealthUpdatesData struct{ Updates []HealthUpdateData }
 
 func decodeJoinResponse(codes *Codes, params map[byte]any) (JoinResponseData, bool) {
 	var result JoinResponseData
@@ -113,6 +123,86 @@ func (h *handlers) decodePartyPlayerLeft(params map[byte]any) PartyPlayerLeftDat
 	}
 	return result
 }
+
+func numericSequence(value any) []int64 {
+	result := []int64{}
+	appendNumber := func(value any) {
+		if number, ok := num(value); ok {
+			result = append(result, number)
+		}
+	}
+	switch values := value.(type) {
+	case []byte:
+		for _, value := range values {
+			appendNumber(value)
+		}
+	case []int16:
+		for _, value := range values {
+			appendNumber(value)
+		}
+	case []int32:
+		for _, value := range values {
+			appendNumber(value)
+		}
+	case []int64:
+		return append(result, values...)
+	case []float32:
+		for _, value := range values {
+			appendNumber(value)
+		}
+	case []float64:
+		for _, value := range values {
+			appendNumber(value)
+		}
+	case []any:
+		for _, value := range values {
+			appendNumber(value)
+		}
+	case map[any]any:
+		type entry struct {
+			index int64
+			value any
+		}
+		entries := make([]entry, 0, len(values))
+		for key, value := range values {
+			if index, ok := num(key); ok {
+				entries = append(entries, entry{index: index, value: value})
+			}
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].index < entries[j].index })
+		for _, entry := range entries {
+			appendNumber(entry.value)
+		}
+	}
+	return result
+}
+
+func (h *handlers) decodeHealthUpdates(params map[byte]any) HealthUpdatesData {
+	target, _ := h.paramNum("HealthUpdates", params, "targets")
+	valuesRaw, _ := h.param("HealthUpdates", params, "values")
+	sourcesRaw, _ := h.param("HealthUpdates", params, "sources")
+	values, sources := numericSequence(valuesRaw), numericSequence(sourcesRaw)
+	result := HealthUpdatesData{Updates: make([]HealthUpdateData, 0, len(values))}
+	for index, value := range values {
+		source := int64(0)
+		if index < len(sources) {
+			source = sources[index]
+		}
+		result.Updates = append(result.Updates, HealthUpdateData{TargetID: target, SourceID: source, Value: value})
+	}
+	return result
+}
+
+func (h *handlers) decodeJoinFinished(params map[byte]any) (JoinFinishedData, bool) {
+	index, ok := h.codes.Param("JoinFinished", "zone")
+	if !ok {
+		return JoinFinishedData{}, false
+	}
+	zone := worldLocation(params[index])
+	return JoinFinishedData{Zone: zone}, zone != ""
+}
+
+func (h *handlers) decodePartyDisbanded(map[byte]any) PartyDisbandedData { return PartyDisbandedData{} }
 
 func (h *handlers) decodeChangeCluster(params map[byte]any) (ChangeClusterData, bool) {
 	index, ok := h.codes.Param("ChangeCluster", "zone")

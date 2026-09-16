@@ -50,6 +50,23 @@ func TestCodeTableRejectsInvalidActivation(t *testing.T) {
 	}
 }
 
+func TestReloadKeepsLastValidTableWhenExternalEditIsInvalid(t *testing.T) {
+	current := shippedCodes(t)
+	path := filepath.Join(t.TempDir(), "photon_codes.json")
+	if err := os.WriteFile(path, []byte(`{"version":"broken"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewCodeStore(nil, path)
+	store.set(current, "")
+	if loaded, err := store.Load(); err == nil || loaded != nil {
+		t.Fatal("invalid external edit replaced the active table")
+	}
+	kept, warning := store.Current()
+	if kept != current || warning == "" {
+		t.Fatalf("last valid table was not preserved: kept=%v warning=%q", kept == current, warning)
+	}
+}
+
 func TestCodeTableRejectsTrailingJSON(t *testing.T) {
 	raw := mutateShippedCodes(t, func(map[string]any) {})
 	raw = append(raw, []byte(" {}")...)

@@ -359,8 +359,20 @@ func realCode(params map[byte]any, key byte, envelope byte) (int32, bool) {
 	if !ok {
 		return 0, false
 	}
-	n, ok := num(v)
-	if !ok || n < 0 || n > 32767 {
+	var n int64
+	switch value := v.(type) {
+	case byte:
+		n = int64(value)
+	case int16:
+		n = int64(value)
+	case int32:
+		n = int64(value)
+	case int64:
+		n = value
+	default:
+		return 0, false
+	}
+	if n < 0 || n > 32767 {
 		return 0, false
 	}
 	return int32(n), true
@@ -616,12 +628,17 @@ func (h *handlers) event(ev *photon.EventData) {
 	// operation(). Acá solo queda JoinFinished, que confirma la entrada al
 	// mapa después de un Join.
 	case "JoinFinished":
-		if idx, ok := h.codes.Param(name, "zone"); ok {
-			h.enterZone(worldLocation(p[idx]))
+		if joined, ok := h.decodeJoinFinished(p); ok {
+			h.enterZone(joined.Zone)
 		}
 
 	case "HealthUpdate":
 		h.health(name, p)
+
+	case "HealthUpdates":
+		for _, update := range h.decodeHealthUpdates(p).Updates {
+			h.applyHealth(update)
+		}
 
 	case "UpdateFame":
 		if !h.trackingAllowed() {
@@ -688,6 +705,7 @@ func (h *handlers) event(ev *photon.EventData) {
 		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 
 	case "PartyDisbanded":
+		_ = h.decodePartyDisbanded(p)
 		h.entities.ResetPartyKeepLocal()
 		h.syncRoster()
 		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
@@ -700,24 +718,24 @@ func (h *handlers) event(ev *photon.EventData) {
 // health traduce el evento de cambio de vida en daño o curación.
 // En Albion, un valor negativo es daño y uno positivo es curación.
 func (h *handlers) health(event string, p map[byte]any) {
-	if !h.trackingAllowed() {
-		return
-	}
 	targetID, ok1 := h.paramNum(event, p, "target")
 	value, ok2 := h.paramNum(event, p, "value")
-	if !ok1 || !ok2 || value == 0 {
+	if !ok1 || !ok2 {
 		return
 	}
-	sourceID, hasSource := h.paramNum(event, p, "source")
+	sourceID, _ := h.paramNum(event, p, "source")
+	h.applyHealth(HealthUpdateData{TargetID: targetID, SourceID: sourceID, Value: value})
+}
 
-	target, _ := h.entities.ByObjectID(targetID)
-	source := Entity{}
-	if hasSource {
-		source, _ = h.entities.ByObjectID(sourceID)
+func (h *handlers) applyHealth(update HealthUpdateData) {
+	if !h.trackingAllowed() || update.Value == 0 {
+		return
 	}
+	target, _ := h.entities.ByObjectID(update.TargetID)
+	source, _ := h.entities.ByObjectID(update.SourceID)
 
 	// Los valores vienen multiplicados por 10000.
-	amount := value / 10000
+	amount := update.Value / 10000
 	if amount == 0 || source.GUID == "" || !source.InParty {
 		return
 	}
