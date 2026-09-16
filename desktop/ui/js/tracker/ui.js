@@ -230,6 +230,9 @@
     var phase = capture.phase || 'off';
     var order = { off:0, preparing:1, capturing_network:2, photon_detected:3, server_confirmed:4, waiting_join:5, character_detected:6 };
     var rank = order[phase] || 0;
+    // Detección parcial: el Join trajo el nombre pero no el GUID. Se muestra
+    // el personaje, pero las métricas siguen cerradas hasta un Join completo.
+    var isPartial = identity.detection === 'partial';
     var isDemo = phase === 'demo' || !!snap.simulated;
     var steps = [
       [phase === 'off', 'Apagado', 'Apagado', capture.error || ''],
@@ -237,8 +240,8 @@
       [rank >= 2, 'Capturando red', 'Capturando red', (capture.openSources || 0) + ' fuente(s) · ' + (capture.adapter || 'adaptador automático')],
       [rank >= 3, 'Photon detectado', 'Photon detectado', (capture.photonPackets || 0) + ' Photon · ' + (capture.packetsReceived || 0) + ' UDP'],
       [!!capture.serverConfirmed, 'Servidor Albion confirmado', 'Servidor Albion confirmado', capture.server || ''],
-      [rank >= 5, 'Esperando JoinResponse', 'Esperando JoinResponse', identity.valid ? 'JoinResponse recibido' : 'Cerrá sesión en Albion y volvé a entrar.'],
-      [!!identity.valid, 'Personaje detectado', 'Personaje detectado', identity.valid ? identity.name : 'JoinResponse es la única fuente de identidad']
+      [rank >= 5, 'Esperando JoinResponse', 'Esperando JoinResponse', (identity.valid || isPartial) ? 'JoinResponse recibido' : 'Cerrá sesión en Albion y volvé a entrar.'],
+      [!!identity.valid, 'Personaje detectado', 'Personaje detectado', identity.valid ? identity.name : (isPartial ? identity.name + ' · sin GUID, faltan métricas' : 'JoinResponse es la única fuente de identidad')]
     ];
     if (isDemo) {
       node.innerHTML = '<div class="trk-demo-warning"><strong>MODO DEMO · NO ES TRACKING REAL</strong><small>Todos los datos son ficticios y no vienen de Albion.</small></div>';
@@ -527,6 +530,8 @@
       setStatus('MODO DEMO · NO ES TRACKING REAL · datos ficticios.');
     } else if (info.identityValid && !info.filterMatched) {
       setStatus('Personaje detectado, pero no coincide con el filtro del backend. No se acepta ninguna métrica.');
+    } else if (info.identityDetection === 'partial') {
+      setStatus('Personaje detectado sin GUID: se muestra el nombre, pero no se acepta ninguna métrica hasta un JoinResponse completo.');
     } else if (info.capturing) {
       setStatus('Tracking real · ' + ((info.capture && info.capture.phase) || 'preparando') + ' · fuente: ' + (info.source || 'desconocida'));
     } else {

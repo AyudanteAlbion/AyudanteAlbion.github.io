@@ -2,7 +2,10 @@
 
 package tracker
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 // protocolDiagnostics is shared by Npcap and Socket. It deliberately stores
 // only numeric codes and counts; protocol parameters and identity never cross
@@ -17,6 +20,10 @@ type protocolDiagnostics struct {
 	missing           uint64
 	missingEvents     uint64
 	missingOperations uint64
+	// returnCodes cuenta las respuestas por ReturnCode. Es telemetría pura:
+	// un valor distinto de cero ya NO descarta la respuesta, así que este
+	// contador es lo que permite ver si el servidor los está usando.
+	returnCodes map[int16]int
 }
 
 func newProtocolDiagnostics() *protocolDiagnostics {
@@ -37,8 +44,27 @@ func (d *protocolDiagnostics) setEnabled(enabled bool) {
 		d.operations = make(map[int32]int)
 		d.eventEnvelope = make(map[byte]int)
 		d.operationEnvelope = make(map[byte]int)
+		d.returnCodes = make(map[int16]int)
 		d.missing, d.missingEvents, d.missingOperations = 0, 0, 0
 	}
+}
+
+// returnCode registra el ReturnCode de una respuesta sin filtrarla. Sirve para
+// comprobar desde el diagnóstico si un Join llegó con un código distinto de
+// cero, que es justamente el caso que antes se descartaba en silencio.
+func (d *protocolDiagnostics) returnCode(code int16) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.enabled {
+		return
+	}
+	if d.returnCodes == nil {
+		d.returnCodes = make(map[int16]int)
+	}
+	d.returnCodes[code]++
 }
 
 func (d *protocolDiagnostics) envelope(event bool, code byte) {
@@ -126,11 +152,19 @@ func (d *protocolDiagnostics) snapshot(store *CodeStore) map[string]any {
 		}
 		return result
 	}
+	returnCodes := make([]map[string]any, 0, len(d.returnCodes))
+	for code, count := range d.returnCodes {
+		returnCodes = append(returnCodes, map[string]any{"code": code, "count": count})
+	}
+	sort.Slice(returnCodes, func(i, j int) bool {
+		return returnCodes[i]["code"].(int16) < returnCodes[j]["code"].(int16)
+	})
 	events, operations := rows(d.events, true), rows(d.operations, false)
 	return map[string]any{
 		"enabled": d.enabled, "known": events["known"], "unknown": events["unknown"], "operations": operations,
 		"envelope":                  map[string]any{"events": envelopes(d.eventEnvelope), "operations": envelopes(d.operationEnvelope)},
 		"missingAuthoritativeCode":  d.missing,
 		"missingAuthoritativeCodes": map[string]uint64{"event252": d.missingEvents, "operation253": d.missingOperations},
+		"returnCodes":               returnCodes,
 	}
 }

@@ -56,7 +56,10 @@ type LocalIdentity struct {
 	Name          string `json:"name,omitempty"`
 	Guild         string `json:"guild,omitempty"`
 	Alliance      string `json:"alliance,omitempty"`
-	Detection     string `json:"detection"` // waiting | detected | filtered
+	// Detection: waiting | partial | detected | filtered.
+	// "partial" es un Join con nombre y ObjectID pero sin GUID: se muestra el
+	// personaje, pero Valid queda en false y no se acepta ninguna métrica.
+	Detection     string `json:"detection"`
 	Valid         bool   `json:"valid"`
 	FilterMatched bool   `json:"filterMatched"`
 	DetectedAt    int64  `json:"detectedAt,omitempty"`
@@ -432,6 +435,40 @@ func (s *State) ApplyJoinIdentityAndRegistry(identity LocalIdentity, zone string
 	return true
 }
 
+// ApplyPartialJoinIdentity registra un JoinResponse que trae nombre y ObjectID
+// pero no GUID. Sirve solo para MOSTRAR el personaje: deja Valid en false, así
+// que MetricsAllowed, la persistencia de sesión y el registro de entidades
+// siguen cerrados. Nunca pisa una identidad completa ya confirmada.
+func (s *State) ApplyPartialJoinIdentity(identity LocalIdentity, zone string) bool {
+	identity = normalizeIdentity(identity)
+	if identity.ObjectID == 0 || identity.Name == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Una identidad confirmada del mismo personaje no se degrada a parcial.
+	if s.identity.Valid && sameCharacter(s.identity.Name, identity.Name) {
+		return false
+	}
+	identity.GUID = ""
+	identity.Valid = false
+	identity.Detection = "partial"
+	identity.DetectedAt = time.Now().UnixMilli()
+	identity.Revision = s.identity.Revision + 1
+	identity.FilterMatched = s.trackingCharacter == "" || sameCharacter(s.trackingCharacter, identity.Name)
+	if !identity.FilterMatched {
+		identity.Detection = "filtered"
+	}
+	s.identity = identity
+	// La zona NO se registra acá: enterZoneLocked exige identidad válida, y el
+	// historial de mapas es parte de las estadísticas. Un Join completo
+	// posterior lo registrará. El parámetro se mantiene para que la firma no
+	// cambie cuando el JoinResponse pase a confirmado.
+	_ = zone
+	s.recomputePhaseLocked()
+	return true
+}
+
 func (s *State) ClearCharacter() {
 	s.mu.Lock()
 	revision := s.identity.Revision + 1
@@ -550,7 +587,7 @@ func (s *State) ensureCombatantLocked(entity Entity) *Combatant {
 func (s *State) Character() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.identity.Valid {
+	if !s.identity.Valid && s.identity.Detection != "partial" {
 		return ""
 	}
 	return s.identity.Name
@@ -878,8 +915,11 @@ func (s *State) Snapshot() Snapshot {
 		partyNames = append(partyNames, m.Name)
 	}
 	capturing := s.capture.RealCapture || s.demo || s.capture.Phase == CapturePreparing
+	// El nombre se muestra también en detección parcial (Join sin GUID). No
+	// habilita métricas: eso lo decide metricsAllowedLocked, que exige
+	// identidad completa.
 	character := ""
-	if s.identity.Valid {
+	if s.identity.Valid || s.identity.Detection == "partial" {
 		character = s.identity.Name
 	}
 	metrics := MetricsSnapshot{Accepted: s.metricsAllowedLocked(), StartedAt: s.startedAt.UnixMilli(), Seconds: int64(elapsed), Fame: s.fame, Silver: s.silver, Respec: s.respec, FamePerHour: float64(s.fame) / hours, SilverPerH: float64(s.silver) / hours, Combatants: list, Loot: loot}

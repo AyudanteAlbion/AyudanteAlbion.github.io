@@ -40,7 +40,10 @@ func operationResponseBody(operationCode byte) []byte {
 // y el mensaje se perdía: es exactamente el síntoma de "0 decodificados" con
 // el juego abierto y tráfico Photon entrando.
 func TestMessageSignatureDoesNotSelectDecoder(t *testing.T) {
-	for _, signature := range []byte{0x00, 0xf1, 0xfe, 0x02, 0x7f} {
+	// 0xF3 es el caso que faltaba y el único que disparaba el bug: era la
+	// firma que mandaba el mensaje al decodificador Protocol16 y hacía perder
+	// el JoinResponse del juego actual.
+	for _, signature := range []byte{0x00, 0xf1, 0xfe, 0x02, 0x7f, 0xf3} {
 		calls := 0
 		parser := NewParser(Handler{OnResponse: func(*OperationResponse) { calls++ }})
 		packet := reliablePacketWithSignature(signature, msgOperationResponse, operationResponseBody(2), 0)
@@ -59,6 +62,48 @@ func TestMessageAcceptsTrailingBytes(t *testing.T) {
 	body := append(operationResponseBody(2), 0x00, 0x00)
 	if !parser.Receive(reliablePacketWithSignature(0x00, msgOperationResponse, body, 0)) || calls != 1 {
 		t.Fatalf("relleno final: Receive() decodificó %d respuestas, want 1", calls)
+	}
+}
+
+// Relleno DESPUÉS del paquete completo, que es como llegan muchos datagramas
+// reales. Inspect() es la primera compuerta —pipeline.Ingest descarta el
+// datagrama si no lo da por válido—, así que este caso se prueba acá y no solo
+// a través de Receive(): el test anterior llamaba al parser directamente y por
+// eso nunca detectó que Inspect anulaba el datagrama entero.
+func TestInspectKeepsValidPacketsDespiteTrailingPadding(t *testing.T) {
+	packet := reliablePacketWithSignature(0x00, msgOperationResponse, operationResponseBody(2), 0)
+
+	clean := Inspect(packet)
+	if !clean.Valid || clean.Packets != 1 {
+		t.Fatalf("datagrama limpio: Valid=%v Packets=%d, want true/1", clean.Valid, clean.Packets)
+	}
+
+	for _, padding := range []int{1, 2, 11} {
+		padded := append(append([]byte(nil), packet...), make([]byte, padding)...)
+		got := Inspect(padded)
+		if !got.Valid || got.Packets != 1 {
+			t.Fatalf("relleno de %d byte(s): Valid=%v Packets=%d, want true/1", padding, got.Valid, got.Packets)
+		}
+	}
+}
+
+// Y el datagrama con relleno debe además decodificarse de punta a punta.
+func TestReceiveDecodesPacketWithTrailingPadding(t *testing.T) {
+	calls := 0
+	parser := NewParser(Handler{OnResponse: func(*OperationResponse) { calls++ }})
+	packet := reliablePacketWithSignature(0x00, msgOperationResponse, operationResponseBody(2), 0)
+	padded := append(append([]byte(nil), packet...), 0x00, 0x00, 0x00)
+
+	if !parser.Receive(padded) || calls != 1 {
+		t.Fatalf("relleno tras el paquete: Receive() decodificó %d respuestas, want 1", calls)
+	}
+}
+
+// Basura sin ningún paquete válido sigue siendo un datagrama inválido: la
+// tolerancia al relleno no puede convertirse en aceptar cualquier cosa.
+func TestInspectStillRejectsGarbage(t *testing.T) {
+	if got := Inspect([]byte{0x01, 0x02, 0x03}); got.Valid || got.Packets != 0 {
+		t.Fatalf("basura: Valid=%v Packets=%d, want false/0", got.Valid, got.Packets)
 	}
 }
 

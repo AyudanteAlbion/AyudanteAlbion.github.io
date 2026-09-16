@@ -148,6 +148,7 @@ func (e *Engine) Register(mux *http.ServeMux) {
 			"capturing":         running,
 			"capture":           snapshot.Capture,
 			"identityValid":     snapshot.Identity.Valid,
+			"identityDetection": snapshot.Identity.Detection,
 			"filterMatched":     snapshot.Identity.FilterMatched,
 			"listeners":         e.hub.Subscribers(),
 		}

@@ -410,10 +410,34 @@ func GUIDFromPhoton(value any) (string, bool) {
 	switch v := value.(type) {
 	case photon.CustomValue:
 		raw = v.Data
+	case *photon.CustomValue:
+		if v == nil {
+			return "", false
+		}
+		raw = v.Data
 	case []byte:
 		raw = v
 	case [16]byte:
 		raw = v[:]
+	case string:
+		// Algunas tablas entregan el GUID ya renderizado en forma canónica.
+		if parsed, ok := guidFromString(v); ok {
+			return parsed, true
+		}
+		return "", false
+	case []any:
+		// Un arreglo genérico de bytes: aparece cuando el valor viaja dentro
+		// de una colección sin tipo. Antes se rechazaba y con él se perdía la
+		// identidad local entera.
+		bytes := make([]byte, 0, len(v))
+		for _, item := range v {
+			number, ok := num(item)
+			if !ok || number < 0 || number > 255 {
+				return "", false
+			}
+			bytes = append(bytes, byte(number))
+		}
+		raw = bytes
 	default:
 		return "", false
 	}
@@ -421,6 +445,30 @@ func GUIDFromPhoton(value any) (string, bool) {
 		return "", false
 	}
 	return dotNetGUID(raw), true
+}
+
+// guidFromString acepta un GUID ya escrito en texto, con o sin guiones y en
+// cualquier capitalización. Devuelve siempre la forma canónica en minúsculas
+// que usa el resto del tracker como clave estable.
+func guidFromString(value string) (string, bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	trimmed = strings.TrimPrefix(trimmed, "{")
+	trimmed = strings.TrimSuffix(trimmed, "}")
+	compact := strings.ReplaceAll(trimmed, "-", "")
+	if len(compact) != 32 {
+		return "", false
+	}
+	raw, err := hex.DecodeString(compact)
+	if err != nil {
+		return "", false
+	}
+	if strings.Count(trimmed, "-") == 4 {
+		// Ya venía en forma canónica: se respeta tal cual.
+		return trimmed, true
+	}
+	return hex.EncodeToString(raw[0:4]) + "-" + hex.EncodeToString(raw[4:6]) + "-" +
+		hex.EncodeToString(raw[6:8]) + "-" + hex.EncodeToString(raw[8:10]) + "-" +
+		hex.EncodeToString(raw[10:16]), true
 }
 
 func GUIDsFromPhoton(value any) []string {
@@ -441,11 +489,27 @@ func GUIDsFromPhoton(value any) []string {
 			}
 		}
 		return out
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if guid, ok := GUIDFromPhoton(item); ok {
+				out = append(out, guid)
+			}
+		}
+		return out
 	case []any:
 		out := make([]string, 0, len(v))
 		for _, item := range v {
 			if guid, ok := GUIDFromPhoton(item); ok {
 				out = append(out, guid)
+			}
+		}
+		// Un roster de un solo integrante puede llegar como 16 bytes sueltos
+		// dentro del arreglo genérico. Si ningún elemento era un GUID por sí
+		// mismo, se reintenta leyendo la colección completa como uno solo.
+		if len(out) == 0 {
+			if guid, ok := GUIDFromPhoton(v); ok {
+				return []string{guid}
 			}
 		}
 		return out

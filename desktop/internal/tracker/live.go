@@ -481,9 +481,12 @@ func (h *handlers) request(op *photon.OperationRequest) {
 func (h *handlers) response(op *photon.OperationResponse) {
 	h.st.MarkDecoded()
 	h.recordEnvelope(false, op.Code)
-	if op.ReturnCode != 0 {
-		return
-	}
+	// El ReturnCode NO descarta la respuesta. La aplicación de referencia lo
+	// recibe en OnResponse y lo ignora: el handler corre igual. Filtrar por él
+	// tiraba JoinResponse legítimos cuando el campo traía un valor distinto de
+	// cero o se decodificaba mal. Se registra para diagnóstico y la decisión
+	// real queda en decodeJoinResponse, que exige los datos de identidad.
+	h.recordReturnCode(op.ReturnCode)
 	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
 	if !ok {
 		h.recordMissingCode(false)
@@ -497,6 +500,10 @@ func (h *handlers) response(op *photon.OperationResponse) {
 func (h *handlers) recordEnvelope(event bool, code byte) { h.diag.envelope(event, code) }
 
 func (h *handlers) recordMissingCode(event bool) { h.diag.missingCode(event) }
+
+// recordReturnCode guarda el ReturnCode observado. No filtra nada: existe para
+// que el diagnóstico muestre si el servidor manda códigos distintos de cero.
+func (h *handlers) recordReturnCode(code int16) { h.diag.returnCode(code) }
 
 // recordOperation maintains privacy-safe diagnostics: only codes and counts,
 // never player names, GUIDs, or packet parameters.
@@ -512,8 +519,20 @@ func (h *handlers) identifyJoinResponse(code int32, params map[byte]any) {
 		return
 	}
 
-	join, valid := decodeJoinResponse(h.codes, params)
-	if !valid {
+	join, confirmed, identifiable := decodeJoinResponse(h.codes, params)
+	if !identifiable {
+		return
+	}
+	if !confirmed {
+		// El servidor dijo quién sos, pero sin GUID no hay clave estable para
+		// atribuir daño, fama ni botín. Se muestra el personaje y se deja el
+		// registro de entidades intacto: las métricas siguen cerradas hasta
+		// que llegue un Join completo.
+		h.st.ApplyPartialJoinIdentity(LocalIdentity{
+			ObjectID: join.ObjectID, Name: join.Name,
+			Guild: join.Guild, Alliance: join.Alliance,
+		}, join.Zone)
+		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 		return
 	}
 	// Clear zone-transient ObjectIDs before installing Join's fresh local ID;

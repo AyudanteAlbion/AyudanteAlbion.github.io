@@ -41,7 +41,13 @@ type HealthUpdateData struct {
 }
 type HealthUpdatesData struct{ Updates []HealthUpdateData }
 
-func decodeJoinResponse(codes *Codes, params map[byte]any) (JoinResponseData, bool) {
+// decodeJoinResponse lee cada campo por separado, como hace la aplicación de
+// referencia, en vez de exigirlos todos juntos. El segundo valor indica si la
+// respuesta alcanza para ATRIBUIR estadísticas (nombre + ObjectID + GUID); el
+// tercero, si alcanza para MOSTRAR el personaje (nombre + ObjectID). Un Join
+// sin GUID deja de traducirse en "Personaje no detectado" aunque el juego ya
+// haya dicho quién sos.
+func decodeJoinResponse(codes *Codes, params map[byte]any) (JoinResponseData, bool, bool) {
 	var result JoinResponseData
 	value := func(field string) (any, bool) {
 		index, ok := codes.SelfOp.Parameters[field]
@@ -69,7 +75,8 @@ func decodeJoinResponse(codes *Codes, params map[byte]any) (JoinResponseData, bo
 	if raw, ok := value("alliance"); ok {
 		result.Alliance, _ = str(raw)
 	}
-	return result, result.ObjectID != 0 && result.GUID != "" && result.Name != ""
+	identifiable := result.ObjectID != 0 && result.Name != ""
+	return result, identifiable && result.GUID != "", identifiable
 }
 
 func (h *handlers) decodeNewCharacter(params map[byte]any) NewCharacterData {
