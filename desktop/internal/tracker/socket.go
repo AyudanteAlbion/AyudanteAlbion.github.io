@@ -15,8 +15,12 @@ import (
 // platformRawCapture is produced by socket_windows.go. Both IP families and
 // all usable local addresses feed the same packet channel.
 type platformRawCapture struct {
-	packets   <-chan CapturedDatagram
-	errors    <-chan error
+	packets <-chan CapturedDatagram
+	errors  <-chan error
+	// frames entrega true/false por cada trama cruda leída del socket, según
+	// se haya podido interpretar o no. Sirve para el mismo diagnóstico que en
+	// Npcap: distinguir "no llega nada" de "llega y se descarta".
+	frames    <-chan bool
 	count     int
 	signature string
 	close     func()
@@ -120,6 +124,10 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 				continue
 			}
 			pipeline.Ingest(packet)
+		case parsed, ok := <-active.frames:
+			if ok {
+				pipeline.MarkFrame(0, parsed)
+			}
 		case err, ok := <-active.errors:
 			if !ok || err != nil {
 				pipeline.ResetTransport()
