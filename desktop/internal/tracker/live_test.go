@@ -247,11 +247,12 @@ func TestChangeClusterOperationUpdatesZone(t *testing.T) {
 	}
 }
 
-// El pedido de ChangeCluster también sirve: si la captura empezó tarde, es la
-// primera pista de la zona actual.
+// El pedido de ChangeCluster actualiza el mundo solo después de identificar al
+// personaje; si la captura empezó tarde no puede fabricar una sesión anónima.
 func TestChangeClusterRequestUpdatesZone(t *testing.T) {
 	state := NewState()
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+	handler.response(&photon.OperationResponse{ReturnCode: 0, Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Anon", 253: int64(2)}})
 
 	handler.request(&photon.OperationRequest{
 		Code:       41,
