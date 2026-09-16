@@ -110,10 +110,11 @@ Cada extracción debe mantener la API global que utiliza la aplicación.
   estén listos para pasar a ES modules.
 - No cargar archivos de esta carpeta desde producción hasta que estén conectados
   explícitamente desde `index.html`.
-- **Un módulo nuevo se agrega en tres lugares a la vez**: el `<script>` de
-  `index.html`, la copia de `pages.yml` y la de `build.sh`. La carpeta se copia
-  entera, así que agregar un archivo dentro de `js/` ya queda cubierto; lo que
-  hay que revisar cualquier carpeta nueva fuera de ella.
+- **Un módulo nuevo se agrega a los dos frontends por separado**: el `<script>`
+  de `albion-app/index.html` (web) y el de `desktop/ui/index.html` (fork del
+  escritorio). El despliegue web copia la carpeta `js/` entera (`web.yml`) y el
+  `.exe` embebe `desktop/ui/` entera, así que ninguno necesita tocar nada más;
+  lo que hay que revisar es cualquier carpeta nueva fuera de `js/`.
 - Los módulos son **lógica pura**: sin DOM, sin `fetch` y sin leer estado
   global. Lo que necesiten llega por parámetro (por ejemplo, la función de
   precios que recibe `crafting/recipe.js`).

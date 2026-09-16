@@ -16,8 +16,10 @@ Esos números **no son públicos ni estables**: Sandbox Interactive los reordena
 Cuando eso pasa, el evento «daño» pasa a tener otro número, el tracker deja de reconocerlo y el
 medidor se queda en cero.
 
-Por eso la tabla vive en `albion-app/data/photon_codes.json` y **no dentro del ejecutable**. Un
-parche de Albion se arregla editando texto, no publicando un binario nuevo.
+Por eso la fuente de verdad de la tabla es un archivo de texto: `albion-app/data/photon_codes.json`.
+De ahí se embebe una copia de fábrica en `AyudanteAlbionDesktop.exe` y también viaja suelta en el
+paquete, **junto al ejecutable**. Un parche de Albion se arregla editando texto, no publicando un
+binario nuevo.
 
 ---
 
@@ -107,8 +109,9 @@ Las claves que empiezan con `_` son comentarios y se ignoran.
 - No puede haber dos eventos con el mismo código.
 - `selfOperation.operation` tiene que existir en `operations`.
 
-`python3 scripts/validate_repo.py` chequea todo esto, y `build.sh` también, para que no se publique
-una edición Tracker con la tabla rota.
+`python3 scripts/validate_repo.py` y `python3 scripts/validate_photon_codes.py` chequean todo esto,
+y el workflow **Escritorio** (`desktop.yml`) lo valida antes de cada compilación, para que no se
+publique un `.exe` con la tabla rota.
 
 ---
 

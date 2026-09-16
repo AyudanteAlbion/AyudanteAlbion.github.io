@@ -16,6 +16,12 @@ Desde el desacople, **esta carpeta es un fork versionado de `albion-app/`**:
 
 Los dos productos evolucionan por separado y tienen sus propios workflows.
 
+**Primera divergencia concreta del fork:** las pestañas **Sesión**,
+**Recolección** y **Mazmorras** (con `js/tracker/` y los CSS
+`tracker-setup.css`, `gathering.css` y `dungeons.css`) existen **solo acá**: la
+web pública ya no las muestra ni las carga. El interruptor «seguimiento de
+comercio» del Registro de operaciones también es exclusivo del escritorio.
+
 ## Qué hay acá y qué no
 
 | | Origen | Versionado |

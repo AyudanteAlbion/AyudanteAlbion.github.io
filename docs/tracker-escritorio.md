@@ -1,79 +1,102 @@
-# Ediciones del ejecutable y tracker de escritorio
+# App de escritorio y tracker en vivo
 
-Documento de arquitectura de la separación **web / escritorio estándar / escritorio Tracker**, y
-del motor de estadísticas en vivo que distingue a la tercera.
+Documento de arquitectura de la separación **web / app de escritorio**, y del
+motor de estadísticas en vivo que solo existe en la segunda.
 
-El plan completo de qué capacidades queremos replicar y en qué orden está en
-[`plan-statistics-analysis.md`](plan-statistics-analysis.md). Este documento describe **lo que ya
-está construido** y los contratos que hay que respetar al seguir.
-
----
-
-## 1. Las tres formas de correr la app
-
-| | Web | `AyudanteAlbion.exe` | `AyudanteAlbion-Tracker.exe` |
-|---|---|---|---|
-| Origen | GitHub Pages | Go + `embed` | Go + `embed` + `-tags tracker` |
-| Herramientas de cálculo | todas | todas | todas |
-| Pestaña **Sesión** | no | no | sí |
-| Motor de captura en el binario | no | **no compilado** | sí |
-| Permisos de administrador | no | no | sí (captura de red) |
-
-**El frontend es uno solo.** No hay copias del HTML ni ramas de build por edición: la misma
-`albion-app/` se sirve en los tres casos y se adapta en tiempo de ejecución.
+El plan de capacidades que queremos replicar y su orden está en
+[`plan-statistics-analysis.md`](plan-statistics-analysis.md); el plan original
+de la app nativa, en [`PLAN_APP_ESCRITORIO.md`](PLAN_APP_ESCRITORIO.md). Este
+documento describe **lo que ya está construido** y los contratos que hay que
+respetar al seguir.
 
 ---
 
-## 2. Cómo se separan las ediciones
+## 1. Dos productos independientes
 
-### 2.1 En el binario: build tags de Go
-
-```
-albion-exe/
-  main.go                 servidor, proxies y apagado por heartbeat (común)
-  edition_standard.go     //go:build !tracker   → status «no disponible»
-  edition_tracker.go      //go:build tracker    → monta el motor
-  tracker/                hub.go · state.go · source.go · server.go
-```
-
-`main.go` llama a una sola función, `registerEdition(mux, touch)`, y cada archivo de edición la
-implementa a su manera. Con esto:
-
-- La edición estándar **no compila el paquete `tracker`**: no hay código muerto, no crece el
-  binario, no aparecen dependencias nuevas y no hay forma de activar el tracking por accidente.
-- Sumar capacidades al tracker nunca puede romper la edición estándar, porque no la toca.
-
-```bash
-go build                 -o AyudanteAlbion.exe          # estándar
-go build -tags tracker   -o AyudanteAlbion-Tracker.exe  # Tracker
-```
-
-`build.sh` compila las dos y las mete en el `.zip`. El workflow de release publica los dos `.exe`
-con sus SHA-256.
-
-### 2.2 En el frontend: detección en tiempo de ejecución
-
-`js/tracker/client.js` consulta `GET /api/tracker/status` al arrancar:
-
-| Contexto | Respuesta | Resultado |
+| | Web | App de escritorio |
 |---|---|---|
-| Web pública | 404 | `edition: "web"` — la pestaña Sesión queda oculta |
-| `AyudanteAlbion.exe` | `{edition:"standard", available:false}` | pestaña visible con el aviso de por qué no hay tracking |
-| `AyudanteAlbion-Tracker.exe` | `{edition:"tracker", available:true}` | pestaña completa y conexión al stream |
+| Qué es | Sitio estático en GitHub Pages | `AyudanteAlbionDesktop.exe` (Wails v2 + WebView2) |
+| Código | `albion-app/` | `desktop/` |
+| Publicación | workflow **Web** (`web.yml`) | workflow **Escritorio** (`desktop.yml`) |
+| Pestañas Sesión / Recolección / Mazmorras | **no** | sí |
 
-El botón de la pestaña nace con `hidden` en el HTML y solo se revela cuando la detección confirma
-que estamos en escritorio. Si algo falla —timeout, red caída, respuesta rara— el módulo cae a
-`web` y la app se comporta exactamente como hoy. **La degradación siempre es hacia la web.**
+**No comparten código de frontend.** El frontend del escritorio vive en
+`desktop/ui/` como un fork versionado de `albion-app/` (ver
+[`../desktop/ui/README.md`](../desktop/ui/README.md)). Tocar la web no cambia
+el `.exe`, y tocar el `.exe` no cambia la web.
+
+Lo único compartido son los **assets sin lógica** —`data/`, `icons/` e `img/`
+de `albion-app/`— que `desktop/sync_frontend.sh` copia junto al código de
+`desktop/ui/` para armar `desktop/frontend/`, la carpeta que Go embebe al
+compilar. `frontend/` es generada y no se versiona.
+
+Antes existió el **ejecutable clásico** (`AyudanteAlbion.exe` y
+`AyudanteAlbion-Tracker.exe`, construidos con build tags desde `albion-exe/`):
+abría el navegador del sistema, levantaba un servidor local con heartbeat y se
+publicaba en dos ediciones. Fue retirado por completo; hoy hay **un solo
+binario**, con el tracker siempre compilado y apagado por defecto.
+
+### La web ya no ofrece las pestañas del tracker
+
+**Sesión**, **Recolección** y **Mazmorras** son exclusivas de la app de
+escritorio: las tres se alimentan de la captura de red del juego, imposible en
+un navegador. La web no muestra esas pestañas ni carga `js/tracker/*` ni sus
+CSS; durante la transición mostraban un cartel de «En desarrollo en App de
+Escritorio». Por el mismo motivo, el interruptor «seguimiento de comercio» del
+Registro de operaciones solo existe en `desktop/ui/`.
 
 ---
 
-## 3. El motor de estadísticas
+## 2. La app de escritorio (Wails v2)
+
+```desktop/
+  main.go             arranque Wails: ventana propia + AssetServer
+  app.go              ciclo de vida (OnShutdown detiene el tracker)
+  router.go           http.Handler: estáticos + proxies + tracker
+  internal/proxy/     relays sin CORS (gameinfo / murderledger / twitch)
+  internal/tracker/   motor del tracker (ver §3)
+  ui/                 frontend propio (fork versionado)
+  sync_frontend.sh    arma frontend/ = ui/ + assets compartidos
+```
+
+Diferencias clave con el ejecutable clásico:
+
+- **Ventana propia (WebView2), sin navegador.** La interfaz pide `http://wails/…`
+  y el `AssetServer` lo resuelve dentro del proceso: **no se abre ningún puerto
+  TCP**, y los proxies y la API del tracker viajan por el mismo canal
+  (`router.go` monta todo en un único `http.ServeMux`).
+- **Sin heartbeat ni watchdog.** La app se apaga al cerrar la ventana (lo maneja
+  Wails). El viejo `/alive` solo lo conoce el frontend en modo desarrollo local
+  clásico.
+- **Edición unificada.** El motor del tracker **siempre se compila y se monta**;
+  arranca apagado y se enciende desde la interfaz.
+- **Ventana sin marco**: el frontend aporta la barra de título integrada
+  (arrastre, doble clic y botones de ventana) vía el bridge de Wails.
+
+En el frontend, `js/desktop/environment.js` es el único punto que detecta el
+entorno (`AAEnvironment`): dentro de Wails habilita los controles nativos y
+apaga el anti-pausa (las WebView no congelan pestañas); en la web y en el
+desarrollo local todo queda apagado.
+
+Compilación: **solo en Windows** (workflow `desktop.yml` sobre
+`windows-latest`; Wails + WebView2 son nativos). El pipeline valida la tabla
+Photon, corre `go test ./...`, prepara `frontend/` con `sync_frontend.sh` y
+empaqueta el `.exe` con `photon_codes.json`, `SHA256SUMS.txt` y
+`BUILD_INFO.txt` como artefacto de la ejecución (7 días).
+
+---
+
+## 3. El motor del tracker
 
 ```
-Source ──publica──► Hub ──SSE──► navegador
+Source ──publica──► Hub ──SSE──► WebView
    │                  ▲
-   └──actualiza──► State ──REST──► navegador (primer render)
+   └──actualiza──► State ──REST──► WebView (primer render)
 ```
+
+Todo el paquete vive en `desktop/internal/tracker/` — es el mismo motor que
+tenía el ejecutable clásico, movido tal cual y validado por sus tests
+(`go test ./...` corre en el workflow Escritorio).
 
 ### 3.1 `tracker.Source` — la pieza reemplazable
 
@@ -85,180 +108,214 @@ type Source interface {
 }
 ```
 
-Hay tres implementaciones:
+`router.go` arma la fuente una vez al iniciar:
 
 | Fuente | Cuándo se usa |
 |---|---|
-| `LiveSource` | Npcap instalado: captura real del tráfico del juego |
+| `LiveSource` (Npcap) | **Predeterminada.** Captura real del tráfico del juego |
+| `SocketSource` | Socket sin procesar de Windows: no necesita Npcap, pero exige ejecutar como administrador |
 | `Simulator` | Sin Npcap: datos verosímiles para ver cómo funciona la interfaz |
-| `FallbackSource` | Envuelve a las dos y elige según disponibilidad |
+| `FallbackSource` | Envuelve Npcap y, si no está disponible, cae al simulador |
+| `SelectableSource` | Mantiene los dos proveedores reales (Npcap/Socket) detrás de la misma API para que el usuario elija |
+| `BrokenSource` | La tabla de códigos no cargó: la interfaz muestra el error en vez de morir en silencio |
 
-`edition_tracker.go` arma `LiveSource` y, si Npcap no está, lo envuelve en `FallbackSource` para que
-la pestaña siga siendo usable. En cuanto se instala Npcap, el siguiente arranque usa la captura real
+Si Npcap aparece después (se instala), el siguiente arranque captura de verdad
 sin tocar nada.
 
 ### 3.1.1 Captura: `tracker/capture`
 
-Llama a **`wpcap.dll` de Npcap por syscall**, no a `gopacket/pcap`. Dos razones, y las dos importan
-para este repositorio:
+Llama a **`wpcap.dll` de Npcap por syscall**, no a `gopacket/pcap`:
 
-- **Sin dependencias externas.** `build.sh` compila con una toolchain de Go fija y sin acceso a
-  `proxy.golang.org`; todo lo que necesita el binario viaja en el repo.
-- **Sin cgo.** El `.exe` de Windows se compila desde Linux (`GOOS=windows`). `gopacket/pcap`
-  necesita cgo y un toolchain de C cruzado, que rompería ese flujo.
+- **Sin dependencias externas**: no hace falta bajar módulos de Go para compilar
+  (el go.mod solo declara Wails para la UI).
+- **Sin cgo**: la toolchain de Go compila todo el binario de una pieza.
 
-`pcap_windows.go` tiene la implementación real y `pcap_other.go` un stub, para que el paquete
-compile en Linux y macOS (tests, `go vet`, CI).
+`pcap_windows.go` tiene la implementación real y `pcap_other.go` un stub, para
+que el paquete compile en Linux y macOS (tests, `go vet`, CI).
 
 Se escuchan **todas las interfaces a la vez** con el filtro BPF
-`udp and (port 5055 or port 5056 or port 5057 or port 5058)`. Cuál usa Albion depende de la PC
-—Wi-Fi, Ethernet, VPN—, y escuchar todas es más simple y más robusto que hacer elegir al usuario.
-El modo promiscuo va **apagado**: alcanza con el tráfico de esta máquina.
+`udp and (port 5055 or port 5056 or port 5057 or port 5058)`. Cuál usa Albion
+depende de la PC —Wi-Fi, Ethernet, VPN—, y escuchar todas es más simple y más
+robusto que hacer elegir al usuario. El modo promiscuo va **apagado**: alcanza
+con el tráfico de esta máquina. El usuario puede reducir la escucha a un
+adaptador concreto desde la pestaña Sesión (`/api/tracker/devices`).
 
 ### 3.1.2 Protocolo: `tracker/photon`
 
-Implementación propia y sin dependencias externas de **Protocol18**, el formato compacto que usa
-Albion actualmente, con compatibilidad de lectura para capturas históricas Protocol16. Tiene dos
-capas:
+Implementación propia y sin dependencias externas de **Protocol18**, el formato
+compacto que usa Albion actualmente, con compatibilidad de lectura para
+capturas históricas Protocol16. Tiene dos capas:
 
-- `parser.go` — el envoltorio eNet: separa datagramas Photon coalescidos, verifica CRC cuando está
-  presente, procesa comandos y reensambla fragmentos por conexión, canal y secuencia. Los fragmentos
-  incompletos caducan a los 30 s y sus cantidades/tamaños tienen topes defensivos.
-- `protocol18.go` — deserializa los valores compactos Protocol18: enteros varint, cadenas, valores
-  personalizados, colecciones y tablas de parámetros de un byte. Acota profundidad, longitudes y
-  colecciones antes de asignar memoria. `protocol16.go` conserva el decoder ASCII anterior para
-  capturas viejas.
+- `parser.go` — el envoltorio eNet: separa datagramas Photon coalescidos,
+  verifica CRC cuando está presente, procesa comandos y reensambla fragmentos
+  por conexión, canal y secuencia. Los fragmentos incompletos caducan a los 30 s
+  y sus cantidades/tamaños tienen topes defensivos.
+- `protocol18.go` — deserializa los valores compactos Protocol18: enteros
+  varint, cadenas, valores personalizados, colecciones y tablas de parámetros de
+  un byte. Acota profundidad, longitudes y colecciones antes de asignar memoria.
+  `protocol16.go` conserva el decoder ASCII anterior para capturas viejas.
 
-Los mensajes cifrados se detectan y se descartan; no se intenta descifrarlos. Una prueba de
-integración entrega un datagrama Photon Protocol18 completo con `JoinResponse` al handler del motor
-y verifica la detección de personaje. Falta validarlo en una PC Windows con Albion y Npcap reales.
+Los mensajes cifrados se detectan y se descartan; no se intenta descifrarlos.
 
 ### 3.2 `tracker.State` — agregación
 
-Protegido por `sync.RWMutex` porque la fuente escribe desde su goroutine y los handlers HTTP leen
-desde las suyas. Acumula por jugador daño, curación, sobrecuración, daño recibido, golpe máximo,
-kills y muertes; y por sesión fama, plata, respec, mapas visitados y botín.
+Protegido por `sync.RWMutex` porque la fuente escribe desde su goroutine y los
+handlers HTTP leen desde las suyas. Acumula por jugador daño, curación,
+sobrecuración, daño recibido, golpe máximo, kills y muertes; y por sesión fama,
+plata, respec, mapas visitados y botín.
 
-`Snapshot()` calcula DPS, HPS y porcentajes **en el servidor**, para que el frontend solo dibuje.
-El historial de mapas y el botín salen del más nuevo al más viejo, y están recortados a 200 y 500
-entradas para que una sesión larga no coma memoria.
+`Snapshot()` calcula DPS, HPS y porcentajes **en el servidor**, para que el
+frontend solo dibuje. El historial de mapas y el botín salen del más nuevo al
+más viejo, y están recortados a 200 y 500 entradas para que una sesión larga no
+coma memoria.
 
-Detalle que importa: el daño recibido solo se acumula para jugadores conocidos (vos y tu party).
-Sin eso, cada mob golpeado aparecería como una fila más en el medidor.
+Detalle que importa: el daño recibido solo se acumula para jugadores conocidos
+(vos y tu party). Sin eso, cada mob golpeado aparecería como una fila más en el
+medidor.
 
 ### 3.3 `tracker.Hub` — reparto
 
-Pub/sub mínimo. Cada suscriptor tiene un canal con buffer de 256 y el `Publish` **nunca bloquea**:
-si una pestaña se atrasa, pierde eventos, pero el motor de captura —que corre en tiempo real— no
-se frena jamás.
+Pub/sub mínimo. Cada suscriptor tiene un canal con buffer de 256 y el `Publish`
+**nunca bloquea**: si una pestaña se atrasa, pierde eventos, pero el motor de
+captura —que corre en tiempo real— no se frena jamás.
 
 ### 3.4 Transporte: SSE, no WebSocket
 
-El flujo es unidireccional (servidor → navegador), lo resuelve la librería estándar de Go sin
-dependencias, y `EventSource` reconecta solo desde el navegador. Un WebSocket habría traído una
-dependencia y trabajo de reconexión para nada.
+El flujo es unidireccional (servidor → WebView), lo resuelve la librería
+estándar de Go sin dependencias, y `EventSource` reconecta solo desde el
+frontend. Un WebSocket habría traído una dependencia y trabajo de reconexión
+para nada.
 
 ---
 
 ## 3.5 La tabla de códigos: `photon_codes.json`
 
-El corazón del mantenimiento a largo plazo. Los códigos de evento de Albion cambian en casi cada
-parche, así que **viven fuera del binario** en `albion-app/data/photon_codes.json`.
+El corazón del mantenimiento a largo plazo. Los códigos de evento de Albion
+cambian en casi cada parche, así que la fuente de verdad es texto plano en
+`albion-app/data/photon_codes.json`.
 
-`tracker/codes.go` la busca en tres lugares, en orden: junto al `.exe`, en `%APPDATA%`, y por último
-la copia embebida de fábrica. Una tabla externa rota **nunca deja al tracker sin tabla**: se informa
-el error y se sigue con la de fábrica.
+`tracker/codes.go` la busca en tres lugares, en orden: junto al `.exe`, en
+`%APPDATA%\AyudanteAlbion\`, y por último la copia embebida de fábrica. Una
+tabla externa rota **nunca deja al tracker sin tabla**: se informa el error y
+se sigue con la de fábrica.
 
 Dos detalles que no son obvios:
 
-- **Los códigos van de 0 a 65535, no de 0 a 255.** Albion manda el código real en el parámetro 252
-  (eventos) o 253 (operaciones) como entero de 16 bits; el byte del envelope solo alcanza para los
-  códigos bajos y se usa como respaldo. Hay eventos reales con código 273, 304 y 318.
-- **Los índices de `eventParameters` sí son bytes** (0-255): son claves del diccionario Photon.
+- **Los códigos van de 0 a 65535, no de 0 a 255.** Albion manda el código real
+  en el parámetro 252 (eventos) o 253 (operaciones) como entero de 16 bits; el
+  byte del envelope solo alcanza para los códigos bajos y se usa como respaldo.
+  Hay eventos reales con código 273, 304 y 318.
+- **Los índices de `eventParameters` sí son bytes** (0-255): son claves del
+  diccionario Photon.
 
-`POST /api/tracker/codes/reload` relee el archivo y reinicia la captura si estaba activa. **Un
-parche de Albion se arregla editando texto y tocando un botón**, sin recompilar ni reinstalar.
+`POST /api/tracker/codes/reload` relee el archivo y reinicia la captura si
+estaba activa. **Un parche de Albion se arregla editando texto y tocando un
+botón**, sin recompilar ni reinstalar.
 
-El modo diagnóstico (`/api/tracker/diagnostic`) cuenta los códigos de eventos y operaciones que están
-llegando, separando los que la tabla reconoce de los que no. También permite comprobar que llegó la
-respuesta `Join` de la que se obtiene el personaje propio; solo expone código y frecuencia, no el
-contenido de los paquetes.
+El modo diagnóstico (`/api/tracker/diagnostic`) lista los códigos de eventos y
+operaciones que están llegando (`Codes.Events()` / `Codes.Operations()`), sin
+esperar a que el juego los mande primero, y cuenta los que llegan separando los
+que la tabla reconoce de los que no. Solo expone código, nombre y frecuencia,
+no el contenido de los paquetes.
 
+`scripts/validate_photon_codes.py` valida la tabla antes de cada compilación en
+el workflow Escritorio, y `validate_repo.py` impide editarla rota desde la web.
 Guía completa de uso en [`photon-codes.md`](photon-codes.md).
 
 ---
 
 ## 4. Contrato HTTP
 
+Lo monta `Engine.Register` (`desktop/internal/tracker/server.go`) sobre el
+mismo mux que los estáticos y los proxies; nada escucha en un puerto externo.
+
 ```
-GET  /api/tracker/status    edición, disponibilidad, fuente, si está capturando
+GET  /api/tracker/status    fuente activa, disponibilidad, si está capturando, info de la tabla
 POST /api/tracker/start     arranca la captura (opt-in explícito)
 POST /api/tracker/stop      la detiene
+POST /api/tracker/restart   reinicia la fuente actual
 POST /api/tracker/reset     reinicia contadores conservando personaje y party
 POST /api/tracker/character/refresh  olvida la identidad para esperar la próxima respuesta Join
 GET  /api/tracker/session   snapshot completo, para el primer render
 GET  /api/tracker/stream    SSE: snapshot inicial + eventos + keepalive cada 10 s
 POST /api/tracker/codes/reload  relee photon_codes.json sin reiniciar la app
+GET  /api/tracker/devices   adaptadores de red disponibles para la captura
 GET  /api/tracker/diagnostic    códigos que están llegando (conocidos y desconocidos)
 POST /api/tracker/diagnostic?on=1|0   enciende o apaga el conteo
 ```
 
-Tipos de evento: `snapshot`, `status`, `damage`, `heal`, `loot`, `map`, `warning`.
+Tipos de evento: `snapshot`, `status`, `damage`, `heal`, `loot`, `map`,
+`gathering`, `dungeon`, `warning`.
 
-Todo pasa por el guardián de `Host` que ya existía en `main.go` (anti DNS rebinding) y responde
-`Cache-Control: no-store`.
-
-**Heartbeat:** cada evento escrito y cada keepalive renuevan el latido de vida del proceso. Sin
-esto, el `.exe` se apagaría solo a los 15 minutos aunque hubiera una pestaña mirando el medidor de
-daño en silencio.
+Todo responde `Cache-Control: no-store`. Al ser interno a la ventana, ya no
+aplica el guardián de `Host` anti DNS-rebinding del ejecutable clásico —era
+protección del puerto local que ahora no existe— y tampoco hay heartbeat de
+`/alive`.
 
 ---
 
-## 5. Frontend
+## 5. Frontend del escritorio
 
 ```
-albion-app/js/tracker/
-  client.js   detección de edición, stream SSE con reintento exponencial, API
-  ui.js       pestaña Sesión: KPIs, medidor, mapas y botín
+desktop/ui/js/tracker/
+  client.js     stream SSE con reintento exponencial, API REST del tracker
+  ui.js         pestaña Sesión: KPIs, medidor, mapas, botín, diagnóstico
+  gathering.js  pestaña Recolección (eventos `gathering`)
+  dungeons.js   pestaña Mazmorras (eventos `dungeon`)
 ```
 
-Sigue las reglas de [`frontend-modules.md`](frontend-modules.md): módulos nuevos en `js/`, **nada
-se agrega a `app.js`**. No hay dependencias entre estos módulos y el resto de la app, así que se
-pueden romper sin arrastrar a nadie.
+Sigue las reglas de [`frontend-modules.md`](frontend-modules.md): módulos
+nuevos en `js/`, **nada se agrega a `app.js`** salvo el punto que los inicia.
+No hay dependencias entre estos módulos y el resto de la app, así que se pueden
+romper sin arrastrar a nadie. Todos se auto-inicializan y abortan en silencio
+si su `<section>` no existe, y `client.js` degrada a «sin tracker» si la API no
+responde —por eso la web pudo convivir con ellos mientras hizo falta.
 
-`ui.js` **desacopla los eventos del repintado**: los eventos de daño llegan varias veces por
-segundo, pero el DOM se redibuja como mucho cada 500 ms. Redibujar por evento trabaría la pestaña.
+`ui.js` **desacopla los eventos del repintado**: los eventos de daño llegan
+varias veces por segundo, pero el DOM se redibuja como mucho cada 500 ms.
+Redibujar por evento trabaría la pestaña.
 
-Todo lo que viene del motor pasa por `esc()` antes de entrar al DOM. Los nombres de jugadores son
-datos externos.
+Todo lo que viene del motor pasa por `esc()` antes de entrar al DOM. Los
+nombres de jugadores son datos externos.
 
 ---
 
 ## 6. Desarrollo
 
 ```bash
-python3 tools/tracker_dev.py 3000   # simulador: la app + /api/tracker/* en vivo
-python3 tools/server.py             # servidor de siempre: se comporta como la web
+python3 tools/tracker_dev.py 3000   # desktop/ui + /api/tracker/* simulado
+wails dev                           # (en Windows, con la toolchain de Wails)
 ```
 
-`tools/tracker_dev.py` replica en Python el contrato JSON de la implementación en Go. No se
-distribuye; es para poder trabajar la interfaz sin Windows. **Si cambia el contrato en Go, hay que
-cambiarlo acá también**, porque es lo que se prueba a diario.
+`tools/tracker_dev.py` sirve `desktop/ui/` y replica en Python el contrato JSON
+de la implementación en Go (`/api/tracker/*`), resolviendo `data/`, `icons/` e
+`img/` desde `albion-app/` igual que el frontend embebido. No se distribuye; es
+para trabajar las pestañas del tracker sin Windows y sin Npcap. **Si cambia el
+contrato en Go, hay que cambiarlo acá también.**
+
+`tools/server.py` sigue sirviendo `albion-app/` para el desarrollo de la web —
+ya sin `/api/tracker/*`, porque la web no las usa. (`wails dev` en Linux no es
+objetivo soportado: el build real y el soporte de la app son Windows-only.)
 
 ---
 
 ## 7. Lo que sigue
 
-Captura, protocolo y tabla de códigos están implementados. Lo que falta:
+Captura, protocolo, tabla de códigos y las tres pestañas (Sesión, Recolección
+y Mazmorras) están implementados en la app de escritorio. Lo que falta:
 
-1. **Verificar contra el juego real** en una PC con Windows y Npcap. Los números de
-   `photon_codes.json` salen de referencias comunitarias y hay que confirmarlos con el modo
-   diagnóstico; es esperable tener que corregir varios la primera vez.
-2. **Persistencia** en `%APPDATA%\AyudanteAlbion\` para que las sesiones sobrevivan al cierre.
-3. **Mazmorras, recolección y almacenamiento** sobre el mismo `State`.
-4. **Valuación del botín** con el motor de precios que ya tiene la app.
-5. **Trades → Registro de operaciones**: la integración más valiosa, porque el P&L, el CSV y la
-   sincronización entre dispositivos ya existen y lo reciben gratis.
+1. **Verificar contra el juego real** en una PC con Windows y Npcap. Los
+   números de `photon_codes.json` salen de referencias comunitarias y hay que
+   confirmarlos con el modo diagnóstico; es esperable tener que corregir varios
+   la primera vez.
+2. **Persistencia** en `%APPDATA%\AyudanteAlbion\` para que las sesiones
+   sobrevivan al cierre.
+3. **Valuación del botín** con el motor de precios que ya tiene la app.
+4. **Trades → Registro de operaciones**: la integración más valiosa, porque el
+   P&L, el CSV y la sincronización entre dispositivos ya existen y lo reciben
+   gratis. El interruptor del Registro ya enciende y apaga la captura.
+5. **Distribución formal**: hoy el `.exe` se baja del artefacto del workflow;
+   un workflow de release con tags lo publicaría en GitHub Releases.
 
 ---
 
@@ -267,7 +324,11 @@ Captura, protocolo y tabla de códigos están implementados. Lo que falta:
 - No se modifica el cliente del juego, ni se lee su memoria, ni se inyecta nada.
 - No hay overlay sobre el juego.
 - No se rastrean jugadores fuera del campo de visión del personaje.
-- Daño, curación y botín se agregan solo para el personaje propio y la party actual; los demás jugadores se descartan.
+- Daño, curación y botín se agregan solo para el personaje propio y la party
+  actual; los demás jugadores se descartan.
 - El tracking arranca apagado y se activa a mano.
 - Nada sale de la PC salvo lo que el usuario suba a la nube deliberadamente.
-- Estas barreras están auditadas en [`cumplimiento-albion.md`](cumplimiento-albion.md) y la validación del repositorio bloquea APIs de inyección, memoria, automatización y always-on-top.
+- Estas barreras están auditadas en
+  [`cumplimiento-albion.md`](cumplimiento-albion.md) y la validación del
+  repositorio bloquea APIs de inyección, memoria, automatización y
+  always-on-top.

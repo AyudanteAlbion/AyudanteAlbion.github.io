@@ -20,10 +20,10 @@
 <meta name="referrer" content="no-referrer">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
 <link rel="stylesheet" href="styles.css?v=79">
-<link rel="stylesheet" href="css/tracker-setup.css?v=1">
-<link rel="stylesheet" href="css/trade-tracking.css?v=1">
-<link rel="stylesheet" href="css/gathering.css?v=1">
-<link rel="stylesheet" href="css/dungeons.css?v=1">
+<link rel="stylesheet" href="css/trade-tracking.css?v=2">
+<!-- Las pestañas Sesión, Recolección y Mazmorras (y sus CSS: tracker-setup,
+     gathering, dungeons) son exclusivas de la app de escritorio; ver
+     desktop/ui/index.html. -->
 <link rel="icon" href="img/logo-app.png">
 <link rel="apple-touch-icon" href="img/logo-app.png">
 <!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
@@ -130,12 +130,9 @@
           </button>
         </div>
       </div>
-      <!-- Visible en web y escritorio. En la web pública js/tracker/ui.js pinta
-           el cartel "En desarrollo en App de Escritorio" y no da acceso a las
-           funciones; dentro del ejecutable se muestra la sesión en vivo completa. -->
-      <button class="tab" data-tab="tracker"><svg class="tab-ico"><use href="#i-chart"/></svg>Sesión</button>
-      <button class="tab" data-tab="gathering"><svg class="tab-ico"><use href="#i-sprout"/></svg>Recolección</button>
-      <button class="tab" data-tab="dungeons"><svg class="tab-ico"><use href="#i-sword"/></svg>Mazmorras</button>
+      <!-- Sesión, Recolección y Mazmorras son exclusivas de la app de
+           escritorio (necesitan leer el tráfico del juego). En la web ya no
+           aparecen: las implementa desktop/ui/index.html. -->
       <button class="tab" data-tab="profile"><svg class="tab-ico"><use href="#i-user"/></svg>Perfil</button>
       <button class="tab" data-tab="sg"><svg class="tab-ico"><use href="#i-shield"/></svg>SG</button>
       <button class="tab" data-tab="formulas"><svg class="tab-ico"><use href="#i-rule"/></svg>Fórmulas</button>
@@ -631,7 +628,8 @@
         <span class="trade-kicker">SEGUIMIENTO DE COMERCIO</span>
         <h2 id="tradeFilterTitle">Historial de transacciones</h2>
       </div>
-      <label class="trade-track-state"><span>ESTADO</span><span class="trade-switch"><input type="checkbox" id="tradeTrackingToggle"><i></i></span><b id="tradeTrackingLabel">El rastreo está inactivo</b></label>
+      <!-- El interruptor de rastreo en vivo (tradeTrackingToggle) solo existe
+           en la app de escritorio; la web no carga js/tracker/client.js. -->
     </div>
 
     <div class="trade-main-filters">
@@ -1289,20 +1287,9 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
   </div>
 </section>
 
-<!-- ============ TAB: SESIÓN (solo edición de escritorio) ============ -->
-<!-- El contenido lo dibuja js/tracker/ui.js: en la web pública queda el aviso
-     de «solo escritorio», y en el .exe Tracker el panel en vivo. -->
-<section id="tab-tracker" class="tab-panel"></section>
-
-<!-- ============ TAB: RECOLECCIÓN ============ -->
-<section id="tab-gathering" class="tab-panel">
-  <div id="gatheringMount"><div class="panel loading-cell">Preparando el seguimiento de recolección…</div></div>
-</section>
-
-<!-- ============ TAB: MAZMORRAS ============ -->
-<section id="tab-dungeons" class="tab-panel">
-  <div id="dungeonsMount"><div class="panel loading-cell">Preparando el seguimiento de mazmorras…</div></div>
-</section>
+<!-- Las pestañas SESIÓN, RECOLECCIÓN y MAZMORRAS son exclusivas de la app de
+     escritorio (desktop/ui/index.html): necesitan la captura de red del juego,
+     que el navegador no puede hacer. -->
 
 <!-- ============ TAB: SG (Spetsnaz Grail) ============ -->
 <!-- ============ TAB: PERFIL ============ -->
@@ -1420,10 +1407,8 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/profile/specs.js?v=1"></script>
 <script src="js/builds/build.js?v=1"></script>
 <script src="js/desktop/environment.js?v=1"></script>
-<script src="js/tracker/client.js?v=3"></script>
-<script src="js/tracker/ui.js?v=3"></script>
-<script src="js/tracker/gathering.js?v=1"></script>
-<script src="js/tracker/dungeons.js?v=1"></script>
-<script src="app.js?v=79"></script>
+<!-- La web no carga js/tracker/*: el tracker en vivo es exclusivo del
+     escritorio. -->
+<script src="app.js?v=80"></script>
 </body>
 </html>
