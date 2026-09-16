@@ -33,30 +33,17 @@ const bpfFilter = "((ip and ((udp and (port 5055 or port 5056 or port 5058)) or 
 type LiveSource struct {
 	store *CodeStore
 
-	mu                    sync.Mutex
-	diag                  bool
-	diagSeen              map[int32]int
-	diagOps               map[int32]int
-	diagEventEnvelope     map[byte]int
-	diagOpEnvelope        map[byte]int
-	diagMissingCodes      uint64
-	diagMissingEventCodes uint64
-	diagMissingOpCodes    uint64
-	lastError             string
-	device                string // vacío = todas las interfaces disponibles
-	activeDevice          string
-	lastValid             time.Time
+	mu           sync.Mutex
+	diagnostics  *protocolDiagnostics
+	lastError    string
+	device       string // vacío = todas las interfaces disponibles
+	activeDevice string
+	lastValid    time.Time
 }
 
 // NewLiveSource arma la fuente de captura con la tabla de códigos indicada.
 func NewLiveSource(store *CodeStore) *LiveSource {
-	return &LiveSource{
-		store:             store,
-		diagSeen:          make(map[int32]int),
-		diagOps:           make(map[int32]int),
-		diagEventEnvelope: make(map[byte]int),
-		diagOpEnvelope:    make(map[byte]int),
-	}
+	return &LiveSource{store: store, diagnostics: newProtocolDiagnostics()}
 }
 
 // Name identifica la fuente en la interfaz.
@@ -116,77 +103,10 @@ func (l *LiveSource) Available() (bool, string) {
 	return true, last
 }
 
-// SetDiagnostic activa el modo diagnóstico: cuenta los códigos de evento que
-// llegan para poder actualizar la tabla después de un patch.
-func (l *LiveSource) SetDiagnostic(on bool) {
-	l.mu.Lock()
-	l.diag = on
-	if on {
-		l.diagSeen = make(map[int32]int)
-		l.diagOps = make(map[int32]int)
-		l.diagEventEnvelope = make(map[byte]int)
-		l.diagOpEnvelope = make(map[byte]int)
-		l.diagMissingCodes = 0
-		l.diagMissingEventCodes = 0
-		l.diagMissingOpCodes = 0
-	}
-	l.mu.Unlock()
-}
+// SetDiagnostic enables privacy-safe numeric diagnostics for Npcap.
+func (l *LiveSource) SetDiagnostic(on bool) { l.diagnostics.setEnabled(on) }
 
-// Diagnostic devuelve el conteo de códigos vistos, separados por tipo de
-// mensaje. Las operaciones son importantes para diagnosticar la identidad:
-// Albion entrega el personaje propio en la respuesta a Join, no en un evento.
-func (l *LiveSource) Diagnostic() map[string]any {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	codes, _ := l.store.Current()
-	rows := func(seen map[int32]int, lookup func(int32) (string, bool)) map[string]any {
-		known := make([]map[string]any, 0)
-		unknown := make([]map[string]any, 0)
-		for code, count := range seen {
-			row := map[string]any{"code": code, "count": count}
-			if codes != nil {
-				if name, ok := lookup(code); ok {
-					row["name"] = name
-					known = append(known, row)
-					continue
-				}
-			}
-			unknown = append(unknown, row)
-		}
-		return map[string]any{"known": known, "unknown": unknown}
-	}
-
-	events := rows(l.diagSeen, func(code int32) (string, bool) {
-		if codes == nil {
-			return "", false
-		}
-		return codes.EventName(code)
-	})
-	operations := rows(l.diagOps, func(code int32) (string, bool) {
-		if codes == nil {
-			return "", false
-		}
-		return codes.OperationName(code)
-	})
-	envelopes := func(seen map[byte]int) []map[string]any {
-		out := make([]map[string]any, 0, len(seen))
-		for code, count := range seen {
-			out = append(out, map[string]any{"code": code, "count": count})
-		}
-		return out
-	}
-	return map[string]any{
-		"enabled":                   l.diag,
-		"known":                     events["known"],
-		"unknown":                   events["unknown"],
-		"operations":                operations,
-		"envelope":                  map[string]any{"events": envelopes(l.diagEventEnvelope), "operations": envelopes(l.diagOpEnvelope)},
-		"missingAuthoritativeCode":  l.diagMissingCodes,
-		"missingAuthoritativeCodes": map[string]uint64{"event252": l.diagMissingEventCodes, "operation253": l.diagMissingOpCodes},
-	}
-}
+func (l *LiveSource) Diagnostic() map[string]any { return l.diagnostics.snapshot(l.store) }
 
 // Run opens every active, non-loopback adapter before announcing network
 // capture. It rescans periodically and reopens failed adapters, which covers
@@ -212,7 +132,7 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	l.mu.Unlock()
 
 	entities := NewEntityStore()
-	pipeline := newPacketPipeline(l, st, hub, codes, entities, l.acceptAdapter)
+	pipeline := newPacketPipeline(l.diagnostics, st, hub, codes, entities, l.acceptAdapter)
 	type worker struct {
 		cancel context.CancelFunc
 		done   chan struct{}
@@ -401,7 +321,7 @@ func (l *LiveSource) setError(msg string) {
 // handlers traduce eventos Photon a mutaciones del estado, usando la tabla de
 // códigos cargada desde disco.
 type handlers struct {
-	src      *LiveSource
+	diag     *protocolDiagnostics
 	st       *State
 	hub      *Hub
 	codes    *Codes
@@ -416,10 +336,18 @@ func newHandlers(src *LiveSource, st *State, hub *Hub, codes *Codes) *handlers {
 }
 
 func newHandlersWithEntities(src *LiveSource, st *State, hub *Hub, codes *Codes, entities *EntityStore) *handlers {
+	var diagnostics *protocolDiagnostics
+	if src != nil {
+		diagnostics = src.diagnostics
+	}
+	return newHandlersWithDiagnostics(diagnostics, st, hub, codes, entities)
+}
+
+func newHandlersWithDiagnostics(diagnostics *protocolDiagnostics, st *State, hub *Hub, codes *Codes, entities *EntityStore) *handlers {
 	if entities == nil {
 		entities = NewEntityStore()
 	}
-	return &handlers{src: src, st: st, hub: hub, codes: codes, entities: entities}
+	return &handlers{diag: diagnostics, st: st, hub: hub, codes: codes, entities: entities}
 }
 
 // realCode obtains the authoritative code exclusively from Photon parameter
@@ -549,49 +477,13 @@ func (h *handlers) response(op *photon.OperationResponse) {
 	h.operation(code, op.Parameters)
 }
 
-func (h *handlers) recordEnvelope(event bool, code byte) {
-	if h.src == nil {
-		return
-	}
-	h.src.mu.Lock()
-	if h.src.diag {
-		if event {
-			h.src.diagEventEnvelope[code]++
-		} else {
-			h.src.diagOpEnvelope[code]++
-		}
-	}
-	h.src.mu.Unlock()
-}
+func (h *handlers) recordEnvelope(event bool, code byte) { h.diag.envelope(event, code) }
 
-func (h *handlers) recordMissingCode(event bool) {
-	if h.src == nil {
-		return
-	}
-	h.src.mu.Lock()
-	if h.src.diag {
-		h.src.diagMissingCodes++
-		if event {
-			h.src.diagMissingEventCodes++
-		} else {
-			h.src.diagMissingOpCodes++
-		}
-	}
-	h.src.mu.Unlock()
-}
+func (h *handlers) recordMissingCode(event bool) { h.diag.missingCode(event) }
 
 // recordOperation maintains privacy-safe diagnostics: only codes and counts,
 // never player names, GUIDs, or packet parameters.
-func (h *handlers) recordOperation(code int32) {
-	if h.src == nil {
-		return
-	}
-	h.src.mu.Lock()
-	if h.src.diag {
-		h.src.diagOps[code]++
-	}
-	h.src.mu.Unlock()
-}
+func (h *handlers) recordOperation(code int32) { h.diag.logical(false, code) }
 
 // identifyJoinResponse applies the Join response model adapted from SAT:
 // name, ObjectId and GUID come from a successful server response, not from the
@@ -698,13 +590,7 @@ func (h *handlers) event(ev *photon.EventData) {
 		return
 	}
 
-	if h.src != nil {
-		h.src.mu.Lock()
-		if h.src.diag {
-			h.src.diagSeen[code]++
-		}
-		h.src.mu.Unlock()
-	}
+	h.diag.logical(true, code)
 
 	name, ok := h.codes.EventName(code)
 	if !ok {

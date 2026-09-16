@@ -91,8 +91,8 @@ type packetPipeline struct {
 	recent  map[uint64]time.Time
 }
 
-func newPacketPipeline(src *LiveSource, state *State, hub *Hub, codes *Codes, entities *EntityStore, accept func(string) bool) *packetPipeline {
-	handlers := newHandlersWithEntities(src, state, hub, codes, entities)
+func newPacketPipeline(diagnostics *protocolDiagnostics, state *State, hub *Hub, codes *Codes, entities *EntityStore, accept func(string) bool) *packetPipeline {
+	handlers := newHandlersWithDiagnostics(diagnostics, state, hub, codes, entities)
 	callbacks := photon.Handler{OnEvent: handlers.event, OnRequest: handlers.request, OnResponse: handlers.response}
 	return &packetPipeline{
 		state:   state,

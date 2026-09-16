@@ -39,10 +39,10 @@ func TestAuthoritativeCodesOverrideEnvelopeMetadata(t *testing.T) {
 	if got := len(state.Snapshot().PartyState.Members); got != 2 {
 		t.Fatalf("event authority dispatched envelope code: party size = %d", got)
 	}
-	source.mu.Lock()
-	defer source.mu.Unlock()
-	if source.diagOpEnvelope[2] == 0 || source.diagOpEnvelope[41] == 0 || source.diagEventEnvelope[29] == 0 || source.diagMissingCodes == 0 {
-		t.Fatalf("safe envelope diagnostics not recorded: operations=%v events=%v missing=%d", source.diagOpEnvelope, source.diagEventEnvelope, source.diagMissingCodes)
+	source.diagnostics.mu.Lock()
+	defer source.diagnostics.mu.Unlock()
+	if source.diagnostics.operationEnvelope[2] == 0 || source.diagnostics.operationEnvelope[41] == 0 || source.diagnostics.eventEnvelope[29] == 0 || source.diagnostics.missing == 0 {
+		t.Fatalf("safe envelope diagnostics not recorded: operations=%v events=%v missing=%d", source.diagnostics.operationEnvelope, source.diagnostics.eventEnvelope, source.diagnostics.missing)
 	}
 }
 
@@ -55,9 +55,9 @@ func TestInvalidAuthoritativeCodeIsDiscarded(t *testing.T) {
 	if snapshot.Identity.Valid || len(snapshot.Entities) != 0 {
 		t.Fatal("invalid signed-16-bit authority reached a typed handler")
 	}
-	source.mu.Lock()
-	defer source.mu.Unlock()
-	if source.diagMissingCodes != 2 {
-		t.Fatalf("invalid authority diagnostics missing count = %d, want 2", source.diagMissingCodes)
+	source.diagnostics.mu.Lock()
+	defer source.diagnostics.mu.Unlock()
+	if source.diagnostics.missing != 2 {
+		t.Fatalf("invalid authority diagnostics missing count = %d, want 2", source.diagnostics.missing)
 	}
 }

@@ -22,10 +22,17 @@ type platformRawCapture struct {
 	close     func()
 }
 
-type SocketSource struct{ store *CodeStore }
+type SocketSource struct {
+	store       *CodeStore
+	diagnostics *protocolDiagnostics
+}
 
-func NewSocketSource(store *CodeStore) *SocketSource { return &SocketSource{store: store} }
-func (s *SocketSource) Name() string                 { return "socket de Windows (SIO_RCVALL)" }
+func NewSocketSource(store *CodeStore) *SocketSource {
+	return &SocketSource{store: store, diagnostics: newProtocolDiagnostics()}
+}
+func (s *SocketSource) Name() string               { return "socket de Windows (SIO_RCVALL)" }
+func (s *SocketSource) SetDiagnostic(on bool)      { s.diagnostics.setEnabled(on) }
+func (s *SocketSource) Diagnostic() map[string]any { return s.diagnostics.snapshot(s.store) }
 
 func (s *SocketSource) Available() (bool, string) {
 	if runtime.GOOS != "windows" {
@@ -61,7 +68,7 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	}
 
 	entities := NewEntityStore()
-	pipeline := newPacketPipeline(nil, st, hub, codes, entities, nil)
+	pipeline := newPacketPipeline(s.diagnostics, st, hub, codes, entities, nil)
 	var active *platformRawCapture
 	var activeCancel context.CancelFunc
 	open := func() error {
