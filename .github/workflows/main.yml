@@ -1,4 +1,12 @@
-name: Main
+name: Notificaciones
+
+# Avisos a Discord. No compila ni publica nada: solo reacciona a cambios ya
+# ocurridos, así que sirve por igual a la web y al escritorio.
+#
+# Nota: desde que se retiró el pipeline automático de releases (build.yml /
+# release.yml), el disparador `release: published` cubre las releases que se
+# publiquen a mano. La app de escritorio hoy se distribuye como artefacto de
+# la ejecución de desktop.yml.
 
 on:
   release:

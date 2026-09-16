@@ -6,11 +6,16 @@ Gracias por ayudar a que Ayudante Albion sea más seguro. 🛡️
 
 Se aceptan reportes sobre:
 
-- **La web** publicada en `https://ayudantealbion.github.io/` (rama `main`).
-- **El ejecutable** `AyudanteAlbion.exe` de los releases publicados (código en `albion-exe/`).
+- **La app web** publicada en `https://ayudantealbion.github.io/` (rama `main`,
+  código en `albion-app/`).
+- **La app de escritorio** `AyudanteAlbionDesktop.exe` (código en `desktop/`).
+
+Los dos productos son independientes y se corrigen por separado.
 
 Versiones viejas del ejecutable o código en ramas sin publicar se aceptan como
-reportes informativos, pero se corrigen solo en la versión vigente.
+reportes informativos, pero se corrigen solo en la versión vigente. El
+ejecutable clásico (`AyudanteAlbion.exe` / `AyudanteAlbion-Tracker.exe`, que
+abría el navegador del sistema) fue retirado y ya no recibe correcciones.
 
 ## Cómo reportar
 

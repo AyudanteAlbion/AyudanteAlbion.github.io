@@ -3,7 +3,7 @@
 // Package capture envuelve Npcap (wpcap.dll) para leer el tráfico del juego.
 //
 // Se llama a la DLL por syscall en vez de usar gopacket/pcap por dos razones:
-// el build no depende de módulos externos (la toolchain de build.sh compila
+// el build no depende de módulos externos (la toolchain fija del workflow compila
 // sin red), y no hace falta cgo ni un toolchain de C para producir el .exe
 // desde Linux, que es como se compila hoy.
 package capture

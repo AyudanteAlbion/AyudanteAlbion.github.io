@@ -4,7 +4,7 @@
 Replica los endpoints que la edición Tracker del ejecutable expone en Go
 (`/api/tracker/*`), para poder trabajar la interfaz sin Windows, sin Npcap y
 sin el juego abierto. NO es parte de lo que se distribuye: el .exe usa la
-implementación real en `albion-exe/tracker/`.
+implementación real en `desktop/internal/tracker/`.
 
 Mantener los dos lados en sintonía: si cambia el contrato JSON en Go, cambiarlo
 acá también, porque es lo que se prueba a diario.

@@ -2,7 +2,7 @@
 // CORS, de modo que el frontend pueda llamarlos con rutas relativas igual que
 // en la web (donde el Worker de Cloudflare hace este mismo trabajo).
 //
-// Es una extracción directa de los handlers que vivían en albion-exe/main.go.
+// Es una extracción directa de los handlers del ejecutable clásico, ya retirado.
 // La allowlist de rutas y parámetros es idéntica a la del Worker: este proxy
 // tampoco es un relay genérico hacia gameinfo.
 package proxy

@@ -15,6 +15,18 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 ERRORS: list[str] = []
 
+# desktop/frontend/ lo genera desktop/sync_frontend.sh copiando desktop/ui/ y
+# los assets de albion-app/. Es contenido derivado y no versionado: validarlo
+# duplicaría cada archivo (y sus errores) contra su fuente real.
+GENERATED = {"node_modules", "__pycache__", ".git"}
+
+
+def is_generated(path: Path) -> bool:
+    parts = path.parts
+    if GENERATED.intersection(parts):
+        return True
+    return "desktop" in parts and "frontend" in parts
+
 
 def run(command: list[str], label: str) -> None:
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
@@ -25,8 +37,7 @@ def run(command: list[str], label: str) -> None:
 
 def validate_javascript() -> None:
     files = sorted(
-        path for path in ROOT.rglob("*.js")
-        if ".git" not in path.parts and "node_modules" not in path.parts
+        path for path in ROOT.rglob("*.js") if not is_generated(path)
     )
     for path in files:
         text = path.read_text(encoding="utf-8")
@@ -48,11 +59,33 @@ def validate_javascript() -> None:
 
 def validate_python() -> None:
     files = sorted(
-        path for path in ROOT.rglob("*.py")
-        if ".git" not in path.parts and "__pycache__" not in path.parts
+        path for path in ROOT.rglob("*.py") if not is_generated(path)
     )
     if files:
         run([sys.executable, "-m", "py_compile", *map(str, files)], "Python inválido")
+
+
+# Assets compartidos: desktop/ui/ es un fork del frontend de la web, pero
+# data/, icons/ e img/ NO se duplican — los copia sync_frontend.sh desde
+# albion-app/ al compilar. Al validar desktop/ui/ hay que resolver esas rutas
+# contra la fuente compartida, o cada <img src="img/..."> daría un falso error.
+SHARED_ASSETS = ("data/", "icons/", "img/")
+
+
+def resolve_reference(source: Path, path: str) -> Path:
+    """Resuelve una ruta relativa teniendo en cuenta los assets compartidos."""
+    target = (source.parent / path).resolve()
+    if target.is_file():
+        return target
+    try:
+        relative = source.relative_to(ROOT / "desktop" / "ui")
+    except ValueError:
+        return target
+    _ = relative
+    clean = path.lstrip("./")
+    if clean.startswith(SHARED_ASSETS):
+        return (ROOT / "albion-app" / clean).resolve()
+    return target
 
 
 class LocalReferences(html.parser.HTMLParser):
@@ -69,7 +102,7 @@ class LocalReferences(html.parser.HTMLParser):
             parsed = urlsplit(value)
             if parsed.scheme or parsed.netloc:
                 continue
-            target = (self.source.parent / parsed.path).resolve()
+            target = resolve_reference(self.source, parsed.path)
             try:
                 target.relative_to(ROOT.resolve())
             except ValueError:
@@ -81,7 +114,7 @@ class LocalReferences(html.parser.HTMLParser):
 
 def validate_html_references() -> None:
     for source in sorted(ROOT.rglob("*.html")):
-        if ".git" in source.parts or "node_modules" in source.parts:
+        if is_generated(source):
             continue
         try:
             LocalReferences(source).feed(source.read_text(encoding="utf-8"))
@@ -92,7 +125,7 @@ def validate_html_references() -> None:
 
 def validate_json_and_toml() -> None:
     for source in sorted(ROOT.rglob("*.json")):
-        if ".git" in source.parts or "node_modules" in source.parts:
+        if is_generated(source):
             continue
         try:
             json.loads(source.read_text(encoding="utf-8"))
@@ -115,12 +148,21 @@ def validate_runtime_references() -> None:
     de archivo completo en el código fuente.
     """
     pattern = re.compile(r"(?:['`])((?:data|icons|img)/[A-Za-z0-9_.@/-]+\.(?:json|webp|png|jpg|jpeg|svg))(?:['`])")
-    sources = [ROOT / "albion-app" / "app.js", ROOT / "albion-app" / "index.html"]
+    # La web y el fork del escritorio se validan por igual: si el frontend
+    # del escritorio referencia un asset que no existe, CI lo marca.
+    sources = [
+        ROOT / "albion-app" / "app.js",
+        ROOT / "albion-app" / "index.html",
+        ROOT / "desktop" / "ui" / "app.js",
+        ROOT / "desktop" / "ui" / "index.html",
+    ]
     for source in sources:
+        if not source.is_file():
+            ERRORS.append(f"Falta el frontend esperado: {source.relative_to(ROOT)}")
+            continue
         text = source.read_text(encoding="utf-8")
         for value in pattern.findall(text):
-            target = ROOT / "albion-app" / value
-            if not target.is_file():
+            if not resolve_reference(source, value).is_file():
                 ERRORS.append(f"Referencia local inexistente: {source.relative_to(ROOT)} -> {value}")
 
 
@@ -134,8 +176,13 @@ def validate_build_inputs() -> None:
         "albion-app/icons",
         "albion-app/img",
         "tools/server.py",
-        "albion-exe/main.go",
-        "albion-exe/go.mod",
+        # App de escritorio: frontend forkeado + backend Go.
+        "desktop/ui/index.html",
+        "desktop/ui/app.js",
+        "desktop/ui/styles.css",
+        "desktop/ui/js",
+        "desktop/main.go",
+        "desktop/go.mod",
     ]
     for value in required:
         if not (ROOT / value).exists():
@@ -147,7 +194,7 @@ def validate_photon_codes() -> None:
     La tabla se edita a mano después de cada patch de Albion y la carga el
     ejecutable sin recompilar, así que un error acá rompe el tracker en
     producción sin que nadie lo note al compilar. Estas reglas son las mismas
-    que aplica `albion-exe/tracker/codes.go` al cargarla.
+    que aplica `desktop/internal/tracker/codes.go` al cargarla.
     """
     source = ROOT / "albion-app" / "data" / "photon_codes.json"
     if not source.exists():
@@ -241,7 +288,7 @@ def validate_tracker_safety() -> None:
     sources = "\n".join(
         path.read_text(encoding="utf-8", errors="ignore")
         for path in desktop.rglob("*")
-        if path.is_file() and path.suffix in {".go", ".js", ".json"}
+        if path.is_file() and path.suffix in {".go", ".js", ".json"} and not is_generated(path)
     )
     forbidden = {
         "pcap_sendpacket": "envío de paquetes",

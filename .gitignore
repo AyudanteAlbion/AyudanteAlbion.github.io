@@ -1,10 +1,6 @@
 # Artefactos generados (se recompilan, no van al repo)
+AyudanteAlbionDesktop.exe
 AyudanteAlbion.zip
-AyudanteAlbion.exe
-albion-exe/AyudanteAlbion.exe
-AyudanteAlbion-Tracker.exe
-albion-exe/AyudanteAlbion-Tracker.exe
-albion-exe/app/
 
 # Dependencias
 node_modules/
@@ -59,8 +55,11 @@ docs/deploy-worker.md
 
 
 
-# App de escritorio (Wails) — contenido sincronizado y binarios (se regeneran)
+# App de escritorio (Wails).
+#
+# desktop/ui/    → SÍ se versiona: es el frontend propio del escritorio.
+# desktop/frontend/ → NO: lo genera sync_frontend.sh (ui/ + assets compartidos).
 desktop/frontend/*
 !desktop/frontend/README.md
 desktop/build/bin/
-desktop/AyudanteAlbion.exe
+desktop/AyudanteAlbionDesktop.exe

@@ -11,8 +11,9 @@ import (
 )
 
 // frontendFS embebe la app completa (HTML, JS, CSS, íconos y datos). El
-// contenido se sincroniza desde albion-app/ en tiempo de build (ver build.sh /
-// el workflow). Así el .exe es autocontenido igual que el ejecutable anterior.
+// contenido lo prepara desktop/sync_frontend.sh en tiempo de build: el código
+// sale de desktop/ui/ (fork propio del escritorio) y los assets compartidos
+// (data/, icons/, img/) de albion-app/. Así el .exe es autocontenido.
 //
 //go:embed all:frontend
 var frontendFS embed.FS

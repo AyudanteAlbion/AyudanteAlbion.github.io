@@ -136,7 +136,7 @@ assert.strictEqual(mergedAgain.skipped, 2, 'P5 reporta filas omitidas');
 
 // Escritorio: AAEnvironment es la única fuente de capacidades y Wails no
 // inicia heartbeat ni anti-pausa.
-function loadEnvironment(hostname, withBridge) {
+function loadEnvironment(hostname, withBridge, source) {
   let intervals = 0;
   const nodes = {};
   ['kaBtn', 'desktopMinimise', 'desktopMaximise', 'desktopClose', 'desktopTitlebarDrag'].forEach(id => {
@@ -155,23 +155,33 @@ function loadEnvironment(hostname, withBridge) {
     setInterval: () => { intervals += 1; return intervals; },
   };
   if (withBridge) window.go = { main: { App: {} } };
-  vm.runInNewContext(fs.readFileSync('albion-app/js/desktop/environment.js', 'utf8'),
+  vm.runInNewContext(fs.readFileSync(source, 'utf8'),
     { window, document, Object, Promise }, { filename: 'environment.js' });
   return { env: window.AAEnvironment, nodes, intervals: () => intervals };
 }
 
-const desktopEnv = loadEnvironment('wails', true);
-assert.strictEqual(desktopEnv.env.isDesktop, true, 'Escritorio detecta Wails');
-assert.strictEqual(desktopEnv.env.capabilities.antiPause, false, 'Escritorio desactiva anti-pausa');
-assert.strictEqual(desktopEnv.env.capabilities.legacyHeartbeat, false, 'Escritorio desactiva /alive');
-assert.strictEqual(desktopEnv.env.startLegacyHeartbeat(), null, 'Escritorio no crea timer de /alive');
-assert.strictEqual(desktopEnv.intervals(), 0, 'Escritorio queda sin heartbeat');
-assert.strictEqual(desktopEnv.nodes.kaBtn.hidden, true, 'Escritorio oculta anti-pausa');
+// El frontend del escritorio es un fork versionado (desktop/ui/), independiente
+// de la web. Las mismas garantías se verifican sobre AMBAS copias: si una
+// diverge y pierde una capacidad, CI lo marca en vez de dejarlo pasar.
+const ENVIRONMENTS = [
+  ['web', 'albion-app/js/desktop/environment.js'],
+  ['escritorio', 'desktop/ui/js/desktop/environment.js'],
+];
 
-const legacyEnv = loadEnvironment('127.0.0.1', false);
-assert.strictEqual(legacyEnv.env.isDesktop, false, 'localhost clásico no se confunde con Wails');
-assert.strictEqual(legacyEnv.env.capabilities.antiPause, true, 'Ejecutable clásico conserva anti-pausa web');
+for (const [label, source] of ENVIRONMENTS) {
+const desktopEnv = loadEnvironment('wails', true, source);
+assert.strictEqual(desktopEnv.env.isDesktop, true, `[${label}] Escritorio detecta Wails`);
+assert.strictEqual(desktopEnv.env.capabilities.antiPause, false, `[${label}] Escritorio desactiva anti-pausa`);
+assert.strictEqual(desktopEnv.env.capabilities.legacyHeartbeat, false, `[${label}] Escritorio desactiva /alive`);
+assert.strictEqual(desktopEnv.env.startLegacyHeartbeat(), null, `[${label}] Escritorio no crea timer de /alive`);
+assert.strictEqual(desktopEnv.intervals(), 0, `[${label}] Escritorio queda sin heartbeat`);
+assert.strictEqual(desktopEnv.nodes.kaBtn.hidden, true, `[${label}] Escritorio oculta anti-pausa`);
+
+const legacyEnv = loadEnvironment('127.0.0.1', false, source);
+assert.strictEqual(legacyEnv.env.isDesktop, false, `[${label}] localhost clásico no se confunde con Wails`);
+assert.strictEqual(legacyEnv.env.capabilities.antiPause, true, `[${label}] Ejecutable clásico conserva anti-pausa web`);
 legacyEnv.env.startLegacyHeartbeat();
-assert.strictEqual(legacyEnv.intervals(), 1, 'Ejecutable clásico conserva su heartbeat');
+assert.strictEqual(legacyEnv.intervals(), 1, `[${label}] Ejecutable clásico conserva su heartbeat`);
+}
 
-console.log('QA P1–P5 + entorno de escritorio OK');
+console.log('QA P1–P5 + entorno de escritorio (web + fork) OK');

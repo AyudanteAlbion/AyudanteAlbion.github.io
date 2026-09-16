@@ -5,8 +5,10 @@
   "description": "Pruebas y validaciones locales de Ayudante Albion.",
   "scripts": {
     "validate": "python3 scripts/validate_repo.py",
+    "validate:photon": "python3 scripts/validate_photon_codes.py",
     "qa:phases": "node scripts/phase_qa.js",
-    "test": "npm run validate && npm run qa:phases"
+    "desktop:sync": "./desktop/sync_frontend.sh",
+    "test": "npm run validate && npm run validate:photon && npm run qa:phases"
   },
   "engines": {
     "node": ">=20"

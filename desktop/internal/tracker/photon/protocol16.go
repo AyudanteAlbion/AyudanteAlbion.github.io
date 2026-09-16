@@ -2,7 +2,7 @@
 //
 // Implementación propia y sin dependencias externas: Protocol18 es el formato
 // vigente y Protocol16 se conserva para leer capturas históricas. El ejecutable
-// se compila con la toolchain fija de build.sh y sin acceso a proxy.golang.org,
+// se compila con la toolchain fija del workflow y sin acceso a proxy.golang.org,
 // así que todo lo que necesita viaja en este repositorio.
 package photon
 
