@@ -18,6 +18,8 @@
     reason: '',
     capturing: false,
     source: '',
+    runError: '',
+    trackingCharacter: '',
     codes: null,          // versión y conteo de la tabla de códigos Photon
     codesWarning: ''
   };
@@ -61,6 +63,8 @@
       state.reason = data.reason || '';
       state.capturing = !!data.capturing;
       state.source = data.source || '';
+      state.runError = data.runError || '';
+      state.trackingCharacter = data.trackingCharacter || '';
       state.codes = data.codes || null;
       state.codesWarning = data.codesWarning || '';
     } catch (e) {
@@ -68,6 +72,9 @@
       state.available = false;
       state.reason = 'La versión web no incluye tracking en vivo.';
       state.capturing = false;
+      state.source = '';
+      state.runError = '';
+      state.trackingCharacter = '';
       state.codes = null;
       state.codesWarning = '';
     }
@@ -82,6 +89,8 @@
       reason: state.reason,
       capturing: state.capturing,
       source: state.source,
+      runError: state.runError,
+      trackingCharacter: state.trackingCharacter,
       codes: state.codes,
       codesWarning: state.codesWarning,
       // AAEnvironment es la única fuente para saber si existe una ventana
@@ -111,6 +120,8 @@
       if (!ev || !ev.type) return;
       if (ev.type === 'snapshot' || ev.type === 'status') {
         state.capturing = !!(ev.payload && ev.payload.capturing);
+      } else if (ev.type === 'warning' && ev.payload && typeof ev.payload.message === 'string' && ev.payload.message.indexOf('La captura se detuvo: ') === 0) {
+        state.runError = ev.payload.message.slice('La captura se detuvo: '.length);
       }
       emit(ev.type, ev.payload);
     };
@@ -139,6 +150,7 @@
     var data = await post('/api/tracker/start');
     if (data && data.ok) {
       state.capturing = true;
+      state.runError = '';
       connect();
     }
     return data;
@@ -147,6 +159,7 @@
   async function stop() {
     var data = await post('/api/tracker/stop');
     state.capturing = false;
+    state.runError = '';
     return data;
   }
 
@@ -154,13 +167,14 @@
     return post('/api/tracker/reset');
   }
 
-  /* Descarta la identidad actual y la detecta de nuevo en la próxima respuesta
-     Join del servidor. Para forzarla alcanza con cambiar de zona: el juego
-     manda ChangeCluster y el tracker vuelve a poblar personaje y ubicación. */
+  /* Descarta la identidad actual y espera una nueva respuesta Join del
+     servidor. Cambiar de zona solo entrega ChangeCluster (zona); para obtener
+     otra identidad hay que volver al selector de personaje y entrar de nuevo. */
   async function refreshCharacter() {
     var data = await post('/api/tracker/character/refresh');
     if (data && data.ok) {
       state.capturing = true;
+      state.runError = '';
       connect();
     }
     return data;
@@ -201,12 +215,14 @@
     return res.json();
   }
 
-  async function restart(provider, adapter) {
+  async function restart(provider, adapter, character) {
     var url = '/api/tracker/restart?provider=' + encodeURIComponent(provider || 'npcap') +
-      '&adapter=' + encodeURIComponent(adapter || '');
+      '&adapter=' + encodeURIComponent(adapter || '') +
+      '&character=' + encodeURIComponent(character || '');
     var data = await post(url);
     if (!data || !data.ok) throw new Error((data && data.reason) || 'no se pudo reiniciar');
     state.capturing = true;
+    state.runError = '';
     if (data.source) state.source = data.source;
     connect();
     return data;

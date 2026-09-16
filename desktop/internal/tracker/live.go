@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 SheniaLiam — gremio Spetsnaz Grail
+//
+// Portions of the entity and party lifecycle below are adapted for Go/Wails
+// from AlbionOnline-StatisticsAnalysis (SAT), commit
+// 9f4471b2905f4152938d84721492c6ac86499750, licensed GPL-3.0.
+// See NOTICE at the repository root for attribution and corresponding source.
+
 package tracker
 
 import (
@@ -164,13 +172,16 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 
 	// Albion habla por una sola interfaz, pero cuál depende de la PC (Wi-Fi,
 	// Ethernet, VPN). Se escuchan todas y la que traiga tráfico gana: es más
-	// simple y más robusto que pedirle al usuario que elija.
+	// simple y más robusto que pedirle al usuario que elija. El índice de
+	// entidades es compartido: GUID, ObjectId y party no pueden depender de la
+	// interfaz que haya visto el paquete.
+	entities := NewEntityStore()
 	var wg sync.WaitGroup
 	for _, dev := range devices {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
-			l.pump(ctx, name, st, hub, codes)
+			l.pump(ctx, name, st, hub, codes, entities)
 		}(dev.Name)
 	}
 
@@ -200,8 +211,8 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 }
 
 // pump lee una interfaz hasta que se cancela el contexto.
-func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hub, codes *Codes) {
-	h := newHandlers(l, st, hub, codes)
+func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hub, codes *Codes, entities *EntityStore) {
+	h := newHandlersWithEntities(l, st, hub, codes, entities)
 	parser := photon.NewParser(photon.Handler{
 		OnEvent:    h.event,
 		OnRequest:  h.request,
@@ -416,19 +427,25 @@ func ipPayload(frame []byte, off int, isV6 bool) []byte {
 // handlers traduce eventos Photon a mutaciones del estado, usando la tabla de
 // códigos cargada desde disco.
 type handlers struct {
-	src   *LiveSource
-	st    *State
-	hub   *Hub
-	codes *Codes
-
-	mu    sync.Mutex
-	names map[int64]string // id de entidad -> nombre de jugador
-	selfID int64
+	src      *LiveSource
+	st       *State
+	hub      *Hub
+	codes    *Codes
+	entities *EntityStore
 }
 
+// newHandlers is the isolated constructor used by parser tests and one-off
+// sources. LiveSource uses newHandlersWithEntities so that all selected network
+// interfaces share one GUID/ObjectId correlation store.
 func newHandlers(src *LiveSource, st *State, hub *Hub, codes *Codes) *handlers {
-	return &handlers{src: src, st: st, hub: hub, codes: codes,
-		names: make(map[int64]string), selfID: -1}
+	return newHandlersWithEntities(src, st, hub, codes, NewEntityStore())
+}
+
+func newHandlersWithEntities(src *LiveSource, st *State, hub *Hub, codes *Codes, entities *EntityStore) *handlers {
+	if entities == nil {
+		entities = NewEntityStore()
+	}
+	return &handlers{src: src, st: st, hub: hub, codes: codes, entities: entities}
 }
 
 // realCode obtiene el código de mensaje: primero del parámetro especial
@@ -492,23 +509,36 @@ func (h *handlers) paramStr(event string, params map[byte]any, field string) (st
 	return str(v)
 }
 
-// nameOf resuelve el nombre de una entidad; vacío si no se conoce.
+// nameOf resuelve el nombre actual de una entidad; vacío si su ObjectId no
+// pertenece a la zona o sesión visible.
 func (h *handlers) nameOf(id int64) string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.names[id]
+	return h.entities.NameOfObjectID(id)
 }
 
-// isSelf dice si el id de entidad es el del personaje propio.
+// isSelf dice si el ObjectId está ligado al GUID del personaje local.
 func (h *handlers) isSelf(id int64) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.selfID >= 0 && h.selfID == id
+	return h.entities.IsLocalObjectID(id)
 }
 
-// request se conserva como respaldo para versiones que incluyan la identidad
-// en el pedido del cliente. La fuente principal es response: Albion devuelve
-// los datos del personaje propio en la respuesta exitosa a Join.
+func (h *handlers) syncRoster() {
+	if local, ok := h.entities.Local(); ok {
+		h.st.SetCharacter(local.Name)
+	}
+	h.st.SetParty(h.entities.PartyNames())
+}
+
+// trackingAllowed implements SAT's main-character filter for statistics. It
+// never guesses identity: before a successful Join it remains permissive; once
+// the local character is known, a configured different name accepts no metrics.
+func (h *handlers) trackingAllowed() bool {
+	expected := h.st.TrackingCharacter()
+	actual := h.st.Character()
+	return expected == "" || actual == "" || expected == actual
+}
+
+// request registra y procesa el contexto de operaciones salientes. No usa el
+// pedido para detectar identidad: el servidor la confirma en una respuesta
+// exitosa de Join, junto con el GUID y ObjectId locales.
 func (h *handlers) request(op *photon.OperationRequest) {
 	h.st.MarkDecoded()
 	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
@@ -516,7 +546,6 @@ func (h *handlers) request(op *photon.OperationRequest) {
 		return
 	}
 	h.recordOperation(code)
-	h.identify(code, op.Parameters)
 	h.operation(code, op.Parameters)
 }
 
@@ -533,7 +562,7 @@ func (h *handlers) response(op *photon.OperationResponse) {
 		return
 	}
 	h.recordOperation(code)
-	h.identify(code, op.Parameters)
+	h.identifyJoinResponse(code, op.Parameters)
 	h.operation(code, op.Parameters)
 }
 
@@ -550,10 +579,11 @@ func (h *handlers) recordOperation(code int32) {
 	h.src.mu.Unlock()
 }
 
-// identify aplica la configuración selfOperation a una operación Join. Tanto
-// pedidos como respuestas pasan por acá, pero la respuesta es la que Albion
-// usa para entregar los datos completos del personaje local.
-func (h *handlers) identify(code int32, params map[byte]any) {
+// identifyJoinResponse applies the Join response model adapted from SAT:
+// name, ObjectId and GUID come from a successful server response, not from the
+// client request. GUID is the durable key; ObjectId is kept as the lookup key
+// needed by combat and loot events in the current zone.
+func (h *handlers) identifyJoinResponse(code int32, params map[byte]any) {
 	name, ok := h.codes.OperationName(code)
 	if !ok || name != h.codes.SelfOp.Operation {
 		return
@@ -568,22 +598,29 @@ func (h *handlers) identify(code int32, params map[byte]any) {
 		return
 	}
 
-	h.st.SetCharacter(character)
+	update := entityUpdate{Name: character}
 	if idIdx, ok := h.codes.SelfOp.Parameters["id"]; ok && idIdx >= 0 && idIdx <= 255 {
-		if idv, ok := params[byte(idIdx)]; ok {
-			if id, ok := num(idv); ok {
-				h.mu.Lock()
-				h.selfID = id
-				h.names[id] = character
-				h.mu.Unlock()
-			}
+		if id, ok := num(params[byte(idIdx)]); ok {
+			update.ObjectID = id
+			update.HasObjectID = true
 		}
 	}
+	if guidIdx, ok := h.codes.SelfOp.Parameters["guid"]; ok && guidIdx >= 0 && guidIdx <= 255 {
+		update.GUID, _ = GUIDFromPhoton(params[byte(guidIdx)])
+	}
+	if guildIdx, ok := h.codes.SelfOp.Parameters["guild"]; ok && guildIdx >= 0 && guildIdx <= 255 {
+		update.Guild, _ = str(params[byte(guildIdx)])
+	}
+	if allianceIdx, ok := h.codes.SelfOp.Parameters["alliance"]; ok && allianceIdx >= 0 && allianceIdx <= 255 {
+		update.Alliance, _ = str(params[byte(allianceIdx)])
+	}
 
-	// El mismo JoinResponse trae el mapa donde apareció el personaje
-	// (parámetro 8 = MapIndex). Sin esto la ubicación quedaba en "no
-	// detectada" hasta el primer cambio de zona, que además nunca llegaba
-	// porque ChangeCluster no se estaba escuchando.
+	h.entities.SetLocal(update)
+	h.syncRoster()
+
+	// The same Join response carries the cluster where the character appeared
+	// (parameter 8 = MapIndex). ChangeCluster can update this later, but it
+	// cannot bootstrap identity if this Join response was missed.
 	if zoneIdx, ok := h.codes.SelfOp.Parameters["zone"]; ok && zoneIdx >= 0 && zoneIdx <= 255 {
 		if zone := clusterName(params[byte(zoneIdx)]); zone != "" {
 			h.enterZone(zone)
@@ -612,11 +649,9 @@ func (h *handlers) operation(code int32, params map[byte]any) {
 	h.enterZone(zone)
 }
 
-// enterZone registra el mapa nuevo y avisa al frontend. Al cambiar de cluster
-// el servidor deja de reportar a las entidades del mapa anterior, así que el
-// índice de nombres se descarta: los jugadores de la zona nueva llegan otra
-// vez por NewCharacter. La identidad propia se conserva, que es justamente lo
-// que permite seguir midiendo sin volver a iniciar sesión.
+// enterZone records the new map and invalidates transient ObjectIds for other
+// visible entities. Their GUID/name/party entries remain, so NewCharacter can
+// rebind them without confusing an old zone's ObjectId for a new one.
 func (h *handlers) enterZone(zone string) {
 	if zone == "" {
 		return
@@ -625,17 +660,7 @@ func (h *handlers) enterZone(zone string) {
 		return // reenvío de la misma zona: no duplicar la visita
 	}
 
-	h.mu.Lock()
-	selfID, selfName := h.selfID, ""
-	if selfID >= 0 {
-		selfName = h.names[selfID]
-	}
-	h.names = make(map[int64]string)
-	if selfName != "" {
-		h.names[selfID] = selfName
-	}
-	h.mu.Unlock()
-
+	h.entities.BeginZone()
 	h.st.EnterZone(zone)
 	h.hub.Publish(NewEvent("map", map[string]any{"zone": zone}))
 	h.hub.Publish(NewEvent("status", h.st.Snapshot()))
@@ -689,26 +714,25 @@ func (h *handlers) event(ev *photon.EventData) {
 
 	switch name {
 	case "NewCharacter":
-		id, ok1 := h.paramNum(name, p, "id")
-		who, ok2 := h.paramStr(name, p, "name")
-		if ok1 && ok2 && who != "" {
-			h.mu.Lock()
-			h.names[id] = who
-			// Si la captura arrancó con la sesión ya iniciada nunca se vio el
-			// JoinResponse, pero el personaje propio igual se reanuncia al
-			// entrar a cada zona. Recuperar su id permite atribuirle daño y
-			// plata sin pedirle al usuario que reinicie el juego.
-			if h.selfID < 0 && who == h.st.Character() {
-				h.selfID = id
-			}
-			h.mu.Unlock()
+		update := entityUpdate{}
+		if id, ok := h.paramNum(name, p, "id"); ok {
+			update.ObjectID = id
+			update.HasObjectID = true
+		}
+		update.Name, _ = h.paramStr(name, p, "name")
+		if guid, ok := h.param(name, p, "guid"); ok {
+			update.GUID, _ = GUIDFromPhoton(guid)
+		}
+		update.Guild, _ = h.paramStr(name, p, "guild")
+		update.Alliance, _ = h.paramStr(name, p, "alliance")
+		if update.HasObjectID || update.GUID != "" || update.Name != "" {
+			h.entities.Upsert(update)
+			h.syncRoster()
 		}
 
 	case "Leave":
 		if id, ok := h.paramNum(name, p, "id"); ok {
-			h.mu.Lock()
-			delete(h.names, id)
-			h.mu.Unlock()
+			h.entities.ClearObjectID(id)
 		}
 
 	// ChangeCluster NO existe como evento: es una operación y se atiende en
@@ -723,17 +747,26 @@ func (h *handlers) event(ev *photon.EventData) {
 		h.health(name, p)
 
 	case "UpdateFame":
+		if !h.trackingAllowed() {
+			break
+		}
 		if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
 			// La fama viene multiplicada por 10000 en el protocolo.
 			h.st.AddFame(gained / 10000)
 		}
 
 	case "UpdateReSpecPoints":
+		if !h.trackingAllowed() {
+			break
+		}
 		if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
 			h.st.AddRespec(gained / 10000)
 		}
 
 	case "TakeSilver":
+		if !h.trackingAllowed() {
+			break
+		}
 		// La plata recogida del mundo solo cuenta si la levantó el personaje
 		// propio: el servidor también reporta la de la party.
 		if id, ok := h.paramNum(name, p, "id"); ok && !h.isSelf(id) {
@@ -744,6 +777,9 @@ func (h *handlers) event(ev *photon.EventData) {
 		}
 
 	case "UpdateCurrency", "PartySilverGained":
+		if !h.trackingAllowed() {
+			break
+		}
 		field := "gained"
 		if name == "PartySilverGained" {
 			field = "amount"
@@ -752,20 +788,50 @@ func (h *handlers) event(ev *photon.EventData) {
 			h.st.AddSilver(gained / 10000)
 		}
 
-	case "PartyPlayerJoined":
-		if who, ok := h.paramStr(name, p, "name"); ok && who != "" {
-			h.st.AddPartyMember(who)
-			h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+	case "PartyJoined":
+		var members []partyMember
+		guids, names := []string(nil), []string(nil)
+		if value, ok := h.param(name, p, "guids"); ok {
+			guids = GUIDsFromPhoton(value)
 		}
+		if value, ok := h.param(name, p, "names"); ok {
+			names = stringsFromPhoton(value)
+		}
+		for i := 0; i < len(guids) && i < len(names); i++ {
+			if guids[i] != "" && names[i] != "" {
+				members = append(members, partyMember{GUID: guids[i], Name: names[i]})
+			}
+		}
+		h.entities.SetParty(members)
+		h.syncRoster()
+		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+
+	case "PartyPlayerJoined":
+		member := partyMember{}
+		if guid, ok := h.param(name, p, "guid"); ok {
+			member.GUID, _ = GUIDFromPhoton(guid)
+		}
+		member.Name, _ = h.paramStr(name, p, "name")
+		h.entities.AddPartyMember(member)
+		h.syncRoster()
+		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 
 	case "PartyPlayerLeft":
-		if id, ok := h.paramNum(name, p, "id"); ok {
-			h.st.RemovePartyMember(h.nameOf(id))
-			h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+		if guid, ok := h.param(name, p, "guid"); ok {
+			if key, ok := GUIDFromPhoton(guid); ok {
+				h.entities.RemovePartyMemberByGUID(key)
+			} else if id, ok := h.paramNum(name, p, "id"); ok {
+				h.entities.RemovePartyMemberByObjectID(id)
+			}
+		} else if id, ok := h.paramNum(name, p, "id"); ok {
+			h.entities.RemovePartyMemberByObjectID(id)
 		}
+		h.syncRoster()
+		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 
 	case "PartyDisbanded":
-		h.st.SetParty(nil)
+		h.entities.ResetPartyKeepLocal()
+		h.syncRoster()
 		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 
 	case "OtherGrabbedLoot":
@@ -776,6 +842,9 @@ func (h *handlers) event(ev *photon.EventData) {
 // health traduce el evento de cambio de vida en daño o curación.
 // En Albion, un valor negativo es daño y uno positivo es curación.
 func (h *handlers) health(event string, p map[byte]any) {
+	if !h.trackingAllowed() {
+		return
+	}
 	targetID, ok1 := h.paramNum(event, p, "target")
 	value, ok2 := h.paramNum(event, p, "value")
 	if !ok1 || !ok2 || value == 0 {
@@ -816,6 +885,9 @@ func (h *handlers) health(event string, p map[byte]any) {
 }
 
 func (h *handlers) loot(event string, p map[byte]any) {
+	if !h.trackingAllowed() {
+		return
+	}
 	itemID, hasItem := h.paramNum(event, p, "itemId")
 	qty, _ := h.paramNum(event, p, "quantity")
 	if !hasItem {

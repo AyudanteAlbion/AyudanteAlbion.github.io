@@ -43,23 +43,24 @@ type LootEntry struct {
 
 // Snapshot es la foto completa que consume el frontend en el primer render.
 type Snapshot struct {
-	Capturing   bool        `json:"capturing"`
-	Simulated   bool        `json:"simulated"`
-	Character   string      `json:"character"`
-	Zone        string      `json:"zone"`
-	Party       []string    `json:"party"`
-	StartedAt   int64       `json:"startedAt"`
-	Seconds     int64       `json:"seconds"`
-	Fame        int64       `json:"fame"`
-	Silver      int64       `json:"silver"`
-	Respec      int64       `json:"respec"`
-	FamePerHour float64     `json:"famePerHour"`
-	SilverPerH  float64     `json:"silverPerHour"`
-	Combatants  []Combatant `json:"combatants"`
-	Maps        []MapVisit  `json:"maps"`
-	Loot        []LootEntry `json:"loot"`
-	Packets     uint64      `json:"packets"`
-	Decoded     uint64      `json:"decoded"`
+	Capturing         bool        `json:"capturing"`
+	Simulated         bool        `json:"simulated"`
+	Character         string      `json:"character"`
+	TrackingCharacter string      `json:"trackingCharacter"`
+	Zone              string      `json:"zone"`
+	Party             []string    `json:"party"`
+	StartedAt         int64       `json:"startedAt"`
+	Seconds           int64       `json:"seconds"`
+	Fame              int64       `json:"fame"`
+	Silver            int64       `json:"silver"`
+	Respec            int64       `json:"respec"`
+	FamePerHour       float64     `json:"famePerHour"`
+	SilverPerH        float64     `json:"silverPerHour"`
+	Combatants        []Combatant `json:"combatants"`
+	Maps              []MapVisit  `json:"maps"`
+	Loot              []LootEntry `json:"loot"`
+	Packets           uint64      `json:"packets"`
+	Decoded           uint64      `json:"decoded"`
 }
 
 const (
@@ -71,21 +72,22 @@ const (
 // para uso concurrente: la fuente de captura escribe desde su goroutine y los
 // handlers HTTP leen desde las suyas.
 type State struct {
-	mu        sync.RWMutex
-	capturing bool
-	simulated bool
-	character string
-	zone      string
-	party     []string
-	startedAt time.Time
-	fame      int64
-	silver    int64
-	respec    int64
-	players   map[string]*Combatant
-	maps      []MapVisit
-	loot      []LootEntry
-	packets   uint64
-	decoded   uint64
+	mu                sync.RWMutex
+	capturing         bool
+	simulated         bool
+	character         string
+	trackingCharacter string
+	zone              string
+	party             []string
+	startedAt         time.Time
+	fame              int64
+	silver            int64
+	respec            int64
+	players           map[string]*Combatant
+	maps              []MapVisit
+	loot              []LootEntry
+	packets           uint64
+	decoded           uint64
 }
 
 // NewState crea el estado de una sesión nueva.
@@ -129,11 +131,28 @@ func (s *State) SetCharacter(name string) {
 	}
 }
 
-// ClearCharacter descarta la detección actual sin tocar los contadores de la
-// sesión. La captura volverá a completarla al recibir el próximo Join del
-// juego (al entrar o cambiar de zona/personaje).
+// ClearCharacter descarta la detección y el roster actual sin tocar los
+// contadores de la sesión. La captura volverá a completarla únicamente al
+// recibir el próximo Join del juego al entrar con un personaje; ChangeCluster
+// no contiene identidad.
 func (s *State) ClearCharacter() {
 	s.SetCharacter("")
+	s.SetParty(nil)
+}
+
+// SetTrackingCharacter stores the optional SAT-style main-character filter.
+// The handler still detects the local identity from Join; this value only
+// decides whether current-session statistics are accepted after identification.
+func (s *State) SetTrackingCharacter(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.trackingCharacter = name
+}
+
+func (s *State) TrackingCharacter() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.trackingCharacter
 }
 
 // SetParty reemplaza la lista de miembros de la party.
@@ -189,6 +208,12 @@ func (s *State) IsTrackedPlayer(name string) bool {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// SAT's main-character setting is a statistics filter, not an alternate
+	// identity source. Until Join identifies a local player it allows packets;
+	// afterwards a different local name disables aggregation for this session.
+	if s.trackingCharacter != "" && s.character != "" && s.character != s.trackingCharacter {
+		return false
+	}
 	if name == s.character {
 		return true
 	}
@@ -379,22 +404,23 @@ func (s *State) Snapshot() Snapshot {
 	}
 
 	return Snapshot{
-		Capturing:   s.capturing,
-		Simulated:   s.simulated,
-		Character:   s.character,
-		Zone:        s.zone,
-		Party:       append([]string(nil), s.party...),
-		StartedAt:   s.startedAt.UnixMilli(),
-		Seconds:     int64(elapsed),
-		Fame:        s.fame,
-		Silver:      s.silver,
-		Respec:      s.respec,
-		FamePerHour: float64(s.fame) / hours,
-		SilverPerH:  float64(s.silver) / hours,
-		Combatants:  list,
-		Maps:        maps,
-		Loot:        loot,
-		Packets:     s.packets,
-		Decoded:     s.decoded,
+		Capturing:         s.capturing,
+		Simulated:         s.simulated,
+		Character:         s.character,
+		TrackingCharacter: s.trackingCharacter,
+		Zone:              s.zone,
+		Party:             append([]string(nil), s.party...),
+		StartedAt:         s.startedAt.UnixMilli(),
+		Seconds:           int64(elapsed),
+		Fame:              s.fame,
+		Silver:            s.silver,
+		Respec:            s.respec,
+		FamePerHour:       float64(s.fame) / hours,
+		SilverPerH:        float64(s.silver) / hours,
+		Combatants:        list,
+		Maps:              maps,
+		Loot:              loot,
+		Packets:           s.packets,
+		Decoded:           s.decoded,
 	}
 }

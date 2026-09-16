@@ -85,6 +85,12 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 
 		case <-combat.C:
 			actor := party[rng.Intn(len(party))]
+			// Keep the development fallback faithful to the live tracker: the
+			// optional SAT-style main-character setting filters aggregation only
+			// after its local identity has been established above.
+			if !st.IsTrackedPlayer(actor) {
+				continue
+			}
 			if actor == "GrailHealer" {
 				eff := int64(150 + rng.Intn(600))
 				over := int64(rng.Intn(200))
@@ -109,6 +115,9 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 				zone := zones[rng.Intn(len(zones))]
 				st.EnterZone(zone)
 				hub.Publish(NewEvent("map", map[string]any{"zone": zone}))
+			}
+			if !st.IsTrackedPlayer(party[0]) {
+				continue
 			}
 			entry := LootEntry{
 				Player:   party[rng.Intn(len(party))],

@@ -10,14 +10,18 @@ import (
 func testCodes(t *testing.T) *Codes {
 	t.Helper()
 	codes, err := parseCodes([]byte(`{
-		"events": {"NewCharacter": 24, "JoinFinished": 2},
+		"events": {"NewCharacter": 29, "JoinFinished": 2, "PartyJoined": 231, "PartyDisbanded": 232, "PartyPlayerJoined": 233, "PartyPlayerLeft": 235},
 		"operations": {"Join": 2, "ChangeCluster": 41},
 		"eventParameters": {
-			"NewCharacter": {"id": 0, "name": 1},
+			"NewCharacter": {"id": 0, "name": 1, "guid": 7, "guild": 8, "alliance": 51},
 			"JoinFinished": {"zone": 0},
-			"ChangeCluster": {"zone": 0}
+			"ChangeCluster": {"zone": 0},
+			"PartyJoined": {"guids": 8, "names": 9},
+			"PartyPlayerJoined": {"id": 0, "guid": 1, "name": 2},
+			"PartyPlayerLeft": {"id": 0, "guid": 1},
+			"PartyDisbanded": {}
 		},
-		"selfOperation": {"operation": "Join", "parameters": {"id": 0, "name": 2, "zone": 8}}
+		"selfOperation": {"operation": "Join", "parameters": {"id": 0, "guid": 1, "name": 2, "zone": 8, "guild": 58, "alliance": 79}}
 	}`), "test")
 	if err != nil {
 		t.Fatalf("parseCodes() error = %v", err)
@@ -129,7 +133,7 @@ func protocol18JoinResponsePacket(name string) []byte {
 
 func protocol18NewCharacterPacket(name string) []byte {
 	body := []byte{
-		0, 4, 24, // reliable marker, event, NewCharacter code
+		0, 4, 29, // reliable marker, event, NewCharacter code
 		2, // Protocol18 parameter table count (one byte)
 		0, 11, 77, // parameter 0: Int1 entity id = 77
 		1, 7, // parameter 1: UTF-8 character name
@@ -319,8 +323,8 @@ func TestZoneChangeKeepsSelfAndDropsOtherEntities(t *testing.T) {
 		Parameters: map[byte]any{0: int64(42), 2: "Yo", 8: "Martlock"},
 	})
 	handler.event(&photon.EventData{
-		Code:       24,
-		Parameters: map[byte]any{0: int64(77), 1: "Vecino", 252: int64(24)},
+		Code:       29,
+		Parameters: map[byte]any{0: int64(77), 1: "Vecino", 252: int64(29)},
 	})
 
 	handler.enterZone("Thetford")
@@ -333,21 +337,30 @@ func TestZoneChangeKeepsSelfAndDropsOtherEntities(t *testing.T) {
 	}
 }
 
-// Si la captura arranca con la sesión ya iniciada nunca se ve el JoinResponse.
-// El personaje propio igual se reanuncia con NewCharacter al entrar a cada
-// zona, y de ahí se recupera su id de entidad.
-func TestNewCharacterRecoversSelfEntityID(t *testing.T) {
+// NewCharacter can rebind a local player after a zone change only when the
+// local GUID was already learned from Join. A matching display name alone is
+// deliberately insufficient: it would make a late capture guess the player.
+func TestNewCharacterRebindsKnownLocalGUID(t *testing.T) {
 	state := NewState()
-	state.SetCharacter("Yo")
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+	localGUID := []byte{0x33, 0x22, 0x11, 0x00, 0x55, 0x44, 0x77, 0x66, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 
+	handler.response(&photon.OperationResponse{
+		Code:       2,
+		ReturnCode: 0,
+		Parameters: map[byte]any{0: int64(42), 1: localGUID, 2: "Yo"},
+	})
+	handler.enterZone("Thetford")
 	handler.event(&photon.EventData{
-		Code:       24,
-		Parameters: map[byte]any{0: int64(99), 1: "Yo", 252: int64(24)},
+		Code:       29,
+		Parameters: map[byte]any{0: int64(99), 1: "Yo", 7: localGUID, 252: int64(29)},
 	})
 
 	if !handler.isSelf(99) {
-		t.Fatal("NewCharacter must recover the local entity id when Join was missed")
+		t.Fatal("NewCharacter must rebind a known local GUID to its new ObjectId")
+	}
+	if handler.isSelf(42) {
+		t.Fatal("the old ObjectId must no longer identify the local entity")
 	}
 }
 

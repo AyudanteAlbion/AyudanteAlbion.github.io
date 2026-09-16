@@ -68,9 +68,10 @@ const (
 
 var errProtocol18 = errors.New("photon: Protocol18 inválido")
 
-// p18CustomValue preserves an application-specific Protocol18 value without
-// interpreting it. The tracker does not inspect custom Albion payloads.
-type p18CustomValue struct {
+// CustomValue preserves an application-specific Protocol18 value without
+// interpreting it. The tracker consumes the raw bytes only for the 16-byte
+// user GUIDs that identify the local player and party roster.
+type CustomValue struct {
 	Code byte
 	Data []byte
 }
@@ -295,12 +296,12 @@ func (r *reader) p18Value(kind byte, depth int) (any, error) {
 	}
 }
 
-func (r *reader) p18Custom(code byte) (p18CustomValue, error) {
+func (r *reader) p18Custom(code byte) (CustomValue, error) {
 	data, err := r.p18Bytes()
 	if err != nil {
-		return p18CustomValue{}, err
+		return CustomValue{}, err
 	}
-	return p18CustomValue{Code: code, Data: data}, nil
+	return CustomValue{Code: code, Data: data}, nil
 }
 
 func (r *reader) p18BooleanArray() ([]bool, error) {
@@ -426,7 +427,7 @@ func (r *reader) p18ObjectArray(depth int) ([]any, error) {
 	return out, nil
 }
 
-func (r *reader) p18CustomArray() ([]p18CustomValue, error) {
+func (r *reader) p18CustomArray() ([]CustomValue, error) {
 	n, err := r.p18CollectionLength()
 	if err != nil || n > r.left() {
 		return nil, protocol18Error(err)
@@ -435,7 +436,7 @@ func (r *reader) p18CustomArray() ([]p18CustomValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]p18CustomValue, n)
+	out := make([]CustomValue, n)
 	for i := range out {
 		if out[i], err = r.p18Custom(code); err != nil {
 			return nil, err

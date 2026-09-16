@@ -12,8 +12,24 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
 
 ## [v1.4.0] — sin publicar
 
+### Añadido
+
+- Avisos de licencia y procedencia (`NOTICE` y `docs/licencia-gpl.md`) para las
+  adaptaciones GPL-3.0 del ciclo de entidades del tracker basadas en
+  **AlbionOnline-StatisticsAnalysis (SAT)**, con el commit de referencia y la
+  ruta al código fuente correspondiente.
+- Modelo persistente de entidades por **GUID + ObjectId** en el tracker de
+  escritorio: Join registra el jugador local; NewCharacter vuelve a enlazar
+  IDs de zona; y el roster completo de party, altas, bajas y disband quedan
+  correlacionados por GUID.
+- Pruebas de la representación de GUID de Photon, rebinding tras cambio de
+  zona, ciclo completo de party y final inesperado de una fuente de captura.
+
 ### Cambiado
 
+- La licencia de Ayudante Albion cambia de **MIT** a **GPL-3.0-only**. Los
+  paquetes de escritorio incluyen `LICENSE`, `NOTICE` y `SOURCE_CODE.txt` con
+  la referencia al commit de la fuente correspondiente.
 - **Las pestañas Sesión, Recolección y Mazmorras pasan a ser exclusivas de la
   app de escritorio.** Las tres se alimentan de la captura de red del juego,
   imposible en un navegador, así que la web ya no las muestra ni carga su
@@ -40,6 +56,16 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
 
 ### Corregido
 
+- La detección de personaje deja de inferirse desde el nombre o un ObjectId
+  transitorio: se confirma únicamente con la respuesta exitosa de Join y se
+  conserva por GUID. La tabla y los fixtures ahora usan `NewCharacter=29`, no
+  el valor histórico 24.
+- Se corrige la indicación anterior sobre cambios de zona: `ChangeCluster`
+  actualiza únicamente la ubicación; no vuelve a emitir Join ni puede detectar
+  el personaje si la captura empezó tarde. El panel indica volver al selector
+  de personaje e ingresar otra vez.
+- Si `Source.Run` termina inesperadamente, el motor deja de mostrarse como
+  activo y expone el error de captura en vez de dejar `capturing:true` colgado.
 - El despliegue de la web (`web.yml`) ahora copia `albion-app/css/` al sitio y
   lo incluye en los disparadores: el `index.html` enlaza hojas de ese directorio
   que en producción devolvían **404** y dejaban módulos sin estilos (quedaba

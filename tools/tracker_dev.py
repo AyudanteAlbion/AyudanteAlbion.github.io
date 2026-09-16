@@ -25,6 +25,7 @@ import queue
 import random
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 # Código propio del escritorio (las pestañas del tracker ya no están en la web).
@@ -96,6 +97,7 @@ class State:
             if full:
                 self.capturing = False
                 self.character = ''
+                self.tracking_character = ''
                 self.zone = ''
                 self.party: list[str] = []
             for name in self.party:
@@ -179,6 +181,7 @@ class State:
                 'capturing': self.capturing,
                 'simulated': True,
                 'character': self.character,
+                'trackingCharacter': self.tracking_character,
                 'zone': self.zone,
                 'party': list(self.party),
                 'startedAt': int(self.started * 1000),
@@ -274,6 +277,11 @@ def simulate() -> None:
         time.sleep(0.7)
         if not STATE.capturing:
             continue
+        # Keep the standalone frontend simulator aligned with the Go fallback:
+        # the configured main-character filter stops aggregation only after
+        # the simulated Join identity has been established.
+        if STATE.tracking_character and STATE.tracking_character != PARTY[0]:
+            continue
         tick += 1
         actor = random.choice(PARTY)
         if actor == 'GrailHealer':
@@ -349,7 +357,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith('/api/tracker/status'):
             body = {'edition': 'tracker', 'available': True, 'reason': '',
                     'source': 'simulador (dev)', 'capturing': STATE.capturing,
-                    'listeners': HUB.count()}
+                    'trackingCharacter': STATE.tracking_character, 'listeners': HUB.count()}
             codes, warn = load_codes()
             if codes:
                 body['codes'] = codes
@@ -371,12 +379,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.path.startswith('/api/tracker/restart'):
-            STATE.capturing = True
+            character = parse_qs(urlsplit(self.path).query).get('character', [''])[0]
+            with STATE._lock:
+                STATE.tracking_character = character
+                STATE.capturing = True
             HUB.publish('status', STATE.snapshot())
             return self._json({'ok': True, 'capturing': True})
         if self.path.startswith('/api/tracker/character/refresh'):
-            STATE.character = ''
-            STATE.capturing = True
+            with STATE._lock:
+                STATE.character = ''
+                STATE.party = []
+                STATE.capturing = True
             snap = STATE.snapshot()
             HUB.publish('status', snap)
             return self._json({'ok': True, 'capturing': True, 'snapshot': snap})

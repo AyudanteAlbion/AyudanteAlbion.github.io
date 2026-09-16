@@ -48,11 +48,11 @@ confirmación escrita de SBI:
 ## Relación con Statistics Analysis
 
 Se adoptó el **modelo de seguridad observable** de Statistics Analysis: monitor
-pasivo, ventana separada, sin cliente modificado y alcance propio/party. No se
-copió su código. Ese proyecto usa GPL-3.0, mientras Ayudante Albion usa MIT;
-copiar componentes crearía obligaciones de licencia para la obra derivada. La
-implementación de este repositorio es independiente y mantiene sus propias
-barreras verificables.
+pasivo, ventana separada, sin cliente modificado y alcance propio/party. El
+tracker incorpora adaptaciones del ciclo de entidades de SAT bajo GPL-3.0; sus
+avisos y procedencia están en [`../NOTICE`](../NOTICE). Ayudante Albion se
+distribuye ahora bajo GPL-3.0-only. La licencia no es una aprobación de SAT ni
+de SBI: las barreras verificables de este repositorio se mantienen.
 
 ## Recomendación antes de publicar
 

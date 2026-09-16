@@ -1,0 +1,33 @@
+Ayudante Albion
+Copyright (C) 2026 SheniaLiam — gremio Spetsnaz Grail
+SPDX-License-Identifier: GPL-3.0-only
+
+This repository and the executable built from it are distributed under the
+GNU General Public License, version 3 only. See LICENSE for the complete
+license text. This program is provided WITHOUT ANY WARRANTY.
+
+Portions of the desktop live-tracker are adaptations of the following
+GPL-3.0 project:
+
+  AlbionOnline-StatisticsAnalysis (Statistics Analysis Tool / SAT)
+  https://github.com/Triky313/AlbionOnline-StatisticsAnalysis
+  Source revision: 9f4471b2905f4152938d84721492c6ac86499750
+  Copyright (C) the AlbionOnline-StatisticsAnalysis contributors,
+  including Aaron Schultz (Triky313).
+
+The adapted tracker portions cover the entity lifecycle and correlation model:
+local-player identity from Join responses; GUID-to-object-ID indexing; entity
+updates from NewCharacter; and party roster join, leave, and disband handling.
+They are implemented for this application's Go/Wails architecture and are
+marked in the relevant source files. No affiliation, endorsement, or approval
+by the SAT authors or Sandbox Interactive is implied.
+
+Corresponding source
+--------------------
+The complete corresponding source for each distributed executable is the
+revision identified by its bundled BUILD_INFO.txt at:
+
+  https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/tree/<commit>
+
+Release artifacts also bundle this LICENSE, this NOTICE, and SOURCE_CODE.txt
+with the exact source URL for that artifact.
