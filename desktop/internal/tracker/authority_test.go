@@ -34,7 +34,8 @@ func TestAuthoritativeCodesOverrideEnvelopeMetadata(t *testing.T) {
 		t.Fatal("response without authoritative parameter 253 entered typed dispatch")
 	}
 
-	handler.event(&photon.EventData{Code: 29, Parameters: map[byte]any{8: [][]byte{localGUIDBytes, partyGUIDBytes}, 9: []string{"Anon", "Ally"}, 252: int64(231)}})
+	allGUIDs := append(append([]byte(nil), localGUIDBytes...), partyGUIDBytes...)
+	handler.event(&photon.EventData{Code: 29, Parameters: map[byte]any{8: allGUIDs, 9: []string{"Anon", "Ally"}, 252: int64(231)}})
 	if got := len(state.Snapshot().PartyState.Members); got != 2 {
 		t.Fatalf("event authority dispatched envelope code: party size = %d", got)
 	}

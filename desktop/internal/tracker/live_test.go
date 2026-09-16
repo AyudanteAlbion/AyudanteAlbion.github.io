@@ -308,6 +308,7 @@ func TestClusterNameKeepsFirstSegment(t *testing.T) {
 func TestSameZoneIsNotRecordedTwice(t *testing.T) {
 	state := NewState()
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+	state.ApplyJoinIdentity(LocalIdentity{ObjectID: 1, GUID: "00000000-0000-0000-0000-000000000001", Name: "Anon"})
 
 	handler.enterZone("Caerleon")
 	handler.enterZone("Caerleon")
@@ -377,6 +378,7 @@ func TestNewCharacterRebindsKnownLocalGUID(t *testing.T) {
 func TestProtocol18ChangeClusterPacketUpdatesZone(t *testing.T) {
 	state := NewState()
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+	handler.response(&photon.OperationResponse{ReturnCode: 0, Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Anon", 253: int64(2)}})
 	parser := photon.NewParser(photon.Handler{OnResponse: handler.response})
 
 	if ok := parser.Receive(protocol18ChangeClusterPacket("Bridgewatch")); !ok {

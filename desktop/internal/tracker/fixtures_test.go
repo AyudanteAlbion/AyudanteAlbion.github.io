@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ayudante-albion-desktop/internal/tracker/photon"
@@ -16,7 +17,7 @@ func photonFixture(t *testing.T, name string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := hex.DecodeString(string(data))
+	decoded, err := hex.DecodeString(strings.TrimSpace(string(data)))
 	if err != nil {
 		t.Fatal(err)
 	}

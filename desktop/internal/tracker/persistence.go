@@ -55,5 +55,12 @@ func (s *sessionStore) Save(snapshot Snapshot) error {
 	if err = os.WriteFile(temporary, data, 0600); err != nil {
 		return err
 	}
+	if err = os.Rename(temporary, path); err == nil {
+		return nil
+	}
+	// Windows does not replace an existing destination with os.Rename.
+	if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
+		return err
+	}
 	return os.Rename(temporary, path)
 }
