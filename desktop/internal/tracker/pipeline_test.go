@@ -21,6 +21,10 @@ func TestPacketPipelineDrivesCaptureIdentityWorldAndParty(t *testing.T) {
 	if snapshot.Capture.Phase != CaptureCharacter || !snapshot.Capture.ServerConfirmed || !snapshot.Identity.Valid || snapshot.Identity.Name != "AnonPlayer" || snapshot.World.Map != "Martlock" {
 		t.Fatalf("Join pipeline state = %+v", snapshot)
 	}
+	pipeline.Ingest(packet("join_response.hex"))
+	if revision := state.Snapshot().Identity.Revision; revision != snapshot.Identity.Revision {
+		t.Fatalf("duplicate raw-socket datagram applied Join twice: revision = %d", revision)
+	}
 
 	pipeline.Ingest(packet("party_complete.hex"))
 	snapshot = state.Snapshot()

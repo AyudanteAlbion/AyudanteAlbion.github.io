@@ -12,7 +12,10 @@ import (
 const (
 	linkTypeNull         int32 = 0
 	linkTypeEthernet     int32 = 1
-	linkTypeRaw          int32 = 101
+	linkTypeRaw          int32 = 12  // DLT_RAW returned by Npcap
+	linkTypeRawCapture   int32 = 101 // LINKTYPE_RAW used by capture files/backends
+	linkTypeIPv4         int32 = 228
+	linkTypeIPv6         int32 = 229
 	protoUDP                   = 17
 	maxIPv4Assemblies          = 256
 	maxIPv4AssemblyBytes       = 8 << 20
@@ -183,13 +186,17 @@ func parseCapturedFrame(frame []byte, linkType int32, adapter string, reassemble
 			return parseIPv6(frame[offset:], adapter)
 		}
 		return CapturedDatagram{}, false
-	case linkTypeRaw:
+	case linkTypeRaw, linkTypeRawCapture:
 		if frame[0]>>4 == 4 {
 			return parseIPv4(frame, adapter, reassembler)
 		}
 		if frame[0]>>4 == 6 {
 			return parseIPv6(frame, adapter)
 		}
+	case linkTypeIPv4:
+		return parseIPv4(frame, adapter, reassembler)
+	case linkTypeIPv6:
+		return parseIPv6(frame, adapter)
 	case linkTypeNull:
 		// DLT_NULL normally has a four-byte native-endian address family.
 		if len(frame) < 5 {

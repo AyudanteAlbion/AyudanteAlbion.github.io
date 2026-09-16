@@ -255,6 +255,10 @@ func (s *State) CaptureRecovering(provider, message string) {
 	s.capture.OpenSources = 0
 	s.capture.RealCapture = false
 	s.capture.Error = message
+	s.capture.PhotonPackets = 0
+	s.capture.LastPhotonAt = 0
+	s.capture.ServerConfirmed = false
+	s.capture.Server = ""
 	s.capture.Phase = CapturePreparing
 }
 

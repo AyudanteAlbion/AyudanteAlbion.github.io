@@ -6,6 +6,8 @@
 package tracker
 
 import (
+	"encoding/binary"
+	"hash/fnv"
 	"net"
 	"strings"
 	"sync"
@@ -28,6 +30,7 @@ type CapturedDatagram struct {
 type serverCandidate struct {
 	name      string
 	firstSeen time.Time
+	lastSeen  time.Time
 }
 
 type serverDetector struct {
@@ -69,31 +72,74 @@ func (d *serverDetector) Observe(packet CapturedDatagram, now time.Time) (string
 	if name == "" {
 		return "", false
 	}
-	if d.candidate.name != name {
-		d.candidate = serverCandidate{name: name, firstSeen: now}
+	if d.candidate.name != name || !d.candidate.lastSeen.IsZero() && now.Sub(d.candidate.lastSeen) > 2*time.Second {
+		d.candidate = serverCandidate{name: name, firstSeen: now, lastSeen: now}
 		return name, d.stableFor == 0
 	}
+	d.candidate.lastSeen = now
 	return name, now.Sub(d.candidate.firstSeen) >= d.stableFor
 }
 
 type packetPipeline struct {
-	mu     sync.Mutex // Protocol parser and handlers are intentionally serial
-	state  *State
-	hub    *Hub
-	parser *photon.Parser
-	server *serverDetector
-	accept func(string) bool
+	mu      sync.Mutex // Protocol parser and handlers are intentionally serial
+	state   *State
+	hub     *Hub
+	parser  *photon.Parser
+	handler photon.Handler
+	server  *serverDetector
+	accept  func(string) bool
+	recent  map[uint64]time.Time
 }
 
 func newPacketPipeline(src *LiveSource, state *State, hub *Hub, codes *Codes, entities *EntityStore, accept func(string) bool) *packetPipeline {
 	handlers := newHandlersWithEntities(src, state, hub, codes, entities)
+	callbacks := photon.Handler{OnEvent: handlers.event, OnRequest: handlers.request, OnResponse: handlers.response}
 	return &packetPipeline{
-		state:  state,
-		hub:    hub,
-		parser: photon.NewParser(photon.Handler{OnEvent: handlers.event, OnRequest: handlers.request, OnResponse: handlers.response}),
-		server: newServerDetector(),
-		accept: accept,
+		state:   state,
+		hub:     hub,
+		parser:  photon.NewParser(callbacks),
+		handler: callbacks,
+		server:  newServerDetector(),
+		accept:  accept,
+		recent:  make(map[uint64]time.Time),
 	}
+}
+
+func (p *packetPipeline) ResetTransport() {
+	p.mu.Lock()
+	p.parser = photon.NewParser(p.handler)
+	p.server = newServerDetector()
+	p.recent = make(map[uint64]time.Time)
+	p.mu.Unlock()
+}
+
+func packetFingerprint(packet CapturedDatagram) uint64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write(packet.SourceIP)
+	_, _ = hash.Write(packet.DestinationIP)
+	var ports [4]byte
+	binary.BigEndian.PutUint16(ports[0:2], packet.SourcePort)
+	binary.BigEndian.PutUint16(ports[2:4], packet.DestinationPort)
+	_, _ = hash.Write(ports[:])
+	_, _ = hash.Write(packet.Payload)
+	return hash.Sum64()
+}
+
+func (p *packetPipeline) duplicateLocked(packet CapturedDatagram, now time.Time) bool {
+	const duplicateWindow = 500 * time.Millisecond
+	fingerprint := packetFingerprint(packet)
+	if seen, ok := p.recent[fingerprint]; ok && now.Sub(seen) <= duplicateWindow {
+		return true
+	}
+	p.recent[fingerprint] = now
+	if len(p.recent) > 1024 {
+		for key, seen := range p.recent {
+			if now.Sub(seen) > duplicateWindow {
+				delete(p.recent, key)
+			}
+		}
+	}
+	return false
 }
 
 func (p *packetPipeline) Ingest(packet CapturedDatagram) {
@@ -111,14 +157,20 @@ func (p *packetPipeline) Ingest(packet CapturedDatagram) {
 	}
 
 	p.state.MarkPhoton(packet.Adapter, inspection.Encrypted, inspection.Packets)
-	if server, confirmed := p.server.Observe(packet, time.Now()); confirmed {
+	p.mu.Lock()
+	now := time.Now()
+	if p.duplicateLocked(packet, now) {
+		p.mu.Unlock()
+		return
+	}
+	if server, confirmed := p.server.Observe(packet, now); confirmed {
 		p.state.ConfirmServer(server)
 	}
 	if inspection.Encrypted {
+		p.mu.Unlock()
 		return
 	}
 
-	p.mu.Lock()
 	ok := p.parser.Receive(packet.Payload)
 	p.mu.Unlock()
 	if !ok {

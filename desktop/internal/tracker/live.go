@@ -322,6 +322,7 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 				case <-current.done:
 					delete(workers, name)
 					if l.releaseAdapter(name) {
+						pipeline.ResetTransport()
 						st.CaptureRecovering("npcap", "el adaptador Photon dejó de responder; buscando otra conexión")
 					}
 				default:

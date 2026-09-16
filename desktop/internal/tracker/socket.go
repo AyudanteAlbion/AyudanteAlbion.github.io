@@ -104,6 +104,7 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 			return ctx.Err()
 		case packet, ok := <-active.packets:
 			if !ok {
+				pipeline.ResetTransport()
 				st.CaptureRecovering("socket", "la red cambió; reabriendo raw sockets")
 				if err := reopenRawCapture(ctx, open); err != nil {
 					return err
@@ -113,6 +114,7 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 			pipeline.Ingest(packet)
 		case err, ok := <-active.errors:
 			if !ok || err != nil {
+				pipeline.ResetTransport()
 				st.CaptureRecovering("socket", "un raw socket dejó de responder; esperando una red activa")
 				hub.Publish(NewEvent("warning", map[string]any{"message": "Socket se recuperará después de un error de red."}))
 				if reopenErr := reopenRawCapture(ctx, open); reopenErr != nil {
@@ -121,6 +123,7 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 			}
 		case <-networkTicker.C:
 			if signature, err := platformNetworkSignature(); err == nil && signature != active.signature {
+				pipeline.ResetTransport()
 				st.CaptureRecovering("socket", "se detectó un cambio de red; reabriendo raw sockets")
 				if err := reopenRawCapture(ctx, open); err != nil {
 					return fmt.Errorf("cambio de red: %w", err)
