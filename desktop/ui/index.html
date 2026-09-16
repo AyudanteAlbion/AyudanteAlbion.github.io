@@ -19,7 +19,7 @@
   form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
-<link rel="stylesheet" href="styles.css?v=79">
+<link rel="stylesheet" href="styles.css?v=80">
 <link rel="stylesheet" href="css/tracker-setup.css?v=1">
 <link rel="stylesheet" href="css/trade-tracking.css?v=1">
 <link rel="stylesheet" href="css/gathering.css?v=1">
@@ -33,7 +33,7 @@
 <meta property="og:image" content="https://ayudantealbion.github.io/img/logo-app.png">
 <meta name="twitter:card" content="summary_large_image">
 </head>
-<body>
+<body class="sidebar-collapsed">
 
 <!-- Barra nativa de Ayudante Albion. Permanece oculta en la web y
      AAEnvironment la habilita únicamente dentro de Wails. -->
@@ -67,6 +67,10 @@
 
 <header class="topbar">
   <div class="container topbar-inner">
+    <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-controls="appSidebar" aria-expanded="false" aria-label="Mostrar menú de navegación" title="Mostrar menú">
+      <span class="sidebar-toggle-icon" aria-hidden="true">☰</span>
+      <span id="sidebarToggleLabel">Menú</span>
+    </button>
     <div class="brand">
       <img class="brand-mark" src="img/logo-app.png" alt="Ayudante Albion">
       <div>
@@ -74,7 +78,41 @@
         <div class="brand-sub">Servidor Americas (West)</div>
       </div>
     </div>
-    <nav class="tabs" id="mainTabs">
+
+    <div class="top-actions">
+      <button class="top-action" type="button" data-tab="search" title="Buscador de precios">
+        <svg><use href="#i-search"/></svg>
+      </button>
+      <button class="top-action" type="button" data-tab="ledgerlog" title="Registro de operaciones">
+        <svg><use href="#i-book"/></svg>
+      </button>
+      <!-- data-sg-login: la delegación del módulo SG (app.js) es la que dispara el
+           ingreso con Discord; sin el atributo el botón de la barra no hacía nada -->
+      <button class="top-action" type="button" id="sgLoginBtn" data-sg-login hidden title="Ingresar con Discord — acceso de miembros SG">
+        <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+      </button>
+      <div class="sg-account" id="sgAccount" hidden>
+        <button class="sg-account-btn" type="button" id="sgAccountBtn" title="Tu cuenta de Discord">
+          <img id="sgAccountImg" alt="" hidden>
+          <span class="sg-account-initial" id="sgAccountInitial"></span>
+          <span class="sg-account-dot" id="sgAccountDot"></span>
+        </button>
+        <div class="sg-account-menu" id="sgAccountMenu" hidden></div>
+      </div>
+      <button class="top-action" type="button" id="kaBtn" aria-pressed="true" title="⚡ Anti-pausa: evita que el navegador congele la app en segundo plano">
+        <svg><use href="#i-bolt"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Navegación lateral plegable: agrupa todas las secciones principales. -->
+<aside class="app-sidebar" id="appSidebar" aria-label="Navegación de Ayudante Albion">
+  <div class="sidebar-head">
+    <span class="sidebar-eyebrow">AYUDANTE ALBION</span>
+    <span class="sidebar-title">Navegación</span>
+  </div>
+    <nav class="tabs sidebar-tabs" id="mainTabs" aria-label="Navegación principal">
       <button class="tab active" data-tab="home"><svg class="tab-ico"><use href="#i-home"/></svg>Inicio</button>
       <div class="tab-dd" id="craftDd">
         <button class="tab dd-trigger" id="craftDdBtn" aria-haspopup="true" aria-expanded="false"><svg class="tab-ico"><use href="#i-sword"/></svg>Crafteo <span class="dd-caret">▾</span></button>
@@ -130,42 +168,17 @@
           </button>
         </div>
       </div>
-      <!-- Visible en web y escritorio. En la web pública js/tracker/ui.js pinta
-           el cartel "En desarrollo en App de Escritorio" y no da acceso a las
-           funciones; dentro del ejecutable se muestra la sesión en vivo completa. -->
       <button class="tab" data-tab="tracker"><svg class="tab-ico"><use href="#i-chart"/></svg>Sesión</button>
-      <button class="tab" data-tab="gathering"><svg class="tab-ico"><use href="#i-sprout"/></svg>Recolección</button>
-      <button class="tab" data-tab="dungeons"><svg class="tab-ico"><use href="#i-sword"/></svg>Mazmorras</button>
       <button class="tab" data-tab="profile"><svg class="tab-ico"><use href="#i-user"/></svg>Perfil</button>
       <button class="tab" data-tab="sg"><svg class="tab-ico"><use href="#i-shield"/></svg>SG</button>
       <button class="tab" data-tab="formulas"><svg class="tab-ico"><use href="#i-rule"/></svg>Fórmulas</button>
     </nav>
-    <div class="top-actions">
-      <button class="top-action" type="button" data-tab="search" title="Buscador de precios">
-        <svg><use href="#i-search"/></svg>
-      </button>
-      <button class="top-action" type="button" data-tab="ledgerlog" title="Registro de operaciones">
-        <svg><use href="#i-book"/></svg>
-      </button>
-      <!-- data-sg-login: la delegación del módulo SG (app.js) es la que dispara el
-           ingreso con Discord; sin el atributo el botón de la barra no hacía nada -->
-      <button class="top-action" type="button" id="sgLoginBtn" data-sg-login hidden title="Ingresar con Discord — acceso de miembros SG">
-        <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-      </button>
-      <div class="sg-account" id="sgAccount" hidden>
-        <button class="sg-account-btn" type="button" id="sgAccountBtn" title="Tu cuenta de Discord">
-          <img id="sgAccountImg" alt="" hidden>
-          <span class="sg-account-initial" id="sgAccountInitial"></span>
-          <span class="sg-account-dot" id="sgAccountDot"></span>
-        </button>
-        <div class="sg-account-menu" id="sgAccountMenu" hidden></div>
-      </div>
-      <button class="top-action" type="button" id="kaBtn" aria-pressed="true" title="⚡ Anti-pausa: evita que el navegador congele la app en segundo plano">
-        <svg><use href="#i-bolt"/></svg>
-      </button>
-    </div>
+  <div class="sidebar-foot">
+    <span>Las secciones de Recolección y Mazmorras están dentro de Sesión.</span>
   </div>
-</header>
+</aside>
+
+<div class="app-content">
 
 <main class="container">
 
@@ -1290,19 +1303,33 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 </section>
 
 <!-- ============ TAB: SESIÓN (solo edición de escritorio) ============ -->
-<!-- El contenido lo dibuja js/tracker/ui.js: en la web pública queda el aviso
-     de «solo escritorio», y en el .exe Tracker el panel en vivo. -->
-<section id="tab-tracker" class="tab-panel"></section>
-
-<!-- ============ TAB: RECOLECCIÓN ============ -->
-<section id="tab-gathering" class="tab-panel">
-  <div id="gatheringMount"><div class="panel loading-cell">Preparando el seguimiento de recolección…</div></div>
+<!-- Recolección y Mazmorras pertenecen a la misma sesión de juego. Cada vista
+     conserva su análisis, pero ya no ocupa una pestaña de navegación propia. -->
+<section id="tab-tracker" class="tab-panel">
+  <div class="session-shell">
+    <div class="session-nav" role="tablist" aria-label="Secciones de la sesión">
+      <button class="session-tab active" id="sessionTabTracker" type="button" role="tab" aria-selected="true" aria-controls="sessionViewTracker" data-session-view="tracker">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-chart"/></svg> Sesión en vivo
+      </button>
+      <button class="session-tab" id="sessionTabGathering" type="button" role="tab" aria-selected="false" aria-controls="sessionViewGathering" tabindex="-1" data-session-view="gathering">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-sprout"/></svg> Recolección
+      </button>
+      <button class="session-tab" id="sessionTabDungeons" type="button" role="tab" aria-selected="false" aria-controls="sessionViewDungeons" tabindex="-1" data-session-view="dungeons">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-sword"/></svg> Mazmorras
+      </button>
+    </div>
+    <section class="session-view active" id="sessionViewTracker" role="tabpanel" aria-labelledby="sessionTabTracker">
+      <div id="trackerMount"><div class="panel loading-cell">Preparando la sesión en vivo…</div></div>
+    </section>
+    <section class="session-view" id="sessionViewGathering" role="tabpanel" aria-labelledby="sessionTabGathering" hidden>
+      <div id="gatheringMount"><div class="panel loading-cell">Preparando el seguimiento de recolección…</div></div>
+    </section>
+    <section class="session-view" id="sessionViewDungeons" role="tabpanel" aria-labelledby="sessionTabDungeons" hidden>
+      <div id="dungeonsMount"><div class="panel loading-cell">Preparando el seguimiento de mazmorras…</div></div>
+    </section>
+  </div>
 </section>
 
-<!-- ============ TAB: MAZMORRAS ============ -->
-<section id="tab-dungeons" class="tab-panel">
-  <div id="dungeonsMount"><div class="panel loading-cell">Preparando el seguimiento de mazmorras…</div></div>
-</section>
 
 <!-- ============ TAB: SG (Spetsnaz Grail) ============ -->
 <!-- ============ TAB: PERFIL ============ -->
@@ -1408,11 +1435,13 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
   © 2026 Ayudante Albion · <a href="https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0-only</a> · Sin garantía.
   <a href="https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/blob/main/NOTICE" target="_blank" rel="noopener">Avisos y código fuente</a>
 </footer>
+</div>
 
 <script src="js/core/storage.js?v=1"></script>
 <script src="js/core/format.js?v=1"></script>
 <script src="js/core/api.js?v=1"></script>
-<script src="js/core/navigation.js?v=1"></script>
+<script src="js/core/navigation.js?v=2"></script>
+<script src="js/core/sidebar.js?v=1"></script>
 <script src="js/market/history.js?v=1"></script>
 <script src="js/market/price-freshness.js?v=1"></script>
 <script src="js/market/api-history.js?v=1"></script>
@@ -1424,7 +1453,8 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/builds/build.js?v=1"></script>
 <script src="js/desktop/environment.js?v=1"></script>
 <script src="js/tracker/client.js?v=3"></script>
-<script src="js/tracker/ui.js?v=3"></script>
+<script src="js/tracker/maps.js?v=1"></script>
+<script src="js/tracker/ui.js?v=4"></script>
 <script src="js/tracker/gathering.js?v=1"></script>
 <script src="js/tracker/dungeons.js?v=1"></script>
 <script src="app.js?v=79"></script>

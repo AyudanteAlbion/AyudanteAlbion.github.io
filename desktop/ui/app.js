@@ -185,6 +185,7 @@ function gotoTab(key, sgTab) {
   if (mod && !mod.loadedOnce) mod.loadPrices();
   if (key === 'sg') sgSelectTab(sgTab || SG.tab);
   if (key === 'losses' && typeof plMaybeLoad === 'function') plMaybeLoad();
+  if (window.AASidebar) AASidebar.closeOnNavigation();
   window.scrollTo({ top: 0 });
 }
 document.getElementById('mainTabs').addEventListener('click', e => {

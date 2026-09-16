@@ -36,6 +36,10 @@ echo "   código   ← $UI/"
 cp "$UI/index.html" "$UI/app.js" "$UI/styles.css" "$DST/"
 cp -r "$UI/js" "$DST/"
 cp -r "$UI/css" "$DST/"
+# Datos propios del escritorio, p. ej. el índice ID de cluster → mapa visible.
+if [ -d "$UI/data" ]; then
+  cp -r "$UI/data" "$DST/"
+fi
 
 # 2. Assets compartidos (solo lectura, desde la fuente única).
 echo "   assets   ← $ASSETS/{data,icons,img}"

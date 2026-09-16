@@ -37,6 +37,15 @@
     });
   }
 
+  // Photon envía el ID interno del cluster (por ejemplo, 0006); el índice
+  // oficial local lo traduce al texto real que ve el personaje en el mapa.
+  function mapName(value) {
+    if (root.AATrackerMaps && typeof root.AATrackerMaps.display === 'function') {
+      return root.AATrackerMaps.display(value);
+    }
+    return value || 'Ubicación no detectada';
+  }
+
   /* Cartel para la web pública: la pestaña Sesión está en desarrollo en la
      aplicación de escritorio y no ofrece funciones desde el navegador. */
   function renderWebNotice(panel, info) {
@@ -548,7 +557,7 @@
       ['GUID interno', esc(identity.guid || '—')],
       ['Object ID', identity.objectId ? esc(String(identity.objectId)) : '—'],
       ['Gremio / alianza', esc((identity.guild || '—') + ' / ' + (identity.alliance || '—'))],
-      ['Zona', esc(snap.zone || '—')],
+      ['Mapa actual', esc(mapName(snap.zone))],
       ['Tiempo', clock(snap.seconds)],
       ['Fama', num(snap.fame)],
       ['Fama / h', num(snap.famePerHour)],
@@ -602,7 +611,7 @@
       return;
     }
     node.innerHTML = '<ul class="trk-list">' + maps.slice(0, 20).map(function (m) {
-      return '<li><strong>' + esc(m.name) + '</strong><span class="muted"> · ' +
+      return '<li><strong>' + esc(mapName(m.name)) + '</strong><span class="muted"> · ' +
         clock(m.seconds) + '</span></li>';
     }).join('') + '</ul>';
   }
@@ -633,7 +642,9 @@
 
   /* Monta la pestaña. Se llama una sola vez, desde init(). */
   function mount(info) {
-    var panel = el('tab-tracker');
+    // El contenedor es una vista interna de Sesión: Recolección y Mazmorras
+    // comparten el panel padre sin que renderShell destruya sus montajes.
+    var panel = el('trackerMount') || el('tab-tracker');
     if (!panel || mounted) return;
     mounted = true;
     if (!info.hasTracking) {
@@ -641,6 +652,9 @@
       return;
     }
     renderShell(panel);
+    if (root.AATrackerMaps && root.AATrackerMaps.ready) {
+      root.AATrackerMaps.ready.then(function () { dirty = true; });
+    }
     paintControls();
     paintCodes();
     try { if (!localStorage.getItem(SETUP_KEY)) openSetup(0); } catch (e) {}

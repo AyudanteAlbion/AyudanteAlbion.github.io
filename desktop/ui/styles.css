@@ -1761,3 +1761,86 @@ img { max-width: 100%; }
 .trk-wip p { max-width: 560px; margin-left: auto; margin-right: auto; }
 .trk-wip .btn { margin-top: 6px; }
 .small { font-size: 12px; }
+
+/* ===================================================================
+   NAVEGACIÓN LATERAL — edición de escritorio
+   La barra conserva los mismos destinos y menús de herramientas, pero deja
+   libre la parte superior y se abre desde el borde izquierdo de la app.
+   =================================================================== */
+:root { --sidebar-width: 268px; --app-chrome-height: 58px; }
+body.desktop-app { --app-chrome-height: 98px; }
+
+.sidebar-toggle {
+  display:inline-flex; align-items:center; gap:8px; min-height:38px;
+  padding:0 11px; color:var(--text); background:var(--panel-2);
+  border:1px solid var(--border-strong); border-radius:8px; font:inherit;
+  font-size:.78rem; font-weight:700; cursor:pointer;
+  transition:color .15s, border-color .15s, background .15s;
+}
+.sidebar-toggle:hover { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
+.sidebar-toggle-icon { width:17px; font-size:1.15rem; line-height:1; }
+
+.app-sidebar {
+  position:fixed; z-index:55; top:var(--app-chrome-height); bottom:0; left:0;
+  display:flex; flex-direction:column; width:var(--sidebar-width); overflow:hidden;
+  color:var(--text); background:rgba(16,20,29,.97); border-right:1px solid var(--border-strong);
+  box-shadow:12px 0 32px rgba(0,0,0,.28); backdrop-filter:blur(16px);
+  transform:translateX(0); transition:transform .24s ease;
+}
+body.sidebar-collapsed .app-sidebar { transform:translateX(-100%); }
+.app-content { width:100%; min-width:0; transition:width .24s ease, margin-left .24s ease; }
+body:not(.sidebar-collapsed) .app-content { width:calc(100% - var(--sidebar-width)); margin-left:var(--sidebar-width); }
+
+.sidebar-head { display:flex; flex-direction:column; gap:1px; padding:18px 18px 14px; border-bottom:1px solid var(--border); }
+.sidebar-eyebrow { color:var(--accent); font-size:.62rem; font-weight:800; letter-spacing:.14em; }
+.sidebar-title { font-size:1.02rem; font-weight:720; letter-spacing:.01em; }
+.sidebar-tabs { display:flex; flex:1; flex-direction:column; gap:3px; min-height:0; padding:10px; overflow-y:auto; }
+.app-sidebar .tab { width:100%; min-height:39px; padding:9px 10px; color:var(--muted); border-radius:7px; text-align:left; }
+.app-sidebar .tab:hover { color:var(--text); background:rgba(255,255,255,.055); }
+.app-sidebar .tab.active { color:var(--accent); background:var(--accent-soft); }
+.app-sidebar .tab.active::after { display:none; }
+.app-sidebar .tab-dd { display:block; width:100%; }
+.app-sidebar .dd-trigger { justify-content:flex-start; }
+.app-sidebar .dd-caret { margin-left:auto; }
+.app-sidebar .dd-menu {
+  position:static; display:block; min-width:0; max-height:0; margin:0; padding:0 4px;
+  overflow:hidden; opacity:0; visibility:hidden; transform:none; background:transparent;
+  border:0; border-radius:0; box-shadow:none;
+  transition:max-height .2s ease, opacity .14s ease, visibility .14s;
+}
+.app-sidebar .dd-menu::before { display:none; }
+.app-sidebar .tab-dd.open .dd-menu { max-height:330px; padding:3px 4px 5px 14px; opacity:1; visibility:visible; }
+.app-sidebar .dd-item { gap:9px; padding:8px 9px; color:var(--muted); border-radius:6px; }
+.app-sidebar .dd-item:hover { color:var(--text); background:rgba(255,255,255,.05); }
+.app-sidebar .dd-item.active { color:var(--accent); background:var(--accent-soft); }
+.app-sidebar .dd-item.active .dd-name { color:inherit; }
+.app-sidebar .dd-chip { width:25px; height:25px; }
+.app-sidebar .dd-chip svg { width:13px; height:13px; }
+.app-sidebar .dd-name { font-size:.78rem; }
+.sidebar-foot { margin-top:auto; padding:12px 16px 16px; color:var(--muted); border-top:1px solid var(--border); font-size:.68rem; line-height:1.45; }
+
+/* Recolección y Mazmorras son vistas hermanas del tracker de la sesión. */
+.session-shell { display:grid; gap:15px; }
+.session-nav { display:flex; gap:4px; width:max-content; max-width:100%; padding:5px; overflow-x:auto; background:var(--panel); border:1px solid var(--border); border-radius:9px; }
+.session-tab { display:inline-flex; align-items:center; gap:7px; white-space:nowrap; padding:8px 12px; color:var(--muted); background:transparent; border:1px solid transparent; border-radius:6px; font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; transition:color .14s, background .14s, border-color .14s; }
+.session-tab:hover { color:var(--text); background:rgba(255,255,255,.045); }
+.session-tab.active { color:var(--accent); background:var(--accent-soft); border-color:rgba(228,175,83,.26); }
+.session-view { min-width:0; }
+.session-view[hidden] { display:none; }
+
+@media (max-width:900px) {
+  .app-sidebar { width:min(82vw,320px); }
+  body:not(.sidebar-collapsed) .app-content { width:100%; margin-left:0; }
+  .sidebar-toggle { min-height:36px; padding:0 9px; }
+}
+@media (max-width:560px) {
+  :root { --app-chrome-height:48px; }
+  body.desktop-app { --app-chrome-height:88px; }
+  .sidebar-toggle span:not(.sidebar-toggle-icon) { display:none; }
+  .sidebar-toggle { width:36px; justify-content:center; padding:0; }
+  .session-nav { width:100%; }
+  .session-tab { flex:1; justify-content:center; padding:8px 9px; font-size:.74rem; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .app-sidebar,.app-content,.app-sidebar .dd-menu { transition:none; }
+}
