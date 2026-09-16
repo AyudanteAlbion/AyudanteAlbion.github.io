@@ -1,29 +1,36 @@
 name: Validate
 
+# Control de calidad transversal: sintaxis de JS/Python, referencias locales,
+# tabla de códigos Photon y QA de fases. Cubre los TRES productos del repo
+# (web, escritorio y worker) porque valida el repositorio como tal, no un
+# artefacto: no compila nada ni publica nada.
+#
+# El build de cada producto vive en su propio workflow e independiente:
+#   web.yml      → despliegue de la app web (GitHub Pages)
+#   desktop.yml  → compilación de AyudanteAlbionDesktop.exe
+
 on:
   push:
     branches: [main]
     paths:
       - 'albion-app/**'
+      - 'desktop/**'
       - 'tools/**'
-      - 'wrangler.toml'
-      - '.github/**'
       - 'worker/**'
       - 'scripts/**'
+      - 'wrangler.toml'
       - 'package.json'
-      - 'albion-exe/**'
-      - '.github/workflows/validate.yml'
+      - '.github/**'
   pull_request:
     paths:
       - 'albion-app/**'
+      - 'desktop/**'
       - 'tools/**'
-      - 'wrangler.toml'
-      - '.github/**'
       - 'worker/**'
       - 'scripts/**'
+      - 'wrangler.toml'
       - 'package.json'
-      - 'albion-exe/**'
-      - '.github/workflows/validate.yml'
+      - '.github/**'
   workflow_dispatch:
 
 permissions:

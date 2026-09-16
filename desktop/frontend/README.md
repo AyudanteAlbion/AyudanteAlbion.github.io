@@ -1,16 +1,22 @@
-# frontend/ — sincronizado en build
+# frontend/ — CARPETA GENERADA (no editar, no versionar)
 
-Esta carpeta se **rellena automáticamente** con el contenido de `albion-app/`
-antes de compilar (ver `desktop/sync_frontend.sh` y el workflow
-`.github/workflows/desktop.yml`). El contenido real (HTML, JS, CSS, íconos y
-datos) **no se versiona**: se copia igual que `albion-exe/app/`.
+Esta carpeta la **arma automáticamente** `desktop/sync_frontend.sh` antes de
+compilar, para que `//go:embed all:frontend` tome la app completa.
 
-Este `README.md` es solo un marcador para que `//go:embed all:frontend`
-siempre tenga al menos un archivo y el paquete compile aunque la sincronización
-no se haya corrido todavía.
+Se construye con dos orígenes:
 
-Para poblarla a mano:
+| Contenido | Viene de |
+|---|---|
+| `index.html`, `app.js`, `styles.css`, `js/`, `css/` | `desktop/ui/` (código propio del escritorio) |
+| `data/`, `icons/`, `img/` | `albion-app/` (assets compartidos) |
+
+**Si querés cambiar el frontend del escritorio, editá `desktop/ui/`.**
+Cualquier cosa que escribas acá se borra en la próxima sincronización.
 
 ```bash
 ./desktop/sync_frontend.sh
 ```
+
+Este `README.md` es el único archivo versionado de la carpeta: es un marcador
+para que `//go:embed all:frontend` siempre tenga al menos un archivo y el
+paquete compile aunque la sincronización no se haya corrido todavía.

@@ -1,24 +1,40 @@
-name: Build desktop app (Wails)
+name: Escritorio
 
-# Compila la app de escritorio nativa (Wails v2 + WebView2) para Windows.
-# A diferencia del build cross-compile desde Linux del ejecutable anterior,
-# Wails necesita compilarse EN Windows (WebView2 + toolchain nativa), por eso
-# este workflow corre en windows-latest.
+# ============================================================
+# AyudanteAlbionDesktop.exe — app de escritorio nativa (Wails v2 + WebView2).
 #
-# No publica una release: deja el .exe como artefacto de la ejecución para
-# probarlo. La publicación formal se sumará al pipeline de release más adelante.
+# Edición ÚNICA. Antes había dos binarios (estándar y Tracker) construidos con
+# build tags desde albion-exe/; ahora hay uno solo, con el tracker siempre
+# compilado y apagado por defecto, que se enciende desde la interfaz.
+#
+# Este workflow NO toca la web. Se dispara solo con cambios del escritorio:
+#   desktop/**  → código Go + frontend propio (desktop/ui/)
+# Los cambios en albion-app/ (la web) ya NO lo disparan: el frontend del
+# escritorio está forkeado en desktop/ui/ y evoluciona por su cuenta.
+#
+# Excepción deliberada: albion-app/{data,icons,img} son assets compartidos
+# (íconos de ítems y tablas de Albion) que el .exe embebe en tiempo de build.
+# Se vigilan porque un cambio ahí sí llega al binario.
+#
+# No publica releases: deja el .exe como artefacto de la ejecución.
+# Wails necesita compilarse EN Windows (WebView2 + toolchain nativa).
+# ============================================================
 
 on:
   push:
     branches: [main]
     paths:
       - 'desktop/**'
-      - 'albion-app/**'
+      - 'albion-app/data/**'
+      - 'albion-app/icons/**'
+      - 'albion-app/img/**'
       - '.github/workflows/desktop.yml'
   pull_request:
     paths:
       - 'desktop/**'
-      - 'albion-app/**'
+      - 'albion-app/data/**'
+      - 'albion-app/icons/**'
+      - 'albion-app/img/**'
       - '.github/workflows/desktop.yml'
   workflow_dispatch:
 
@@ -31,7 +47,7 @@ concurrency:
 
 jobs:
   build-windows:
-    name: Build AyudanteAlbion.exe (Windows)
+    name: Build AyudanteAlbionDesktop.exe
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -46,11 +62,18 @@ jobs:
           go-version: '1.23.4'
           cache: false
 
-      - name: Verificar sintaxis de la app web (app.js)
+      # Se valida el frontend PROPIO del escritorio, no el de la web.
+      - name: Verificar sintaxis del frontend de escritorio
         shell: bash
-        run: node --check albion-app/app.js
+        run: node --check desktop/ui/app.js
 
-      - name: Sincronizar frontend embebido
+      # La tabla de códigos Photon se edita a mano y se carga sin recompilar:
+      # validarla acá evita publicar un .exe con el tracker roto.
+      - name: Validar tabla de códigos Photon
+        shell: bash
+        run: python3 scripts/validate_photon_codes.py
+
+      - name: Preparar frontend embebido (ui/ + assets)
         shell: bash
         run: ./desktop/sync_frontend.sh
 
@@ -88,19 +111,26 @@ jobs:
         working-directory: desktop
         run: |
           set -euo pipefail
-          test -s build/bin/AyudanteAlbion.exe
+          test -s build/bin/AyudanteAlbionDesktop.exe
           ls -lh build/bin/
 
-      - name: Publicar información del build
+      - name: Preparar paquete
         shell: bash
         working-directory: desktop
         run: |
+          set -euo pipefail
+          # La tabla de códigos viaja embebida, pero también suelta junto al
+          # .exe: así se arregla el tracker tras un patch de Albion sin
+          # recompilar (el binario prefiere la copia externa).
+          cp ../albion-app/data/photon_codes.json build/bin/
           printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > build/bin/BUILD_INFO.txt
+          (cd build/bin && sha256sum AyudanteAlbionDesktop.exe photon_codes.json > SHA256SUMS.txt)
+          (cd build/bin && sha256sum -c SHA256SUMS.txt)
 
       - name: Guardar artefacto
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: AyudanteAlbion-Desktop-${{ github.sha }}
+          name: AyudanteAlbionDesktop-${{ github.sha }}
           path: desktop/build/bin/
           if-no-files-found: error
           retention-days: 7

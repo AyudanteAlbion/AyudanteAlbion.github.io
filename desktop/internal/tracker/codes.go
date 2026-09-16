@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -91,15 +92,42 @@ func (c *Codes) paramKey(name string, def byte) byte {
 	return byte(n)
 }
 
+// CodeEntry es una fila código->nombre para mostrar en la interfaz.
+type CodeEntry struct {
+	Code int32  `json:"code"`
+	Name string `json:"name"`
+}
+
+// codeList vuelca un índice código->nombre ordenado por código, para que la
+// interfaz siempre muestre la tabla en el mismo orden.
+func codeList(m map[int32]string) []CodeEntry {
+	out := make([]CodeEntry, 0, len(m))
+	for code, name := range m {
+		out = append(out, CodeEntry{Code: code, Name: name})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out
+}
+
+// Events y Operations devuelven la tabla completa cargada desde
+// photon_codes.json, no solo el conteo. Es lo que necesita el diagnóstico
+// avanzado para mostrar qué códigos conoce el tracker, sin tener que esperar
+// a que el juego los mande primero.
+func (c *Codes) Events() []CodeEntry { return codeList(c.eventByCode) }
+
+func (c *Codes) Operations() []CodeEntry { return codeList(c.opByCode) }
+
 // Info resume el estado de la tabla para mostrarlo en la interfaz.
 func (c *Codes) Info() map[string]any {
 	return map[string]any{
-		"version":     c.Version,
-		"gameVersion": c.GameVersion,
-		"events":      len(c.eventByCode),
-		"operations":  len(c.opByCode),
-		"loadedFrom":  c.loadedFrom,
-		"loadedAt":    c.loadedAt.UnixMilli(),
+		"version":       c.Version,
+		"gameVersion":   c.GameVersion,
+		"events":        len(c.eventByCode),
+		"operations":    len(c.opByCode),
+		"loadedFrom":    c.loadedFrom,
+		"loadedAt":      c.loadedAt.UnixMilli(),
+		"eventList":     c.Events(),
+		"operationList": c.Operations(),
 	}
 }
 

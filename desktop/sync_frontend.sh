@@ -1,30 +1,47 @@
 #!/usr/bin/env bash
 # ============================================================
-# Sincroniza albion-app/ dentro de desktop/frontend/ para que
-# //go:embed all:frontend tome la app completa al compilar.
+# Prepara desktop/frontend/ para que //go:embed all:frontend
+# tome la app completa al compilar AyudanteAlbionDesktop.exe.
 #
-# Es el mismo patrón que build.sh usa con albion-exe/app/: el
-# contenido copiado no se versiona (ver .gitignore), se regenera
-# desde la fuente única albion-app/.
+# IMPORTANTE — la app de escritorio NO depende de albion-app/
+# para su código. Desde el desacople, el frontend está dividido
+# en dos orígenes bien distintos:
+#
+#   1. CÓDIGO (desktop/ui/) — versionado, propiedad exclusiva
+#      del escritorio. Es un fork de albion-app/: HTML, JS y CSS.
+#      Tocar la web NO cambia el escritorio, y viceversa.
+#
+#   2. ASSETS (albion-app/{data,icons,img}) — compartidos y de
+#      una sola dirección. Son íconos de ítems y tablas de datos
+#      de Albion (~18 MB, 3.300+ archivos): no contienen lógica,
+#      nunca divergen entre web y escritorio, y duplicarlos en
+#      git no aportaría nada. Se copian al compilar.
+#
+# El contenido de frontend/ es generado: no se versiona.
 # ============================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SRC="../albion-app"
+UI="ui"
+ASSETS="../albion-app"
 DST="frontend"
 
-echo "── Sincronizando $SRC → $DST/"
+echo "── Preparando $DST/"
 
-# Conserva el README.md marcador; limpia el resto del contenido copiado.
+# Conserva el README.md marcador; limpia el resto del contenido generado.
 find "$DST" -mindepth 1 -not -name 'README.md' -delete 2>/dev/null || true
 
-cp "$SRC/index.html" "$DST/index.html"
-cp "$SRC/app.js" "$SRC/styles.css" "$DST/"
-cp -r "$SRC/js" "$DST/"
-cp -r "$SRC/css" "$DST/"
-cp -r "$SRC/data" "$DST/"
-cp -r "$SRC/icons" "$DST/"
-cp -r "$SRC/img" "$DST/"
+# 1. Código propio del escritorio (fork versionado).
+echo "   código   ← $UI/"
+cp "$UI/index.html" "$UI/app.js" "$UI/styles.css" "$DST/"
+cp -r "$UI/js" "$DST/"
+cp -r "$UI/css" "$DST/"
+
+# 2. Assets compartidos (solo lectura, desde la fuente única).
+echo "   assets   ← $ASSETS/{data,icons,img}"
+cp -r "$ASSETS/data" "$DST/"
+cp -r "$ASSETS/icons" "$DST/"
+cp -r "$ASSETS/img" "$DST/"
 rm -rf "$DST/img/logo-opts"
 
 echo "   OK — frontend listo para embeber"

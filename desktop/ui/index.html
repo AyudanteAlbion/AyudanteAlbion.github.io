@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Política de seguridad de contenido: solo se ejecuta app.js (sin scripts inline ni
+     de terceros); la red queda acotada a las APIs que la app usa de verdad.
+     Si se agrega un servicio nuevo, hay que sumarlo acá o el navegador lo bloquea. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob: https://render.albiononline.com https://cdn.discordapp.com;
+  connect-src 'self' https://west.albion-online-data.com https://ayudantealbion.josemesina21.workers.dev https://decapi.me https://gameinfo.albiononline.com;
+  font-src 'self';
+  media-src 'self';
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self'">
+<meta name="referrer" content="no-referrer">
+<title>Ayudante Albion — Calculadora de crafteo y mercado · Americas (West)</title>
+<link rel="stylesheet" href="styles.css?v=79">
+<link rel="stylesheet" href="css/tracker-setup.css?v=1">
+<link rel="stylesheet" href="css/trade-tracking.css?v=1">
+<link rel="stylesheet" href="css/gathering.css?v=1">
+<link rel="stylesheet" href="css/dungeons.css?v=1">
+<link rel="icon" href="img/logo-app.png">
+<link rel="apple-touch-icon" href="img/logo-app.png">
+<!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ayudante Albion — Calculadora de crafteo y mercado">
+<meta property="og:description" content="Rentabilidad de crafteo, refinamiento, alquimia, granja y flipping en Albion Online (Americas West).">
+<meta property="og:image" content="https://ayudantealbion.github.io/img/logo-app.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+
+<!-- Barra nativa de Ayudante Albion. Permanece oculta en la web y
+     AAEnvironment la habilita únicamente dentro de Wails. -->
+<div class="desktop-titlebar" id="desktopTitlebar" role="banner" aria-label="Barra de título de Ayudante Albion">
+  <div class="desktop-titlebar-drag" id="desktopTitlebarDrag">
+    <img src="img/logo-app.png" alt="" aria-hidden="true">
+    <span>Ayudante Albion</span>
+    <span class="desktop-titlebar-edition">Escritorio</span>
+  </div>
+  <div class="desktop-window-controls" aria-label="Controles de ventana">
+    <button type="button" id="desktopMinimise" aria-label="Minimizar" title="Minimizar"><span aria-hidden="true">—</span></button>
+    <button type="button" id="desktopMaximise" aria-label="Maximizar o restaurar" title="Maximizar o restaurar"><span class="desktop-max-icon" aria-hidden="true"></span></button>
+    <button type="button" class="desktop-close" id="desktopClose" aria-label="Cerrar" title="Cerrar"><span aria-hidden="true">×</span></button>
+  </div>
+</div>
+
+<!-- Fondo de página: gradiente oscuro con rachas de luz sesgadas.
+     Portado a CSS puro del componente React DarkGradientBg (21st.dev). -->
+<div class="bgfx" aria-hidden="true">
+  <div class="bgfx-base">
+    <div class="bgfx-streak bgfx-s1"></div>
+    <div class="bgfx-streak bgfx-s2"></div>
+    <div class="bgfx-streak bgfx-s3"></div>
+    <div class="bgfx-streak bgfx-s4"></div>
+    <div class="bgfx-streak bgfx-s5"></div>
+  </div>
+  <div class="bgfx-noise"></div>
+  <div class="bgfx-dots"></div>
+  <div class="bgfx-glow"></div>
+</div>
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <div class="brand">
+      <img class="brand-mark" src="img/logo-app.png" alt="Ayudante Albion">
+      <div>
+        <div class="brand-name">Ayudante Albion</div>
+        <div class="brand-sub">Servidor Americas (West)</div>
+      </div>
+    </div>
+    <nav class="tabs" id="mainTabs">
+      <button class="tab active" data-tab="home"><svg class="tab-ico"><use href="#i-home"/></svg>Inicio</button>
+      <div class="tab-dd" id="craftDd">
+        <button class="tab dd-trigger" id="craftDdBtn" aria-haspopup="true" aria-expanded="false"><svg class="tab-ico"><use href="#i-sword"/></svg>Crafteo <span class="dd-caret">▾</span></button>
+        <div class="dd-menu" role="menu">
+          <button class="dd-item" data-tab="gear" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-sword"/></svg></span>
+            <span><span class="dd-name">Crafteo de ítems</span></span>
+          </button>
+          <button class="dd-item" data-tab="refine" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-wood"/></svg></span>
+            <span><span class="dd-name">Refinamiento</span></span>
+          </button>
+          <button class="dd-item" data-tab="alch" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-flask"/></svg></span>
+            <span><span class="dd-name">Alquimia</span></span>
+          </button>
+          <button class="dd-item" data-tab="food" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-pot"/></svg></span>
+            <span><span class="dd-name">Cocina</span></span>
+          </button>
+          <button class="dd-item" data-tab="enchant" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-spark"/></svg></span>
+            <span><span class="dd-name">Encantar Item</span></span>
+          </button>
+          <button class="dd-item" data-tab="farm" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-sprout"/></svg></span>
+            <span><span class="dd-name">Granja</span></span>
+          </button>
+        </div>
+      </div>
+      <div class="tab-dd" id="flipDd">
+        <button class="tab dd-trigger" id="flipDdBtn" aria-haspopup="true" aria-expanded="false"><svg class="tab-ico"><use href="#i-flip"/></svg>Flipping <span class="dd-caret">▾</span></button>
+        <div class="dd-menu" role="menu">
+          <button class="dd-item" data-tab="flip" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-flip"/></svg></span>
+            <span><span class="dd-name">Flipping</span></span>
+          </button>
+          <button class="dd-item" data-tab="transmute" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-transmute"/></svg></span>
+            <span><span class="dd-name">Transmutación</span></span>
+          </button>
+          <button class="dd-item" data-tab="meld" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-meld"/></svg></span>
+            <span><span class="dd-name">Artefactos</span></span>
+          </button>
+          <button class="dd-item" data-tab="alerts" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-bell"/></svg></span>
+            <span><span class="dd-name">Alertas de precio</span></span>
+          </button>
+          <button class="dd-item" data-tab="losses" role="menuitem">
+            <span class="chip-ico dd-chip"><svg><use href="#i-skull"/></svg></span>
+            <span><span class="dd-name">Pérdidas públicas</span></span>
+          </button>
+        </div>
+      </div>
+      <!-- Visible en web y escritorio. En la web pública js/tracker/ui.js pinta
+           el cartel "En desarrollo en App de Escritorio" y no da acceso a las
+           funciones; dentro del ejecutable se muestra la sesión en vivo completa. -->
+      <button class="tab" data-tab="tracker"><svg class="tab-ico"><use href="#i-chart"/></svg>Sesión</button>
+      <button class="tab" data-tab="gathering"><svg class="tab-ico"><use href="#i-sprout"/></svg>Recolección</button>
+      <button class="tab" data-tab="dungeons"><svg class="tab-ico"><use href="#i-sword"/></svg>Mazmorras</button>
+      <button class="tab" data-tab="profile"><svg class="tab-ico"><use href="#i-user"/></svg>Perfil</button>
+      <button class="tab" data-tab="sg"><svg class="tab-ico"><use href="#i-shield"/></svg>SG</button>
+      <button class="tab" data-tab="formulas"><svg class="tab-ico"><use href="#i-rule"/></svg>Fórmulas</button>
+    </nav>
+    <div class="top-actions">
+      <button class="top-action" type="button" data-tab="search" title="Buscador de precios">
+        <svg><use href="#i-search"/></svg>
+      </button>
+      <button class="top-action" type="button" data-tab="ledgerlog" title="Registro de operaciones">
+        <svg><use href="#i-book"/></svg>
+      </button>
+      <!-- data-sg-login: la delegación del módulo SG (app.js) es la que dispara el
+           ingreso con Discord; sin el atributo el botón de la barra no hacía nada -->
+      <button class="top-action" type="button" id="sgLoginBtn" data-sg-login hidden title="Ingresar con Discord — acceso de miembros SG">
+        <svg class="sg-dc-svg" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+      </button>
+      <div class="sg-account" id="sgAccount" hidden>
+        <button class="sg-account-btn" type="button" id="sgAccountBtn" title="Tu cuenta de Discord">
+          <img id="sgAccountImg" alt="" hidden>
+          <span class="sg-account-initial" id="sgAccountInitial"></span>
+          <span class="sg-account-dot" id="sgAccountDot"></span>
+        </button>
+        <div class="sg-account-menu" id="sgAccountMenu" hidden></div>
+      </div>
+      <button class="top-action" type="button" id="kaBtn" aria-pressed="true" title="⚡ Anti-pausa: evita que el navegador congele la app en segundo plano">
+        <svg><use href="#i-bolt"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+<!-- Definiciones de íconos SVG (opción 5: ficha con contorno) -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-sword" viewBox="0 0 24 24"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+  <symbol id="i-wood" viewBox="0 0 24 24"><path d="M12 22v-9"/><path d="M12 13 7.5 8.5"/><path d="M12 13l4.5-4.5"/><path d="M12 2v4"/><path d="M8 4l4 4 4-4"/><path d="M5 22h14"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6L4.5 19a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L14 9V3"/><path d="M7 15h10"/></symbol>
+  <symbol id="i-pot" viewBox="0 0 24 24"><path d="M4 11h16v3a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M2 11h20"/><path d="M9 7c0-1.5 1-1.5 1-3"/><path d="M14 7c0-1.5 1-1.5 1-3"/></symbol>
+  <symbol id="i-rule" viewBox="0 0 24 24"><path d="M4 20 20 4"/><path d="M8 16l1.5 1.5"/><path d="M11 13l1.5 1.5"/><path d="M14 10l1.5 1.5"/><path d="M17 7l1.5 1.5"/><rect x="2" y="2" width="20" height="20" rx="3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></symbol>
+  <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M8 2l4 4 4-4"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+  <symbol id="i-twitch" viewBox="0 0 24 24"><path d="M4 3 3 6v13h4v3l3-3h4l6-6V3z"/><path d="M10 8v4"/><path d="M15 8v4"/></symbol>
+  <symbol id="i-transmute" viewBox="0 0 24 24"><circle cx="7" cy="7" r="4"/><circle cx="17" cy="17" r="4"/><path d="M14 4h4a2 2 0 0 1 2 2v4"/><path d="M18 8l2 2 2-2"/><path d="M10 20H6a2 2 0 0 1-2-2v-4"/><path d="M6 16l-2 2-2-2"/></symbol>
+  <symbol id="i-meld" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20"/><path d="M9 3l3 6 3-6"/><path d="M9 9l3 12 3-12"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z"/><path d="M19 15l1 2.5L22.5 18 20 19l-1 2.5L18 19l-2.5-1 2.5-.5z"/></symbol>
+  <symbol id="i-sprout" viewBox="0 0 24 24"><path d="M12 22V12"/><path d="M12 12C12 7 8 4 3 4c0 5 3 8 9 8z"/><path d="M12 10c0-4 3-6 9-6 0 4-3 8-9 8z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h7"/><path d="M9 12h7"/><path d="M9 16h4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+  <symbol id="i-skull" viewBox="0 0 24 24"><path d="M12 3a8 8 0 0 0-8 8c0 3 1.5 5 3.5 6.2V20h9v-2.8C18.5 16 20 14 20 11a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.4"/><circle cx="15" cy="11" r="1.4"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19.5a2.5 2.5 0 0 0 4 0"/></symbol>
+  <!-- íconos de la barra y del módulo SG (gremio, Sala, ranking) -->
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.2V20h13V9.2"/><path d="M9.5 20v-5.6h5V20"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.4c0 4.6-3.1 8-7.5 9.6-4.4-1.6-7.5-5-7.5-9.6V6z"/><path d="M9 11.8l2.2 2.2 4-4.2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/><path d="M12 14.4v2.6"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7.5 4h9v4.6a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 5.6H4.6v.9a3.4 3.4 0 0 0 3 3.3"/><path d="M16.5 5.6h2.9v.9a3.4 3.4 0 0 1-3 3.3"/><path d="M12 13.1V16.4"/><path d="M8.6 20.4h6.8l-1-4h-4.8z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 3.5V20h16.5"/><path d="M8 17v-5.4"/><path d="M12.5 17V7.6"/><path d="M17 17v-3.4"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10.2 13.8a3.6 3.6 0 0 1 0-5.1l1.9-1.9a3.6 3.6 0 0 1 5.1 5.1l-1 1"/><path d="M13.8 10.2a3.6 3.6 0 0 1 0 5.1l-1.9 1.9a3.6 3.6 0 0 1-5.1-5.1l1-1"/></symbol>
+  <symbol id="i-gamepad" viewBox="0 0 24 24"><rect x="2.5" y="7.6" width="19" height="10.8" rx="4.6"/><path d="M7 11v4"/><path d="M5 13h4"/><circle cx="15.4" cy="12.4" r="1.15"/><circle cx="18" cy="15.2" r="1.15"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.6v10.6"/><path d="M7.6 10.2 12 14.6l4.4-4.4"/><path d="M4.5 19.6h15"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M20.9 3.4v4.7h-4.7"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.4l2.7 5.5 6 .9-4.35 4.2 1.03 6-5.38-2.83L6.62 20l1.03-6L3.3 9.8l6-.9z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.6 12.6l4.9 4.9L19.4 7.6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 6.4l11.2 11.2"/><path d="M17.6 6.4 6.4 17.6"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="14" rx="5"/><path d="M9 7V5a3 3 0 0 1 6 0v2M12 11v10M3 8l4 3M17 11l4-3M2 14h5M17 14h5M3 21l4-4M17 17l4 4"/></symbol>
+  <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></symbol>
+</svg>
+
+<!-- ============ TAB: INICIO ============ -->
+<section id="tab-home" class="tab-panel active">
+  <div class="panel home-hero">
+    <img class="home-hero-logo" src="img/logo-app.png" alt="Ayudante Albion">
+    <h1>Ayudante Albion</h1>
+    <p class="home-tagline">por SheniaLiam</p>
+    <p class="home-lead">Calculadora de rentabilidad para <b>Albion Online</b>.
+    Combina las recetas del juego con precios de mercado en tiempo real para decidir
+    <b>qué craftear, refinar o flippear</b>, y cuánta plata vas a ganar en cada caso.</p>
+    <div class="home-hero-links">
+      <button class="sg-credit" data-goto="sg" title="Info del gremio: web, Discord y más">
+        <img src="img/logo.png" alt="" loading="lazy" decoding="async">
+        <span>Hecho para el gremio <b>Spetsnaz&nbsp;Grail</b></span>
+        <span class="sg-credit-go">→</span>
+      </button>
+      <a class="sg-credit home-community" href="https://discord.gg/FH3RzqMPA4" target="_blank" rel="noopener" title="Servidor de Discord de Ayudante Albion: novedades, avisos de versiones y soporte">
+        <svg class="discord-logo" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+        <span>Comunidad de <b>Ayudante Albion</b></span>
+        <span class="sg-credit-go">→</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="panel home-favs" id="homeFavs" style="display:none">
+    <div class="home-favs-head">
+      <h2><span class="chip-ico fav-chip"><svg><use href="#i-star"/></svg></span> Tus favoritos</h2>
+      <span class="micro muted">Marcá cualquier receta o ítem con ☆ en su detalle y aparecerá acá.</span>
+    </div>
+    <div class="home-fav-list" id="homeFavList"></div>
+  </div>
+
+  <section class="panel home-carousel" aria-labelledby="homeToolsTitle" aria-roledescription="carrusel">
+    <div class="home-carousel-head">
+      <h2 id="homeToolsTitle">Herramientas</h2>
+      <div class="home-slide-tabs" role="tablist" aria-label="Grupos de herramientas">
+        <button type="button" id="homeCraftTab" class="home-slide-tab active" role="tab" aria-selected="true" aria-controls="homeCraftSlide" data-home-slide="0">Crafteo</button>
+        <button type="button" id="homeFlipTab" class="home-slide-tab" role="tab" aria-selected="false" aria-controls="homeFlipSlide" tabindex="-1" data-home-slide="1">Flipping</button>
+      </div>
+      <div class="home-slide-controls">
+        <button type="button" class="home-slide-arrow" id="homeSlidePrev" aria-label="Slide anterior" aria-controls="homeSlides">←</button>
+        <span class="home-slide-count" id="homeSlideCount" aria-live="polite" aria-atomic="true">1 de 2</span>
+        <button type="button" class="home-slide-arrow" id="homeSlideNext" aria-label="Slide siguiente" aria-controls="homeSlides">→</button>
+      </div>
+    </div>
+    <div class="home-slides" id="homeSlides">
+      <div id="homeCraftSlide" class="home-slide" role="tabpanel" aria-labelledby="homeCraftTab">
+        <div class="home-slide-intro">
+          <span class="home-slide-kicker">01 / Producción</span>
+          <h3>Crafteo</h3>
+          <p>De los materiales al producto final. Calculá costos, retornos y ganancias.</p>
+        </div>
+        <div class="home-tool-grid">
+          <button type="button" class="home-tool" data-goto="gear">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-sword"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Crafteo de equipo</span><span class="home-tool-desc">Armas y armaduras, diarios y venta en Black Market.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="refine">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-wood"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Refinamiento</span><span class="home-tool-desc">Transformá recursos con el bono de cada ciudad.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="alch">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-flask"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Alquimia</span><span class="home-tool-desc">Pociones y tinturas: ingredientes, Foco y rentabilidad.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="food">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-pot"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Cocina</span><span class="home-tool-desc">Compará recetas y calculá cuánto ganás cocinando.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="enchant">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-spark"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Encantar Item</span><span class="home-tool-desc">Compará comprar encantado o usar fragmentos.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="farm">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-sprout"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Granja</span><span class="home-tool-desc">Cultivos y animales: ganancia por parcela y por día.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </div>
+      <div id="homeFlipSlide" class="home-slide" role="tabpanel" aria-labelledby="homeFlipTab" hidden>
+        <div class="home-slide-intro">
+          <span class="home-slide-kicker">02 / Mercado</span>
+          <h3>Flipping</h3>
+          <p>Encontrá oportunidades de mercado y compará tu próxima operación.</p>
+        </div>
+        <div class="home-tool-grid home-tool-grid-market">
+          <button type="button" class="home-tool" data-goto="flip">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-flip"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Flipping</span><span class="home-tool-desc">Comprá en las ciudades y vendé donde más convenga, incluido Black Market.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="transmute">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-transmute"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Transmutación</span><span class="home-tool-desc">Calculá el costo de subir tier o encantamiento de recursos.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="meld">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-meld"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Artefactos</span><span class="home-tool-desc">Evaluá la rentabilidad de fusionar runas, almas y reliquias.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+          <button type="button" class="home-tool" data-goto="alerts">
+            <span class="chip-ico"><svg aria-hidden="true"><use href="#i-bell"/></svg></span>
+            <span class="home-tool-copy"><span class="home-tool-name">Alertas de precio</span><span class="home-tool-desc">Recibí avisos de precios y rutas rentables mientras la app está abierta.</span></span>
+            <span class="home-tool-go" aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="home-shortcuts" aria-label="Accesos rápidos">
+    <button type="button" class="home-shortcut" data-goto="search"><svg class="btn-ico" aria-hidden="true"><use href="#i-search"/></svg>Buscador de precios<span aria-hidden="true">→</span></button>
+    <button type="button" class="home-shortcut" data-goto="ledgerlog"><svg class="btn-ico" aria-hidden="true"><use href="#i-book"/></svg>Registro de operaciones<span aria-hidden="true">→</span></button>
+    <button type="button" class="home-shortcut" data-goto="profile"><svg class="btn-ico" aria-hidden="true"><use href="#i-user"/></svg>Perfil<span aria-hidden="true">→</span></button>
+    <button type="button" class="home-shortcut" data-goto="formulas"><svg class="btn-ico" aria-hidden="true"><use href="#i-rule"/></svg>Fórmulas<span aria-hidden="true">→</span></button>
+  </nav>
+
+  <div class="panel home-tips">
+    <h2>Consejos rápidos</h2>
+    <ul>
+      <li><b>Ciudad de crafteo</b>: elegí una ciudad y el bono especial se aplica solo a los ítems que corresponden; el resto usa ciudad real (+18%).</li>
+      <li><b>Black Market</b>: al vender equipo, suele pagar más que las ciudades y no cobra tasa de publicación — está seleccionado por defecto en Crafteo.</li>
+      <li><b>Diarios</b>: activá «Usar diarios» en Crafteo; comprar vacíos y vender llenos suma una ganancia extra que muchos crafteadores ignoran.</li>
+      <li><b>Escanear rentables</b>: en Crafteo, filtrá por tier y encantamiento y tocá «Escanear» para ver los mejores crafteos de todas las ramas de una sola vez.</li>
+      <li><b>Planeador de sesión</b>: agregá varios ítems con cantidades y obtené la lista total de materiales netos y la ganancia esperada de toda la sesión.</li>
+    </ul>
+  </div>
+  <section class="panel home-report" aria-labelledby="homeReportTitle">
+    <div class="home-report-copy">
+      <h2 id="homeReportTitle">¿Encontraste un error?</h2>
+      <p id="homeReportNote">Reportalo en GitHub para que podamos revisarlo. Necesitás una cuenta y el reporte será público.</p>
+    </div>
+    <a id="homeReportBug" class="btn home-report-btn" href="https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/issues/new?title=%5BBug%5D%20&amp;body=%23%23%20Herramienta%20afectada%0AIndic%C3%A1%20en%20qu%C3%A9%20secci%C3%B3n%20de%20Ayudante%20Albion%20ocurre%20el%20problema.%0A%0A%23%23%20Qu%C3%A9%20ocurri%C3%B3%0ADescrib%C3%AD%20el%20error.%0A%0A%23%23%20Pasos%20para%20reproducirlo%0A1.%20...%0A2.%20...%0A3.%20...%0A%0A%23%23%20Qu%C3%A9%20esperabas%20que%20ocurriera%0A%0A%23%23%20Entorno%0A-%20Web%20o%20ejecutable%20de%20Windows%3A%0A-%20Navegador%20y%20sistema%20operativo%3A%0A-%20Versi%C3%B3n%20de%20la%20app%20%28si%20la%20conoc%C3%A9s%29%3A%0A%0A%23%23%20Capturas%20o%20informaci%C3%B3n%20adicional%0APod%C3%A9s%20adjuntar%20capturas%20en%20GitHub.%20Si%20aplica%2C%20indic%C3%A1%20%C3%ADtem%2C%20tier%2C%20encantamiento%20y%20ciudad.%0A%0A%3E%20Este%20reporte%20ser%C3%A1%20p%C3%BAblico.%20No%20incluyas%20contrase%C3%B1as%2C%20tokens%2C%20sesiones%20de%20Discord%20ni%20datos%20personales.%0A" target="_blank" rel="noopener noreferrer" aria-describedby="homeReportNote">
+      <svg class="btn-ico" aria-hidden="true"><use href="#i-bug"/></svg>
+      <span>Reportar un problema<span class="home-report-destination">GitHub · abre otra pestaña</span></span>
+      <span class="home-report-go" aria-hidden="true">↗</span>
+    </a>
+  </section>
+</section>
+
+<!-- Pestañas de crafteo: el contenido se genera desde app.js con la misma plantilla -->
+<section id="tab-food" class="tab-panel craft-panel" data-craft="food"></section>
+<section id="tab-alch" class="tab-panel craft-panel" data-craft="alch"></section>
+<section id="tab-refine" class="tab-panel craft-panel" data-craft="refine"></section>
+<section id="tab-gear" class="tab-panel"></section>
+
+<!-- ============ TAB: FLIPPING ============ -->
+<!-- ============ TAB: TRANSMUTACIÓN ============ -->
+<section id="tab-transmute" class="tab-panel">
+
+  <div class="panel controls">
+    <div class="control-grid">
+      <div class="control">
+        <label>Ciudad de compra</label>
+        <select id="transBuyCity"></select>
+      </div>
+      <div class="control">
+        <label>Ciudad de venta</label>
+        <select id="transSellCity"></select>
+      </div>
+      <div class="control">
+        <label>Tasa de estación (%)</label>
+        <input type="number" id="transFee" value="0" min="0" step="50">
+      </div>
+      <div class="toggles">
+        <label class="check"><input type="checkbox" id="transPremium" checked> Premium (impuesto 4%)</label>
+        <label class="check"><input type="checkbox" id="transSetup" checked> Orden de venta (+2,5%)</label>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button class="btn primary" id="transRefresh">↻ Actualizar precios</button>
+      </div>
+    </div>
+    <div class="control-grid secondary">
+      <div class="chip-group" id="transTypeChips">
+        <button class="chip active" data-type="all">Todos</button>
+        <button class="chip" data-type="WOOD">Madera</button>
+        <button class="chip" data-type="ORE">Mineral</button>
+        <button class="chip" data-type="HIDE">Piel</button>
+        <button class="chip" data-type="FIBER">Fibra</button>
+        <button class="chip" data-type="ROCK">Piedra</button>
+      </div>
+      <div class="chip-group" id="transStepChips">
+        <button class="chip active" data-step="all">Ambos pasos</button>
+        <button class="chip" data-step="tier">Subir tier</button>
+        <button class="chip" data-step="ench">Subir encant.</button>
+      </div>
+      <div class="control">
+        <label>Tier destino</label>
+        <select id="transTierF">
+          <option value="all">Todos</option>
+          <option value="4">T4</option><option value="5">T5</option>
+          <option value="6">T6</option><option value="7">T7</option>
+          <option value="8">T8</option>
+        </select>
+      </div>
+    </div>
+    <div class="micro muted" id="transGoldInfo">
+      Transmutación: pagás plata para subir un recurso 1 tier o 1 encantamiento. Sin tasa de retorno ni Foco: conviene hacerlo donde la tasa de estación sea baja.
+    </div>
+  </div>
+
+  <div class="stat-row" id="transStats"></div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="transTable">
+      <thead>
+        <tr>
+          <th>Transmutación</th>
+          <th>Paso</th>
+          <th class="num">Comprar origen</th>
+          <th class="num sortable" data-sort="cost">Costo transm.</th>
+          <th class="num">Vender destino</th>
+          <th class="num sortable" data-sort="profit">Ganancia/u</th>
+          <th class="num sortable" data-sort="margin">Margen</th>
+        </tr>
+      </thead>
+      <tbody id="transBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
+    </table>
+    <div class="micro muted pad"></div>
+  </div>
+
+  <div class="panel controls">
+    <h2 class="section-title">Planificador de ruta</h2>
+    <div class="micro muted" style="margin-bottom:12px">
+
+    </div>
+    <div class="control-grid">
+      <div class="control">
+        <label>Recurso</label>
+        <select id="routeType">
+          <option value="WOOD">Madera</option>
+          <option value="ORE">Mineral</option>
+          <option value="HIDE">Piel</option>
+          <option value="FIBER">Fibra</option>
+          <option value="ROCK">Piedra</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Tier destino</label>
+        <select id="routeTier"></select>
+      </div>
+      <div class="control">
+        <label>Encantamiento destino</label>
+        <select id="routeEnch"></select>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button class="btn primary" id="routeCalc">Calcular rutas</button>
+      </div>
+    </div>
+    <div id="routeResults" style="margin-top:14px"></div>
+  </div>
+
+</section>
+
+<!-- ============ TAB: ARTEFACTOS (Artifact Foundry / melding) ============ -->
+<section id="tab-meld" class="tab-panel">
+
+  <div class="panel controls">
+    <div class="control-grid">
+      <div class="control">
+        <label>Ciudad de compra (fragmentos)</label>
+        <select id="meldBuyCity"></select>
+      </div>
+      <div class="control">
+        <label>Ciudad de venta (artefactos)</label>
+        <select id="meldSellCity"></select>
+      </div>
+      <div class="toggles">
+        <label class="check"><input type="checkbox" id="meldPremium" checked> Premium (impuesto 4%)</label>
+        <label class="check"><input type="checkbox" id="meldSetup" checked> Orden de venta (+2,5%)</label>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button class="btn primary" id="meldRefresh">↻ Actualizar precios</button>
+      </div>
+    </div>
+    <div class="control-grid secondary">
+      <div class="chip-group" id="meldFragChips">
+        <button class="chip active" data-frag="all">Todos</button>
+        <button class="chip" data-frag="RUNE">Runas</button>
+        <button class="chip" data-frag="SOUL">Almas</button>
+        <button class="chip" data-frag="RELIC">Reliquias</button>
+      </div>
+      <div class="control">
+        <label>Tier</label>
+        <select id="meldTierF">
+          <option value="all">Todos</option>
+          <option value="4">T4</option><option value="5">T5</option>
+          <option value="6">T6</option><option value="7">T7</option>
+          <option value="8">T8</option>
+        </select>
+      </div>
+    </div>
+    <div class="micro muted">
+      Los pedidos de precios se hacen directamente a la API de Albion Online. En la mayoría de los casos hay problemas para establecer un precio. Recomendamos ingresar los valores de forma manual para tener cálculos más acertados.
+    </div>
+  </div>
+
+  <div class="stat-row" id="meldStats"></div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="meldTable">
+      <thead>
+        <tr>
+          <th>Estrategia</th>
+          <th>Pool</th>
+          <th class="num sortable" data-sort="cost">Costo tirada</th>
+          <th class="num">Valor esperado</th>
+          <th class="num sortable" data-sort="profit">Ganancia esp.</th>
+          <th class="num sortable" data-sort="margin">Margen</th>
+          <th class="num sortable" data-sort="winrate">Tiradas ganadoras</th>
+        </tr>
+      </thead>
+      <tbody id="meldBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
+    </table>
+    <div class="micro muted pad"></div>
+  </div>
+
+  <div class="panel controls">
+    <h2 class="section-title">Simulador de sesión</h2>
+    <div class="micro muted" style="margin-bottom:12px">
+      Elegí una estrategia y cuántas tiradas vas a hacer: muestra el costo total, la ganancia esperada y el rango probable (±1 desviación estándar). Con pocas tiradas la varianza domina; con muchas el resultado converge al promedio.
+    </div>
+    <div class="control-grid">
+      <div class="control">
+        <label>Estrategia</label>
+        <select id="simStrategy"></select>
+      </div>
+      <div class="control">
+        <label>Tiradas</label>
+        <input type="number" id="simRolls" value="20" min="1" step="1">
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button class="btn primary" id="simCalc">Simular</button>
+      </div>
+    </div>
+    <div id="simResults" style="margin-top:14px"></div>
+  </div>
+
+</section>
+
+<!-- ============ TAB: BUSCADOR DE PRECIOS (global) ============ -->
+<section id="tab-search" class="tab-panel">
+  <div class="panel controls">
+    <div class="flip-head">
+      <div class="search-wrap">
+        <input type="search" id="psSearch" placeholder="Buscar cualquier ítem… (ej: bolsa, capa, espada ancha, montura)" class="search big">
+        <div class="search-results" id="psResults"></div>
+      </div>
+      <div class="toggles inline">
+        <div class="control">
+          <label>Encantamiento</label>
+          <select id="psEnch">
+            <option value="0">Sin encantar</option>
+            <option value="1">.1</option><option value="2">.2</option>
+            <option value="3">.3</option><option value="4">.4</option>
+          </select>
+        </div>
+        <button class="btn primary" id="psRefresh">↻ Actualizar</button>
+      </div>
+    </div>
+    <div class="micro muted">Precio de venta más barato y mejor orden de compra en las 7 ciudades + Mercado Negro, con todas las calidades.</div>
+    <div class="history-label">Tus consultas guardadas</div>
+    <div class="fam-tags" id="psHistory"></div>
+  </div>
+  <div id="psResult"></div>
+
+  <div class="panel controls" id="psApiHistoryPanel">
+    <div class="flip-head">
+      <div>
+        <h2 class="section-title">Historial de la API</h2>
+        <div class="micro muted">Promedios publicados por Albion Online Data Project (stats/history, órdenes de venta). Es independiente de tus capturas locales.</div>
+      </div>
+      <div class="toggles inline">
+        <div class="control">
+          <label>Ciudad</label>
+          <select id="psHistCity"></select>
+        </div>
+        <div class="control">
+          <label>Calidad</label>
+          <select id="psHistQuality">
+            <option value="1">Normal</option>
+            <option value="2">Buena</option>
+            <option value="3">Notable</option>
+            <option value="4">Excelente</option>
+            <option value="5">Obra maestra</option>
+          </select>
+        </div>
+        <div class="control">
+          <label>Período</label>
+          <select id="psHistDays">
+            <option value="7">7 días</option>
+            <option value="30" selected>30 días</option>
+            <option value="90">90 días</option>
+            <option value="180">180 días</option>
+            <option value="365">365 días</option>
+          </select>
+        </div>
+        <button class="btn" id="psHistRefresh">↻ Historial</button>
+      </div>
+    </div>
+    <div id="psApiHistory"><div class="loading-cell">Buscá un ítem para consultar el historial publicado.</div></div>
+  </div>
+</section>
+
+<!-- ============ TAB: REGISTRO DE OPERACIONES (global) ============ -->
+<section id="tab-ledgerlog" class="tab-panel">
+  <div id="llActiveSessionBanner" class="ll-active-session" hidden></div>
+
+  <section class="panel trade-filter" aria-labelledby="tradeFilterTitle">
+    <div class="trade-filter-head">
+      <div>
+        <span class="trade-kicker">SEGUIMIENTO DE COMERCIO</span>
+        <h2 id="tradeFilterTitle">Historial de transacciones</h2>
+      </div>
+      <label class="trade-track-state"><span>ESTADO</span><span class="trade-switch"><input type="checkbox" id="tradeTrackingToggle"><i></i></span><b id="tradeTrackingLabel">El rastreo está inactivo</b></label>
+    </div>
+
+    <div class="trade-main-filters">
+      <label class="trade-search"><span>Buscar</span><div><svg aria-hidden="true"><use href="#i-search"/></svg><input type="search" id="tradeSearch" placeholder="Buscar por nombre o ID del ítem…"></div></label>
+      <label><span>Fecha desde</span><input type="date" id="tradeDateFrom" value="2017-01-01"></label>
+      <label><span>Fecha hasta</span><input type="date" id="tradeDateTo"></label>
+      <button type="button" class="btn trade-refresh" id="tradeRefresh" title="Actualizar filtros" aria-label="Actualizar filtros"><svg class="btn-ico"><use href="#i-refresh"/></svg></button>
+    </div>
+
+    <div class="trade-presets" id="tradePresets" aria-label="Rango de tiempo rápido">
+      <button class="chip active" data-days="all">Todos</button><button class="chip" data-days="0">Hoy</button>
+      <button class="chip" data-days="7">7 Días</button><button class="chip" data-days="30">30 Días</button>
+      <button class="chip" data-days="90">90 Días</button><button class="chip" data-days="365">1 Año</button>
+    </div>
+
+    <div class="trade-bulk-row">
+      <label class="check"><input type="checkbox" id="tradeSelectAll"> Seleccionar / Deseleccionar todo <span title="Afecta únicamente a las transacciones visibles con los filtros actuales" aria-label="Información">ⓘ</span></label>
+      <button type="button" class="btn trade-delete" id="tradeDeleteSelected" disabled>Eliminar las transacciones seleccionadas <span id="tradeSelectedCount"></span></button>
+    </div>
+
+    <div class="trade-filter-group">
+      <span class="trade-filter-label">Nivel (Tier)</span>
+      <div class="chip-group" id="tradeTierFilter"><button class="chip active" data-value="all">Todos</button><button class="chip" data-value="1">T1</button><button class="chip" data-value="2">T2</button><button class="chip" data-value="3">T3</button><button class="chip" data-value="4">T4</button><button class="chip" data-value="5">T5</button><button class="chip" data-value="6">T6</button><button class="chip" data-value="7">T7</button><button class="chip" data-value="8">T8</button></div>
+    </div>
+    <div class="trade-filter-group">
+      <span class="trade-filter-label">Encantamiento</span>
+      <div class="chip-group" id="tradeEnchFilter"><button class="chip active" data-value="all">Todos</button><button class="chip" data-value="0">0</button><button class="chip" data-value="1">1</button><button class="chip" data-value="2">2</button><button class="chip" data-value="3">3</button><button class="chip" data-value="4">4</button></div>
+    </div>
+    <div class="trade-filter-group">
+      <span class="trade-filter-label">Ubicaciones</span>
+      <div class="chip-group trade-locations" id="tradeLocationFilter">
+        <button class="chip active" data-value="all">Todos</button><button class="chip" data-value="Morganas Rest">Morganas Rest</button>
+        <button class="chip" data-value="Black Market">Black Market</button><button class="chip" data-value="Smuggler's Den">Smuggler's Den</button>
+        <button class="chip" data-value="Martlock">Martlock</button><button class="chip" data-value="Thetford">Thetford</button>
+        <button class="chip" data-value="Fort Sterling">Fort Sterling</button><button class="chip" data-value="Lymhurst">Lymhurst</button>
+        <button class="chip" data-value="Bridgewatch">Bridgewatch</button><button class="chip" data-value="Caerleon">Caerleon</button>
+        <button class="chip" data-value="Brecilien">Brecilien</button><button class="chip" data-value="Arthurs Rest">Arthurs Rest</button>
+        <button class="chip" data-value="Merlyns Rest">Merlyns Rest</button>
+      </div>
+    </div>
+    <div class="trade-filter-result muted micro" id="tradeFilterResult" role="status"></div>
+  </section>
+
+  <div class="stat-row" id="llStats"></div>
+
+  <div class="panel controls">
+    <h2 class="section-title">Nueva operación</h2>
+    <div class="control-grid">
+      <div class="control" style="position:relative">
+        <label>Ítem</label>
+        <input type="search" id="llItem" placeholder="Buscar ítem…" class="search" autocomplete="off">
+        <div class="search-results" id="llResults"></div>
+      </div>
+      <div class="control">
+        <label>Tipo</label>
+        <select id="llType">
+          <option value="buy">Compra</option>
+          <option value="sell">Venta</option>
+          <option value="craft">Crafteo</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Cantidad</label>
+        <input type="number" id="llQty" value="1" min="1">
+      </div>
+      <div class="control">
+        <label>Precio unitario</label>
+        <input type="number" id="llPrice" min="0" placeholder="plata">
+      </div>
+      <div class="control">
+        <label>Comisión / impuesto</label>
+        <input type="number" id="llFee" min="0" step="1" placeholder="total">
+      </div>
+      <div class="control">
+        <label>Coste extra crafteo</label>
+        <input type="number" id="llCraftCost" min="0" step="1" placeholder="opcional">
+      </div>
+      <div class="control">
+        <label>Fecha y hora</label>
+        <input type="datetime-local" id="llDate">
+      </div>
+      <div class="control">
+        <label>Ciudad</label>
+        <select id="llCity"></select>
+      </div>
+      <div class="control">
+        <label>Sesión (opcional)</label>
+        <select id="llSessionSelect"><option value="">— Ninguna —</option></select>
+      </div>
+      <div class="control">
+        <label>Nota (opcional)</label>
+        <input type="text" id="llNoteTxt" class="search" placeholder="ej: para regear" maxlength="100">
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button class="btn primary" id="llAdd">+ Registrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel table-wrap">
+    <div class="flip-head" style="padding:14px 14px 0">
+      <div class="chip-group" id="llFilter">
+        <button class="chip active" data-f="all">Todas</button>
+        <button class="chip" data-f="sessions">⏱️ Sesiones</button>
+        <button class="chip" data-f="buy">Compras</button>
+        <button class="chip" data-f="sell">Ventas</button>
+        <button class="chip" data-f="craft">Crafteos</button>
+        <button class="chip" data-f="byitem">Resultado por ítem</button>
+        <button class="chip" data-f="profit">Ranking beneficio</button>
+        <button class="chip" data-f="roi">Ranking ROI</button>
+        <button class="chip" data-f="losses">Pérdidas</button>
+        <button class="chip" data-f="bycity">Resultado por ciudad</button>
+        <button class="chip" data-f="daily">Serie diaria</button>
+        <button class="chip" data-f="weekly">Serie semanal</button>
+        <button class="chip" data-f="hour">Hora local</button>
+      </div>
+      <div class="toggles inline">
+        <button class="btn" id="llNewSessionBtn" title="Crear o iniciar una nueva sesión de juego">+ Nueva sesión</button>
+        <label class="check" id="llCityFilterWrap">Ciudad
+          <select id="llCityFilter" class="mini-select"><option value="">Todas</option></select>
+        </label>
+        <label class="check" id="llSessionFilterWrap">Sesión
+          <select id="llSessionFilter" class="mini-select"><option value="">Todas</option></select>
+        </label>
+        <label class="check" id="llPeriodFilterWrap">Período
+          <select id="llPeriodFilter" class="mini-select">
+            <option value="all">Todo</option><option value="7">7 días</option><option value="30">30 días</option><option value="90">90 días</option><option value="365">365 días</option>
+          </select>
+        </label>
+        <button class="btn" id="llImportCsv" title="Importar operaciones desde archivo CSV">Importar CSV</button>
+        <input type="file" id="llCsvFile" accept=".csv,text/csv,text/plain" style="display:none">
+        <button class="btn" id="llExport">Exportar CSV</button>
+        <button class="btn" id="llExportSessions" title="Exportar resumen de sesiones en CSV" hidden>Exportar sesiones CSV</button>
+        <button class="btn" id="bkExport" title="Descarga un archivo con TODOS tus datos: registro, precios manuales, especializaciones, perfil e historial">Respaldo completo</button>
+        <button class="btn" id="bkImport" title="Restaura un respaldo descargado previamente">Importar respaldo</button>
+        <input type="file" id="bkFile" accept=".json,application/json" style="display:none">
+        <button class="btn" id="llClear">Vaciar registro</button>
+      </div>
+    </div>
+    <!-- Sincronización entre dispositivos: copia de los mismos datos del
+         respaldo, guardada en el servidor y atada a la cuenta de Discord.
+         Subir y bajar son explícitos: nada se pisa sin confirmación. -->
+    <div class="sync-box" id="syncBox">
+      <div class="sync-head">
+        <span class="sync-title">☁️ Sincronizar entre dispositivos</span>
+        <span class="sync-state" id="syState">Consultando la nube…</span>
+      </div>
+      <div class="toggles inline">
+        <button class="btn" id="syUp" hidden title="Sube los datos de este dispositivo y reemplaza la copia de la nube">Subir a la nube</button>
+        <button class="btn" id="syDown" hidden title="Trae la copia de la nube y sobreescribe los datos de este dispositivo">Bajar de la nube</button>
+        <button class="btn" id="syDel" hidden title="Borra tu copia del servidor; los datos locales no se tocan">Borrar copia</button>
+      </div>
+      <div class="micro muted">Se sincronizan registro, favoritos, precios manuales, alertas, preferencias y perfil. Nunca tu sesión de Discord.</div>
+    </div>
+    <table class="ledger" id="llTable">
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Ítem</th><th>Tipo</th>
+          <th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th class="num">Neto op.</th>
+          <th>Ciudad</th><th>Nota</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="llBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal Nueva Sesión -->
+  <div id="llSessionModal" class="aa-modal" hidden>
+    <div class="aa-modal-box">
+      <div class="aa-modal-head">
+        <h3 id="llModalSessTitleText">Nueva sesión de actividad</h3>
+        <button type="button" class="reset-price" id="llModalSessClose" title="Cerrar">✕</button>
+      </div>
+      <div class="aa-modal-body">
+        <div class="control-grid" style="grid-template-columns:1fr 1fr">
+          <div class="control" style="grid-column:1 / -1">
+            <label>Título / Descripción</label>
+            <input type="text" id="llModalSessTitle" class="search" placeholder="ej: Transporte Martlock → Caerleon, Farmeo Nieblas T7" maxlength="80">
+          </div>
+          <div class="control">
+            <label>Actividad</label>
+            <select id="llModalSessActivity">
+              <option value="transport">Transporte</option>
+              <option value="farming">Farmeo</option>
+              <option value="crafting">Crafteo</option>
+              <option value="flipping">Flipping</option>
+              <option value="pve">PvE / Dungeons</option>
+              <option value="pvp">PvP / Ganking</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+          <div class="control">
+            <label>Gastos operativos iniciales</label>
+            <input type="number" id="llModalSessExpenses" min="0" step="1" placeholder="plata (comida, viajes, tasas...)">
+          </div>
+          <div class="control">
+            <label>Fecha y hora de inicio</label>
+            <input type="datetime-local" id="llModalSessStart">
+          </div>
+          <div class="control">
+            <label>Fecha y hora de fin (opcional)</label>
+            <input type="datetime-local" id="llModalSessEnd" placeholder="Dejar vacío si está activa">
+          </div>
+          <div class="control" style="grid-column:1 / -1">
+            <label>Notas adicionales (opcional)</label>
+            <input type="text" id="llModalSessNote" class="search" placeholder="ej: buey T8, zona negra..." maxlength="200">
+          </div>
+        </div>
+      </div>
+      <div class="aa-modal-foot">
+        <button type="button" class="btn" id="llModalSessCancel">Cancelar</button>
+        <button type="button" class="btn primary" id="llModalSessStartNow">▶ Iniciar sesión activa ahora</button>
+        <button type="button" class="btn" id="llModalSessSave">💾 Guardar sesión</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Importar CSV -->
+  <div id="llCsvModal" class="aa-modal" hidden>
+    <div class="aa-modal-box aa-modal-lg">
+      <div class="aa-modal-head">
+        <h3>Importar operaciones desde CSV</h3>
+        <button type="button" class="reset-price" id="llCsvModalClose" title="Cerrar">✕</button>
+      </div>
+      <div class="aa-modal-body">
+        <p class="micro muted" style="margin-bottom:12px">
+          Cargá un archivo CSV o pegá el texto. Admite exportaciones de Ayudante Albion, hojas de Excel o Google Sheets con columnas de fecha, ítem, tipo (compra/venta/crafteo), cantidad, precio unitario, comisión y ciudad.
+        </p>
+        <div class="aa-csv-actions" style="display:flex; gap:10px; align-items:center; margin-bottom:10px">
+          <button type="button" class="btn primary" id="llCsvSelectFileBtn">📁 Elegir archivo .csv</button>
+          <span class="micro muted">o pegá el texto debajo:</span>
+        </div>
+        <textarea id="llCsvTextInput" class="aa-csv-textarea" rows="5" placeholder="fecha,item,tipo,cantidad,precio_unitario,comision,ciudad,nota&#10;2026-09-14T10:00:00Z,T4_BAG,Compra,5,2000,50,Caerleon,ejemplo"></textarea>
+        <div id="llCsvPreviewArea" class="aa-csv-preview" hidden>
+          <div class="aa-csv-summary" id="llCsvSummary" style="margin:10px 0; font-size:.85rem"></div>
+          <div class="table-wrap" style="max-height:180px; overflow-y:auto; margin:8px 0">
+            <table class="ledger" id="llCsvPreviewTable">
+              <thead><tr><th>Fecha</th><th>Ítem</th><th>Tipo</th><th class="num">Cant.</th><th class="num">Precio/u</th><th class="num">Comisión</th><th>Ciudad</th></tr></thead>
+              <tbody id="llCsvPreviewBody"></tbody>
+            </table>
+          </div>
+          <div class="control-grid" style="grid-template-columns:1fr; margin-top:8px">
+            <label class="check">
+              <input type="radio" name="llCsvMode" value="append" checked> <b>Añadir a los registros existentes</b> (ignora duplicados idénticos)
+            </label>
+            <label class="check">
+              <input type="radio" name="llCsvMode" value="replace"> <b>Reemplazar todo el registro actual</b>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="aa-modal-foot">
+        <button type="button" class="btn" id="llCsvModalCancel">Cancelar</button>
+        <button type="button" class="btn primary" id="llCsvModalConfirm" disabled>Importar registros</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB: ENCANTADO ============ -->
+<section id="tab-enchant" class="tab-panel">
+  <div class="panel controls">
+    <div class="flip-head">
+      <div class="search-wrap">
+        <input type="search" id="enSearch" placeholder="Buscar pieza de equipo… (ej: arco, casco de placas, bolsa)" class="search big">
+        <div class="search-results" id="enResults"></div>
+      </div>
+      <div class="toggles inline">
+        <div class="control">
+          <label>Comprar en</label>
+          <select id="enCity"></select>
+        </div>
+        <div class="control">
+          <label>Vender en</label>
+          <select id="enSellCity"></select>
+        </div>
+        <label class="check"><input type="checkbox" id="enPremium" checked> Premium (impuesto 4%)</label>
+        <label class="check"><input type="checkbox" id="enSetup" checked> Orden de venta (+2,5%)</label>
+        <button class="btn primary" id="enRefresh">↻ Actualizar</button>
+      </div>
+    </div>
+    <div class="micro muted">Compará cada nivel: ¿comprar el ítem ya encantado, o comprar el nivel anterior y encantarlo con fragmentos en el Transmutador? </div>
+  </div>
+  <div id="enResult"><div class="panel"><div class="loading-cell">Buscá una pieza de equipo para empezar.</div></div></div>
+</section>
+
+<!-- ============ TAB: GRANJA ============ -->
+<section id="tab-farm" class="tab-panel">
+  <div class="panel controls">
+    <div class="control-grid">
+      <div class="control">
+        <label for="fmIslandCity">Ciudad de la isla</label>
+        <select id="fmIslandCity"></select>
+      </div>
+      <div class="control">
+        <label for="fmCity">Ciudad de precios</label>
+        <select id="fmCity"></select>
+      </div>
+      <div class="toggles">
+        <label class="check"><input type="checkbox" id="fmPremium" checked> Premium (impuesto 4% y doble cosecha)</label>
+        <label class="check"><input type="checkbox" id="fmFocus"> Usar Foco (regar / cuidar)</label>
+      </div>
+      <div class="control">
+        <label>Parcelas</label>
+        <input type="number" id="fmPlots" value="9" min="1" max="45">
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button class="btn primary" id="fmRefresh">↻ Actualizar precios</button>
+      </div>
+    </div>
+    <div class="control-grid secondary">
+      <div class="chip-group" id="fmKindChips">
+        <button class="chip active" data-k="plant">Cultivos</button>
+        <button class="chip" data-k="animal">Animales</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="micro muted fm-bonus-info" id="fmBonusInfo" role="status">El bono depende de la ciudad de la isla, no de dónde comprás o vendés.</div>
+  <div class="stat-row" id="fmStats"></div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="fmTable">
+      <thead>
+        <tr>
+          <th>Especie</th>
+          <th class="num">Costo unidad</th>
+          <th class="num">Produce</th>
+          <th class="num">Ciclo</th>
+          <th class="num sortable" data-sort="unit">Margen/unidad</th>
+          <th class="num sortable" data-sort="daily">Margen/día · parcela</th>
+          <th class="num sortable" data-sort="total">Total (parcelas)</th>
+        </tr>
+      </thead>
+      <tbody id="fmBody"><tr><td colspan="7" class="loading-cell">Abrí esta pestaña para cargar precios…</td></tr></tbody>
+    </table>
+    <div class="micro muted pad"></div>
+  </div>
+</section>
+
+<section id="tab-flip" class="tab-panel">
+
+  <div class="panel controls">
+    <div class="flip-head">
+      <div class="search-wrap">
+        <div class="flip-search-row">
+          <input type="search" id="flipSearch" placeholder="Buscar cualquier ítem para agregarlo al monitoreo… (ej: bolsa, capa, montura, espada)" class="search big">
+        </div>
+        <div class="micro muted">Escribí y tocá un resultado: el ítem pasa a la lista monitoreada de abajo.</div>
+        <div class="search-results" id="flipResults"></div>
+      </div>
+      <div class="toggles inline">
+        <label class="check">Comprar en
+          <select id="flipFrom" class="mini-select"><option value="">Mejor ciudad</option></select>
+        </label>
+        <label class="check">Vender en
+          <select id="flipTo" class="mini-select"><option value="">Mejor ciudad</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="flipPremium" checked> Premium (4%)</label>
+        <label class="check"><input type="checkbox" id="flipSetup" checked> Orden de venta (+2,5%)</label>
+        <button class="btn primary" id="refreshFlip">↻ Actualizar</button>
+      </div>
+    </div>
+    <div class="control-grid secondary">
+      <div class="control">
+        <label>Filtrar monitoreo por rama</label>
+        <select id="flipBranch" aria-label="Filtrar ítems monitoreados por rama">
+          <option value="">Todas las ramas</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Encantamiento</label>
+        <select id="flipEnch" aria-label="Filtrar ítems monitoreados por encantamiento">
+          <option value="all">Todos los encantamientos</option>
+          <option value="0">Sin encantar (.0)</option>
+          <option value="1">Encantamiento .1</option>
+          <option value="2">Encantamiento .2</option>
+          <option value="3">Encantamiento .3</option>
+          <option value="4">Encantamiento .4</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button type="button" class="btn" id="flipFilterReset">✕ Quitar filtro</button>
+      </div>
+    </div>
+    <div class="micro muted">
+      Estos filtros no alcanzan al buscador: se aplican sobre los <b>ítems monitoreados</b> de la tabla. Ej.: Armas + Encantamiento .1 → el monitoreo muestra solo armas .1.
+    </div>
+  </div>
+
+  <div class="stat-row" id="flipStats"></div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="flipTable">
+      <thead>
+        <tr>
+          <th>Ítem</th>
+          <th>Ench.</th>
+          <th class="num">Comprar en</th>
+          <th class="num">Vender en</th>
+          <th class="num">Ganancia/u</th>
+          <th class="num">Margen</th>
+          <th class="num">Flip rápido*</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="flipBody"></tbody>
+    </table>
+    <div class="micro muted pad"></div>
+  </div>
+
+  <div class="panel" id="flipDetail" style="display:none"></div>
+</section>
+
+<!-- ============ TAB: ALERTAS DE PRECIO ============ -->
+<section id="tab-alerts" class="tab-panel">
+
+  <div class="panel controls">
+    <h2 class="section-title">Nueva alerta</h2>
+    <div class="micro muted" style="margin-bottom:12px">
+      <strong>Configurá una alerta y verificá los precios cuando quieras.</strong> La app te avisará cuando se cumpla la condición.
+    </div>
+    <div class="control-grid">
+      <div class="control search-wrap">
+        <label>Ítem</label>
+        <input type="search" id="waItemInput" placeholder="Buscar ítem… (ej: bolsa, capa, tablones)" class="search" autocomplete="off">
+        <div class="search-results" id="waItemResults"></div>
+      </div>
+      <div class="control">
+        <label>Condición</label>
+        <select id="waMetric">
+          <option value="sell">La venta más baja en… cae a ≤</option>
+          <option value="buy">La mejor orden de compra en… sube a ≥</option>
+          <option value="flip">El mejor flip entre ciudades rinde ≥</option>
+        </select>
+      </div>
+      <div class="control" id="waCityWrap">
+        <label>Ciudad</label>
+        <select id="waCity"></select>
+      </div>
+      <div class="control">
+        <label id="waThLabel">Precio (plata)</label>
+        <input type="number" id="waThreshold" min="0" step="1" placeholder="ej: 1500">
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <div class="toggles" style="gap:12px">
+          <label class="check"><input type="checkbox" id="waOnce" checked> Apagar tras disparar</label>
+          <button class="btn primary" id="waAdd">+ Crear alerta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel controls">
+    <div class="control-grid">
+      <div class="control">
+        <label>Intervalo de verificación (min)</label>
+        <input type="number" id="waInterval" min="1" max="60" step="1" value="5">
+      </div>
+      <div class="control">
+        <label>Frescura máxima de cotización</label>
+        <select id="waFreshness">
+          <option value="15">15 min</option>
+          <option value="60" selected>60 min</option>
+          <option value="none">Sin límite de antigüedad</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <div class="toggles" style="gap:14px;flex-wrap:wrap">
+          <label class="check"><input type="checkbox" id="waSound" checked> Sonido suave al disparar</label>
+          <label class="check"><input type="checkbox" id="waBrowser"> Notificaciones del navegador</label>
+          <button class="btn" id="waPerm">Conceder permiso</button>
+          <button class="btn" id="waNow">▶ Verificar ahora</button>
+        </div>
+      </div>
+      <div class="control" style="align-self:center">
+        <div class="micro muted" id="waStatus">—</div>
+      </div>
+    </div>
+    <div class="micro muted" style="margin-top:8px">
+      Las alertas solo se disparan con precio positivo y timestamp válido; si la cotización está vieja, quedan esperando una cotización reciente.
+    </div>
+  </div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="waTable">
+      <thead><tr>
+        <th>Ítem</th><th>Condición</th><th class="num">Actual</th><th class="num">Umbral</th>
+        <th class="num">Falta</th><th>Estado</th><th>Última verificación</th><th></th>
+      </tr></thead>
+      <tbody id="waBody"><tr><td colspan="8" class="loading-cell">Sin alertas todavía.</td></tr></tbody>
+    </table>
+    <div class="micro muted pad"></div>
+  </div>
+</section>
+
+
+<!-- ============ TAB: PÉRDIDAS PÚBLICAS ============ -->
+<section id="tab-losses" class="tab-panel">
+  <div class="panel controls">
+    <div class="flip-head">
+      <div>
+        <h2 class="section-title">Ítems observados en pérdidas públicas</h2>
+        <div class="micro muted">Muestra reciente del killboard oficial vía Worker. Diferencia equipo e inventario y conserva una caché local acotada de 7 días.</div>
+      </div>
+      <div class="toggles inline">
+        <button class="btn primary" id="plRefresh">↻ Actualizar eventos y cotizar</button>
+      </div>
+    </div>
+    <div class="control-grid secondary">
+      <div class="control">
+        <label>Tipo</label>
+        <select id="plKind"><option value="all">Equipo + inventario</option><option value="equipment">Sólo equipo</option><option value="inventory">Sólo inventario</option></select>
+      </div>
+      <div class="control">
+        <label>Calidad</label>
+        <select id="plQuality"><option value="all">Todas</option><option value="1">Normal</option><option value="2">Buena</option><option value="3">Notable</option><option value="4">Excelente</option><option value="5">Obra maestra</option></select>
+      </div>
+      <div class="control">
+        <label>Categoría</label>
+        <select id="plCategory"><option value="all">Todas</option></select>
+      </div>
+      <div class="control">
+        <label>Valor orientativo</label>
+        <select id="plValueCity"><option value="median">Mediana de ciudades</option></select>
+      </div>
+      <div class="control">
+        <label>Máx. ítems cotizados</label>
+        <select id="plQuoteLimit"><option value="20">20</option><option value="40" selected>40</option><option value="80">80</option></select>
+      </div>
+      <div class="control">
+        <label>Rango de valor/u</label>
+        <div class="range-row"><input type="number" id="plMinValue" min="0" placeholder="mín"><input type="number" id="plMaxValue" min="0" placeholder="máx"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="plIngredients"> Sólo posibles ingredientes de crafteo</label>
+    </div>
+    <div class="micro muted" id="plStatus">Fuente: gameinfo/events. Los valores son orientativos y dependen de cobertura de precios.</div>
+  </div>
+
+  <div class="stat-row" id="plStats"></div>
+
+  <div class="panel table-wrap">
+    <table class="ledger" id="plTable">
+      <thead><tr>
+        <th>Ítem observado</th><th>Categoría</th><th>Calidad</th><th class="num">Promedio diario observado</th>
+        <th class="num">Equipo</th><th class="num">Inventario</th><th class="num">Valor/u</th><th class="num">Valor total orientativo</th><th class="num">Eventos</th>
+      </tr></thead>
+      <tbody id="plBody"><tr><td colspan="9" class="loading-cell">Tocá “Actualizar eventos y cotizar” para cargar la muestra pública reciente.</td></tr></tbody>
+    </table>
+    <div class="micro muted pad">Fuente: killboard oficial de Albion Online, ruta pública gameinfo/events vía Worker. Es una muestra de ítems observados en pérdidas públicas recientes; no representa el total económico del servidor.</div>
+  </div>
+</section>
+
+<!-- ============ TAB: FORMULAS ============ -->
+<section id="tab-formulas" class="tab-panel">
+  <div class="panel doc">
+    <h2>Fórmulas utilizadas</h2>
+    <p class="muted">Las secciones 1–6 aplican a todas las pestañas de crafteo (Cocina, Alquimia, Refinamiento y Crafteo de equipo): usan el mismo motor de cálculo. Las secciones 7–9 cubren Flipping, Transmutación y Artefactos; la 10 y la 11, Encantar Item y Granja; la 12, el costo de Foco según tu Perfil.</p>
+
+    <h3>1 · Tasa de retorno de recursos (RRR)</h3>
+    <p>Los bonos son aditivos y luego se convierten a tasa de retorno:</p>
+    <pre>RRR = bono / (1 + bono)</pre>
+    <ul>
+      <li>Ciudad real: bono 18% → RRR = 0,18/1,18 = <b>15,3%</b></li>
+      <li>Ciudad con bono de crafteo: 18% + 15% = 33% → RRR = 0,33/1,33 = <b>24,8%</b></li>
+      <li>Con Foco se suma +59% al bono: 33% + 59% = 92% → RRR = 0,92/1,92 = <b>47,9%</b></li>
+      <li>Ciudad sin bono + Foco: 18% + 59% = 77% → RRR = 0,77/1,77 = <b>43,5%</b></li>
+      <li><b>Bono diario</b>: cuando la categoría rota como bonificada del día (típicamente +10%), ese porcentaje también se suma al stack antes de la conversión. Ej.: 33% + 10% + 59% = 102% → RRR = <b>50,5%</b>.</li>
+    </ul>
+    <p class="muted micro">Ciudades con bono de crafteo: la comida se bonifica en Caerleon; las pociones, en Brecilien.</p>
+    <p class="muted micro">Refinamiento: cada ciudad se especializa en un recurso con +40% de bono (madera en Fort Sterling, mineral en Thetford, piedra en Bridgewatch, piel en Martlock y fibra en Lymhurst). Con el +18% base, refinar el recurso correcto en su ciudad da 58% de bono → RRR = 36,7%; con Foco llega a 53,9%.</p>
+
+    <h3>2 · Costo de materiales</h3>
+    <pre>costo_materiales = Σ (precio_ingrediente × cantidad) × (1 − RRR)</pre>
+    <p>El retorno de recursos devuelve en promedio esa fracción de los materiales, por eso se descuenta del costo.</p>
+
+    <h3>3 · Tasa de uso de la estación</h3>
+    <pre>nutrición_consumida = valor_del_ítem × 0,1125
+tasa_estación = nutrición_consumida × (tarifa / 100)</pre>
+    <p>El <i>valor del ítem</i> es la suma del valor base de todos los ingredientes. La tarifa la fija el dueño de la estación (por cada 100 de nutrición).</p>
+
+    <h3>4 · Ingresos de venta</h3>
+    <pre>ingreso = cantidad_producida × precio_venta × (1 − impuesto − tasa_publicación)</pre>
+    <ul>
+      <li>Impuesto de venta: <b>4%</b> con Premium, <b>8%</b> sin Premium.</li>
+      <li>Tasa de publicación de orden de venta: <b>2,5%</b> (no aplica si vendés directo a una orden de compra).</li>
+    </ul>
+
+    <h3>5 · Ganancia y margen</h3>
+    <pre>ganancia = ingreso − costo_materiales − tasa_estación
+margen = ganancia / costo_total</pre>
+
+    <h3>6 · Costo de Foco y plata por Foco</h3>
+    <pre>FCE = especialización × 250 + maestría × 30
+foco_real = foco_base × 0,5^(FCE / 10000)
+plata_por_foco = ganancia_con_foco / foco_real</pre>
+    <p>Cada 10.000 puntos de Eficiencia de Costo de Foco (FCE) el costo de Foco se reduce a la mitad.</p>
+
+    <h3>7 · Flipping</h3>
+    <pre>ganancia_flip = precio_venta_destino × (1 − impuesto − tasa_publicación) − precio_compra_origen
+flip_rápido  = mejor_orden_compra_destino × (1 − impuesto) − precio_compra_origen
+Black Market: precio_venta_destino = mejor_orden_compra; tasa_publicación = 0</pre>
+
+    <h3>8 · Transmutación de recursos</h3>
+    <pre>costo = costo_base × (1 − descuento_global) + valor_ítem × 5 × (tarifa / 100)
+descuento_global = 1 − (precio_oro / 5000)   [solo si el oro cotiza bajo 5.000; tope 50%]
+ganancia = venta_neta_destino − compra_origen − costo</pre>
+    <p>Cada paso sube el recurso <b>1 tier o 1 encantamiento</b> (siempre 1→1). Los costos base salen del volcado oficial del juego. No hay tasa de retorno ni Foco: conviene transmutar donde la tarifa de estación sea baja. El planificador de ruta compara todas las cadenas posibles y elige la más barata.</p>
+
+    <h3>9 · Artefactos (fusión en el Transmutador)</h3>
+    <pre>costo_tirada = N × precio_fragmento   [N = 36 aleatorio total · 50 por categoría]
+valor_esperado (EV) = Σ (venta_neta de cada artefacto del pool) / tamaño_del_pool
+ganancia_esperada = EV − costo_tirada
+incertidumbre de una sesión = desviación_estándar × √tiradas</pre>
+    <p>El resultado es <b>uniforme</b> entre los artefactos posibles del pool (mismo tier y tipo de fragmento). Los no comerciables cuentan como valor 0. El EV es un promedio: la mediana indica el resultado típico y el % de tiradas ganadoras cuántos resultados cubren el costo. Con pocas tiradas domina la suerte; con muchas, el resultado converge al EV.</p>
+
+    <h3>10 · Encantar Item con fragmentos</h3>
+    <pre>costo_encantar = precio_ítem_nivel_anterior + N × precio_fragmento
+ahorro = precio_ítem_encantado − costo_encantar   [conviene encantar si ahorro > 0]</pre>
+    <p>Cada pieza usa una <b>cantidad fija N de fragmentos del mismo tier</b>, extraída de los datos oficiales del juego: runas para .0→.1, almas para .1→.2 y reliquias para .2→.3. La cantidad depende del tipo de pieza (por ejemplo: arma a dos manos 384, armadura/bolsa/capa 192, casco/zapatos 96). El salto .3→.4 no usa fragmentos —se craftea con materiales encantados—, por eso la herramienta cubre hasta .3. Encantar no tiene costo de plata ni de Foco: solo el ítem base y los fragmentos.</p>
+
+    <h3>11 · Granja e isla personal</h3>
+    <pre>producción_media = rendimiento_base × (Premium ? 2 : 1) × (1 + bono_isla)
+bono_isla = 10% solo para cultivos, hierbas, huevos o leche bonificados
+
+Cultivos: semillas_devueltas = retorno_base + bono_de_riego (si usás Foco)
+          costo_neto_semilla = precio_semilla × (1 − semillas_devueltas)
+          ganancia_unidad = producción_media × precio_producto × (1 − impuesto) − costo_neto_semilla
+Crías:    crías_esperadas = retorno_base + bono_de_cuidado × cuidados (si usás Foco)
+          margen_unidad = venta_neta_adulto + valor_crías_esperadas − precio_cría
+Productores: margen_ciclo = producción_media × precio_producto × (1 − impuesto)
+
+margen_parcela_día = margen_unidad × 9 / días_de_ciclo</pre>
+    <p>La ciudad de la isla define el bono; la ciudad de precios define las cotizaciones. El Foco mejora la devolución de semillas o las crías, no la cosecha de productos. Premium duplica la cosecha y los productos animales, y reduce a la mitad el crecimiento de las crías; no duplica semillas ni crías. Los cultivos y productores tienen ciclos de 22 h. El impuesto es 4% con Premium y 8% sin Premium.</p>
+    <p class="muted micro">Modelo de medias con el bono nominal de +10%, sin simular el redondeo de cada recolección. Los márgenes de animales son antes de alimento; los productores no descuentan la inversión inicial. La carnicería queda fuera de esta calculadora: su bono no aumenta la cantidad de animales vivos ni de monturas.</p>
+
+    <h3>12 · Costo de Foco y especializaciones (Perfil)</h3>
+    <pre>FCE = especialización × 250 + maestría × 30
+foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
+    <p>Cada rama del Destiny Board acumula <b>eficiencia de costo de Foco (FCE)</b>: cada 10.000 puntos, el costo de Foco se reduce a la mitad. Ejemplos: espec 50 + maestría 50 = 14.000 FCE → pagás el 38% del Foco base; espec 100 + maestría 100 = 28.000 FCE → pagás el 14,4%; espec 120 + maestría 100 = 33.000 FCE → pagás el 10,2%. Los valores cargados en <b>Perfil</b> se aplican automáticamente en todas las pestañas de crafteo: el «focus N» que ves en cada ítem ya es tu costo real.</p>
+
+    <h3>Fuentes de datos</h3>
+    <ul>
+      <li>Precios en tiempo real: <a href="https://www.albion-online-data.com/" target="_blank" rel="noopener">Albion Online Data Project</a> (servidor Americas/West).</li>
+      <li>Recetas, Foco y valores de ítems: volcado oficial de datos del juego (ao-data / ao-bin-dumps).</li>
+      <li>Perfil de jugador, asesinatos y gremios: killboard oficial de Albion Online (gameinfo, servidor Américas).</li>
+      <li>Íconos de ítems: servicio oficial de renderizado de Albion Online.</li>
+      <li>Acceso de miembros SG: OAuth2 de Discord (identidad + servidores) resuelto por el proxy de Cloudflare; la app nunca ve el secreto.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ TAB: SESIÓN (solo edición de escritorio) ============ -->
+<!-- El contenido lo dibuja js/tracker/ui.js: en la web pública queda el aviso
+     de «solo escritorio», y en el .exe Tracker el panel en vivo. -->
+<section id="tab-tracker" class="tab-panel"></section>
+
+<!-- ============ TAB: RECOLECCIÓN ============ -->
+<section id="tab-gathering" class="tab-panel">
+  <div id="gatheringMount"><div class="panel loading-cell">Preparando el seguimiento de recolección…</div></div>
+</section>
+
+<!-- ============ TAB: MAZMORRAS ============ -->
+<section id="tab-dungeons" class="tab-panel">
+  <div id="dungeonsMount"><div class="panel loading-cell">Preparando el seguimiento de mazmorras…</div></div>
+</section>
+
+<!-- ============ TAB: SG (Spetsnaz Grail) ============ -->
+<!-- ============ TAB: PERFIL ============ -->
+<section id="tab-profile" class="tab-panel">
+  <div class="panel controls">
+    <div class="flip-head">
+      <div class="search-wrap">
+        <input type="search" id="pfSearch" placeholder="Buscá tu personaje por nombre… (ej: FraxuzVe)" class="search big">
+        <div class="search-results" id="pfResults"></div>
+      </div>
+      <div class="toggles inline">
+        <button class="btn primary" id="pfRefresh" style="display:none">↻ Actualizar</button>
+      </div>
+    </div>
+    <div class="micro muted">Datos del killboard oficial de Albion Online (servidor Américas). Buscá el nombre exacto o parcial del personaje; los datos de fama, muertes y asesinatos se actualizan con cierto retraso desde el juego.</div>
+  </div>
+  <div id="pfResult"><div class="panel"><div class="loading-cell">Buscá tu personaje para ver su perfil, historial PvP y gremio.</div></div></div>
+
+  <div class="panel" id="pfSpecPanel">
+    <div class="cd-title" style="padding:14px 14px 0">Mis especializaciones (Destiny Board)</div>
+    <div class="micro muted" style="padding:6px 14px">Cargá el nivel de especialización (0–120) y maestría (0–100) de las ramas que usás. Las pestañas de crafteo van a usar estos valores automáticamente para calcular el <b>costo real de Foco</b> por ítem: cada 10.000 puntos de eficiencia (espec ×250 + maestría ×30) el costo de Foco se reduce a la mitad.</div>
+    <div id="pfSpecList" style="padding:8px 14px 14px"></div>
+  </div>
+</section>
+
+<section id="tab-sg" class="tab-panel">
+  <div class="sg-subtabs" role="tablist" aria-label="Secciones de SG">
+    <button type="button" class="sg-subtab active" id="sgTabGuild" role="tab" aria-selected="true" aria-controls="sgPanelGuild" data-sg-tab="guild">
+      <svg class="tab-ico" aria-hidden="true"><use href="#i-shield"/></svg> Spetsnaz Grail
+    </button>
+    <button type="button" class="sg-subtab" id="sgTabMembers" role="tab" aria-selected="false" aria-controls="sgPanelMembers" tabindex="-1" data-sg-tab="members">
+      <svg class="tab-ico" aria-hidden="true"><use href="#i-lock"/></svg> Salón de miembros
+    </button>
+  </div>
+  <div id="sgPanelGuild" class="sg-subpanel" role="tabpanel" aria-labelledby="sgTabGuild" tabindex="0">
+    <div class="panel home-hero sg-hero">
+      <img class="home-hero-logo" src="img/logo.png" alt="Spetsnaz Grail" loading="lazy" decoding="async">
+      <h1>Spetsnaz Grail</h1>
+      <p class="home-lead">Somos <b>Spetsnaz Grail</b>, un gremio dedicado al contenido ZvZ de Zona Negra.
+      Nos enfocamos en contenido PvP de grande y mediana escala, PvE en Dg Avalonianas y contenido de Dragones.
+      Somos una comunidad activa donde cada integrante suma, desde el recolector novato hasta el shot-caller de ZvZ.</p>
+      <div class="sg-links">
+        <a class="btn-shimmer shim-web" href="https://spetsnazgrail.com" target="_blank" rel="noopener"><svg class="btn-ico"><use href="#i-globe"/></svg> Página web</a>
+        <a class="btn-shimmer shim-discord" href="https://discord.gg/TCNWUUA7UY" target="_blank" rel="noopener">
+          <svg class="discord-logo" viewBox="0 0 127.14 96.36" aria-hidden="true"><path fill="currentColor" d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+          Servidor de Discord</a>
+      </div>
+    </div>
+
+    <div class="panel sg-creators">
+      <div class="sg-creators-head">
+        <h2><span class="chip-ico twitch-chip"><svg><use href="#i-twitch"/></svg></span> Creadores de Contenido Spetsnaz Grail</h2>
+        <p class="muted micro">Seguí a nuestros creadores en Twitch</p>
+      </div>
+      <div class="sg-creator-grid">
+        <!-- el indicador EN VIVO/OFFLINE va pegado abajo de la foto: es lo primero
+             que se quiere ver de cada canal, antes que el nombre (app.js lo pinta
+             con .sg-live sobre .sg-creator[data-twitch], sin importar la posición) -->
+        <a class="sg-creator" data-twitch="j4acksp4rr0w" href="https://www.twitch.tv/j4acksp4rr0w" target="_blank" rel="noopener">
+          <img class="sg-creator-pic" src="img/creators/j4acksp4rr0w.png" alt="J4ackSp4rr0w" loading="lazy" decoding="async">
+          <span class="sg-live"></span>
+          <span class="sg-creator-name">J4ackSp4rr0w</span>
+          <span class="sg-creator-title">Líder del Gremio</span>
+          <span class="sg-creator-handle">twitch.tv/j4acksp4rr0w</span>
+        </a>
+        <a class="sg-creator" data-twitch="santiagosigma" href="https://www.twitch.tv/santiagosigma" target="_blank" rel="noopener">
+          <img class="sg-creator-pic" src="img/creators/santiagosigma.png" alt="SantiagoSigma" loading="lazy" decoding="async">
+          <span class="sg-live"></span>
+          <span class="sg-creator-name">SantiagoSigma</span>
+          <span class="sg-creator-title">Creador Oficial de SG</span>
+          <span class="sg-creator-handle">twitch.tv/santiagosigma</span>
+        </a>
+        <a class="sg-creator" data-twitch="fraxuzve" href="https://www.twitch.tv/fraxuzve" target="_blank" rel="noopener">
+          <img class="sg-creator-pic" src="img/creators/fraxuzve.png" alt="Fraxuzve" loading="lazy" decoding="async">
+          <span class="sg-live"></span>
+          <span class="sg-creator-name">Fraxuzve</span>
+          <span class="sg-creator-title">Creador Oficial de SG</span>
+          <span class="sg-creator-handle">twitch.tv/fraxuzve</span>
+        </a>
+        <a class="sg-creator sg-creator-soon" href="#">
+          <span class="chip-ico sg-soon-ico"><svg><use href="#i-tv"/></svg></span>
+          <span class="sg-creator-name">Próximamente</span>
+          <span class="sg-creator-title">Creador Oficial de SG</span>
+          <span class="sg-creator-handle">&nbsp;</span>
+        </a>
+      </div>
+    </div>
+  </div>
+  <div id="sgPanelMembers" class="sg-subpanel" role="tabpanel" aria-labelledby="sgTabMembers" tabindex="0" hidden>
+    <!-- Salón exclusivo: el contenido lo arma app.js según la sesión de Discord -->
+    <div class="panel sg-room" id="sgRoom">
+      <div class="sg-room-head">
+        <h2><span class="chip-ico sg-room-ico"><svg><use href="#i-lock"/></svg></span> Salón de miembros</h2>
+      </div>
+      <div id="sgRoomBody"><div class="loading-cell">Cargando…</div></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="container footer muted micro"></footer>
+
+<script src="js/core/storage.js?v=1"></script>
+<script src="js/core/format.js?v=1"></script>
+<script src="js/core/api.js?v=1"></script>
+<script src="js/core/navigation.js?v=1"></script>
+<script src="js/market/history.js?v=1"></script>
+<script src="js/market/price-freshness.js?v=1"></script>
+<script src="js/market/api-history.js?v=1"></script>
+<script src="js/ledger/analytics.js?v=1"></script>
+<script src="js/ledger/sessions.js?v=1"></script>
+<script src="js/losses/public-losses.js?v=1"></script>
+<script src="js/crafting/recipe.js?v=1"></script>
+<script src="js/profile/specs.js?v=1"></script>
+<script src="js/builds/build.js?v=1"></script>
+<script src="js/desktop/environment.js?v=1"></script>
+<script src="js/tracker/client.js?v=3"></script>
+<script src="js/tracker/ui.js?v=3"></script>
+<script src="js/tracker/gathering.js?v=1"></script>
+<script src="js/tracker/dungeons.js?v=1"></script>
+<script src="app.js?v=79"></script>
+</body>
+</html>

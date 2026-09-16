@@ -1,0 +1,58 @@
+# Web — publica albion-app/ como sitio estático en GitHub Pages.
+#
+# Este workflow es el ciclo de vida COMPLETO de la app web y no comparte nada
+# con la app de escritorio: no compila Go, no depende de desktop/ y ningún
+# cambio en desktop/ lo dispara. La web va por su cuenta.
+# Solo copia lo que la web necesita: los módulos de js/, la carpeta de datos,
+# los íconos y los tres archivos de la app. Las herramientas de desarrollo
+# quedan afuera a propósito.
+# Las actions van pineadas por SHA de commit (con su versión en un comentario):
+# si un tag se moviera en upstream, acá seguimos ejecutando el código auditado.
+name: Web
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'albion-app/index.html'
+      - 'albion-app/app.js'
+      - 'albion-app/styles.css'
+      - 'albion-app/js/**'
+      - 'albion-app/data/**'
+      - 'albion-app/icons/**'
+      - 'albion-app/img/**'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Preparar sitio
+        run: |
+          mkdir _site
+          cp albion-app/index.html albion-app/app.js albion-app/styles.css _site/
+          cp -r albion-app/data albion-app/icons albion-app/img _site/
+          # Los módulos que index.html carga con <script src="js/...">.
+          cp -r albion-app/js _site/
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+      - name: Desplegar
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
