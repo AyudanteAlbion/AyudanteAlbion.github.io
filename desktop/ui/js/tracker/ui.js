@@ -216,13 +216,22 @@
   }
   function paintState(snap) {
     var node = el('trkStateGrid'); if (!node) return;
-    var hasData = !!(snap.packets || snap.character || snap.zone || snap.fame || snap.silver || (snap.combatants && snap.combatants.length));
+    var packets = Number(snap.packets || 0);
+    var decoded = Number(snap.decoded || 0);
+    // "paquetes UDP" no equivale a datos del juego: el filtro solo sabe los
+    // puertos. Exigimos al menos un mensaje Photon decodificado para afirmar
+    // que la captura está leyendo Albion y no tráfico residual/cifrado.
+    var hasData = !!(decoded || snap.character || snap.zone || snap.fame || snap.silver || (snap.combatants && snap.combatants.length));
+    var hasPacketsOnly = packets > 0 && !hasData;
     // La identidad y la zona llegan en la respuesta a Join y en ChangeCluster:
     // si el tracking arrancó con la sesión ya abierta, hay que provocar uno de
     // los dos. Cambiar de mapa es lo más rápido y no obliga a salir del juego.
     var joinHint = hasData ? 'Cambiá de zona en Albion para que el juego lo reenvíe' : '';
-    node.innerHTML = statusItem(hasData, 'Datos del juego recibidos', 'Esperando datos del juego', '') +
-      statusItem(hasData, 'Servidor detectado', 'Servidor no detectado', hasData ? 'Albion Online · UDP' : '') +
+    var dataHint = hasPacketsOnly
+      ? 'Hay ' + packets + ' paquete(s) UDP, pero ninguno se pudo interpretar como mensaje Photon. Revisá Npcap/adaptador, puertos o cifrado.'
+      : (hasData ? 'Photon decodificados: ' + decoded + ' · UDP: ' + packets : '');
+    node.innerHTML = statusItem(hasData, 'Datos del juego recibidos', 'Esperando datos del juego', dataHint) +
+      statusItem(hasData, 'Servidor detectado', 'Servidor no detectado', hasData ? 'Albion Online · UDP' : dataHint) +
       statusItem(!!snap.character, 'Personaje detectado', 'Personaje no detectado', snap.character, joinHint) +
       statusItem(!!snap.zone, 'Ubicación detectada', 'Ubicación no detectada', snap.zone, joinHint);
     var badge = el('trkLiveBadge');
@@ -387,7 +396,7 @@
     }
     var operations = data.operations || {};
     node.innerHTML =
-      '<p class="muted small">Códigos que está mandando el juego ahora mismo. ' +
+      '<p class="muted small"><strong>Importante:</strong> la tabla de arriba son códigos cargados en la app (no prueba que hayan llegado por red). Esta sección muestra los códigos observados en la captura actual. ' +
       'Los <em>desconocidos</em> son los que hay que agregar o corregir en la tabla.</p>' +
       table('Eventos desconocidos', data.unknown, false) +
       table('Eventos reconocidos', data.known, true) +

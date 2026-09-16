@@ -14,7 +14,11 @@ import (
 
 // Puertos UDP del servidor de juego de Albion. 5056 es el de Photon; los
 // demás aparecen según la región y el modo de conexión.
-const bpfFilter = "udp and (port 5055 or port 5056 or port 5057 or port 5058)"
+// Además de UDP directo, se capturan fragmentos IPv4: las respuestas grandes
+// de Join/ChangeCluster pueden llegar partidas antes de alcanzar Npcap. La
+// aplicación Analytics de referencia usa el mismo criterio y reensambla esos
+// fragmentos antes de pasarlos a Photon.
+const bpfFilter = "((ip and ((udp and (port 5055 or port 5056 or port 5058)) or (ip[6:2] & 0x3fff != 0))) or (ip6 and udp and (port 5055 or port 5056 or port 5058)))"
 
 // LiveSource captura tráfico real con Npcap y lo traduce a eventos del
 // tracker. Implementa la misma interfaz `Source` que el simulador, así que se
@@ -203,6 +207,7 @@ func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hu
 		OnRequest:  h.request,
 		OnResponse: h.response,
 	})
+	reassembler := newIPv4Reassembler()
 
 	for ctx.Err() == nil {
 		handle, err := capture.Open(device, bpfFilter)
@@ -224,7 +229,7 @@ func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hu
 			if !ok {
 				continue // timeout de lectura
 			}
-			if payload := udpPayload(data, handle.LinkType()); payload != nil {
+			if payload := udpPayloadReassembled(data, handle.LinkType(), reassembler); payload != nil {
 				st.MarkPacket()
 				parser.Receive(payload)
 			}
@@ -237,6 +242,85 @@ func (l *LiveSource) setError(msg string) {
 	l.mu.Lock()
 	l.lastError = msg
 	l.mu.Unlock()
+}
+
+type ipv4FragmentKey struct {
+	src, dst [4]byte
+	id       uint16
+	proto    byte
+}
+
+type ipv4FragmentSet struct {
+	parts map[int][]byte
+	last  int
+	seen  time.Time
+}
+
+type ipv4Reassembler struct {
+	sets map[ipv4FragmentKey]*ipv4FragmentSet
+}
+
+func newIPv4Reassembler() *ipv4Reassembler {
+	return &ipv4Reassembler{sets: make(map[ipv4FragmentKey]*ipv4FragmentSet)}
+}
+
+// udpPayloadReassembled is deliberately small but follows the same rule as
+// StatisticsAnalysisTool: capture IPv4 fragments, retain them by (src,dst,id)
+// and only expose a UDP datagram after every byte arrived. Without this, the
+// large JoinResponse is silently discarded and character/zone never appear.
+func udpPayloadReassembled(frame []byte, linkType int32, re *ipv4Reassembler) []byte {
+	if linkType != 1 || len(frame) < 14 {
+		return udpPayload(frame, linkType)
+	}
+	etherType := binary.BigEndian.Uint16(frame[12:14])
+	if etherType != 0x0800 {
+		return udpPayload(frame, linkType)
+	}
+	off := 14
+	if len(frame) < off+20 {
+		return nil
+	}
+	ihl := int(frame[off]&0x0f) * 4
+	if ihl < 20 || len(frame) < off+ihl {
+		return nil
+	}
+	flagsFrag := binary.BigEndian.Uint16(frame[off+6 : off+8])
+	fragOffset := int(flagsFrag&0x1fff) * 8
+	more := flagsFrag&0x2000 != 0
+	if fragOffset == 0 && !more {
+		return udpPayload(frame, linkType)
+	}
+	if frame[off+9] != 17 || re == nil {
+		return nil
+	}
+	ipEnd := off + int(binary.BigEndian.Uint16(frame[off+2:off+4]))
+	if ipEnd > len(frame) { ipEnd = len(frame) }
+	payload := frame[off+ihl:ipEnd]
+	if fragOffset == 0 {
+		if len(payload) < 8 { return nil }
+		port := binary.BigEndian.Uint16(payload[0:2])
+		dst := binary.BigEndian.Uint16(payload[2:4])
+		if !((port == 5055 || port == 5056 || port == 5058) || (dst == 5055 || dst == 5056 || dst == 5058)) { return nil }
+	}
+	var key ipv4FragmentKey
+	copy(key.src[:], frame[off+12:off+16]); copy(key.dst[:], frame[off+16:off+20])
+	key.id = binary.BigEndian.Uint16(frame[off+4:off+6]); key.proto = frame[off+9]
+	set := re.sets[key]
+	if set == nil { set = &ipv4FragmentSet{parts: make(map[int][]byte)}; re.sets[key] = set }
+	set.parts[fragOffset] = append([]byte(nil), payload...); set.seen = time.Now()
+	if !more { set.last = fragOffset + len(payload) }
+	if set.last == 0 { return nil }
+	assembled := make([]byte, set.last)
+	for start, part := range set.parts {
+		if start < 0 || start+len(part) > len(assembled) { delete(re.sets, key); return nil }
+		copy(assembled[start:], part)
+	}
+	// Verify there are no holes before deleting the assembly.
+	covered := 0
+	for covered < len(assembled) { part, ok := set.parts[covered]; if !ok { return nil }; covered += len(part) }
+	delete(re.sets, key)
+	if len(assembled) < 8 { return nil }
+	return assembled[8:]
 }
 
 // udpPayload extrae el contenido UDP de una trama Ethernet, salteando IPv4/IPv6.
@@ -426,6 +510,7 @@ func (h *handlers) isSelf(id int64) bool {
 // en el pedido del cliente. La fuente principal es response: Albion devuelve
 // los datos del personaje propio en la respuesta exitosa a Join.
 func (h *handlers) request(op *photon.OperationRequest) {
+	h.st.MarkDecoded()
 	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
 	if !ok {
 		return
@@ -439,6 +524,7 @@ func (h *handlers) request(op *photon.OperationRequest) {
 // resuelve el personaje local desde JoinResponse (operación 2): parámetros 0
 // para el id de entidad, 1 para GUID, 2 para el nombre y 8 para el mapa.
 func (h *handlers) response(op *photon.OperationResponse) {
+	h.st.MarkDecoded()
 	if op.ReturnCode != 0 {
 		return
 	}
@@ -578,6 +664,7 @@ func clusterName(v any) string {
 }
 
 func (h *handlers) event(ev *photon.EventData) {
+	h.st.MarkDecoded()
 	// Albion manda el código real en el parámetro 252 como entero de 16 bits.
 	// El byte del envelope solo sirve para los códigos bajos, así que se usa
 	// como respaldo cuando el parámetro no está.

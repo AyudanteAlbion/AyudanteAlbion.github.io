@@ -59,6 +59,7 @@ type Snapshot struct {
 	Maps        []MapVisit  `json:"maps"`
 	Loot        []LootEntry `json:"loot"`
 	Packets     uint64      `json:"packets"`
+	Decoded     uint64      `json:"decoded"`
 }
 
 const (
@@ -84,6 +85,7 @@ type State struct {
 	maps      []MapVisit
 	loot      []LootEntry
 	packets   uint64
+	decoded   uint64
 }
 
 // NewState crea el estado de una sesión nueva.
@@ -279,6 +281,9 @@ func (s *State) AddKill(killer, victim string) {
 
 // AddFame, AddSilver y AddRespec acumulan las ganancias de la sesión.
 func (s *State) MarkPacket()       { s.mu.Lock(); s.packets++; s.mu.Unlock() }
+// MarkDecoded cuenta mensajes Photon interpretados, no solo datagramas UDP.
+// Así la interfaz puede distinguir tráfico del juego de datos realmente útiles.
+func (s *State) MarkDecoded()       { s.mu.Lock(); s.decoded++; s.mu.Unlock() }
 func (s *State) AddFame(v int64)   { s.mu.Lock(); s.fame += v; s.mu.Unlock() }
 func (s *State) AddSilver(v int64) { s.mu.Lock(); s.silver += v; s.mu.Unlock() }
 func (s *State) AddRespec(v int64) { s.mu.Lock(); s.respec += v; s.mu.Unlock() }
@@ -390,5 +395,6 @@ func (s *State) Snapshot() Snapshot {
 		Maps:        maps,
 		Loot:        loot,
 		Packets:     s.packets,
+		Decoded:     s.decoded,
 	}
 }
