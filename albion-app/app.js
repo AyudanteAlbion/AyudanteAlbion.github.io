@@ -3472,23 +3472,27 @@ function commerceInit() {
     COMMERCE.selected.clear();
     llSave(); llRender();
   });
+  // En la web el interruptor no existe: el rastreo en vivo es exclusivo de la
+  // app de escritorio (es la única que carga js/tracker/client.js).
   const toggle = document.getElementById('tradeTrackingToggle');
-  const paintTracking = () => {
-    if (!window.AATracker) return;
-    const on = !!AATracker.state().capturing;
-    toggle.checked = on;
-    document.getElementById('tradeTrackingLabel').textContent = on ? 'El rastreo está activo' : 'El rastreo está inactivo';
-  };
-  if (window.AATracker) {
-    AATracker.detect().then(paintTracking);
-    AATracker.on((type) => { if (type === 'status' || type === 'snapshot') paintTracking(); });
-    toggle.addEventListener('change', async () => {
-      toggle.disabled = true;
-      try { if (toggle.checked) await AATracker.start(); else await AATracker.stop(); }
-      catch (e) { waToast('Seguimiento de comercio', 'No se pudo cambiar el rastreo: ' + e.message, 'err'); }
-      toggle.disabled = false; paintTracking();
-    });
-  } else toggle.disabled = true;
+  if (toggle) {
+    const paintTracking = () => {
+      if (!window.AATracker) return;
+      const on = !!AATracker.state().capturing;
+      toggle.checked = on;
+      document.getElementById('tradeTrackingLabel').textContent = on ? 'El rastreo está activo' : 'El rastreo está inactivo';
+    };
+    if (window.AATracker) {
+      AATracker.detect().then(paintTracking);
+      AATracker.on((type) => { if (type === 'status' || type === 'snapshot') paintTracking(); });
+      toggle.addEventListener('change', async () => {
+        toggle.disabled = true;
+        try { if (toggle.checked) await AATracker.start(); else await AATracker.stop(); }
+        catch (e) { waToast('Seguimiento de comercio', 'No se pudo cambiar el rastreo: ' + e.message, 'err'); }
+        toggle.disabled = false; paintTracking();
+      });
+    } else toggle.disabled = true;
+  }
   commercePaintSelection();
 }
 

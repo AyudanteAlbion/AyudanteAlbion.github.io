@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Simulador del motor de tracking para desarrollo del frontend.
+"""Simulador del motor de tracking para desarrollo del frontend de escritorio.
 
-Replica los endpoints que la edición Tracker del ejecutable expone en Go
-(`/api/tracker/*`), para poder trabajar la interfaz sin Windows, sin Npcap y
-sin el juego abierto. NO es parte de lo que se distribuye: el .exe usa la
-implementación real en `desktop/internal/tracker/`.
+Replica los endpoints que la app de escritorio expone en Go (`/api/tracker/*`),
+para poder trabajar las pestañas Sesión, Recolección y Mazmorras sin Windows,
+sin Npcap y sin el juego abierto. NO es parte de lo que se distribuye: el .exe
+usa la implementación real en `desktop/internal/tracker/`.
+
+Sirve `desktop/ui/` (las pestañas del tracker son exclusivas del escritorio;
+la web ya no las tiene) y resuelve `data/`, `icons/` e `img/` desde
+`albion-app/`, igual que hace `sync_frontend.sh` al armar el frontend embebido.
 
 Mantener los dos lados en sintonía: si cambia el contrato JSON en Go, cambiarlo
 acá también, porque es lo que se prueba a diario.
@@ -22,7 +26,12 @@ import random
 import threading
 import time
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'albion-app')
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# Código propio del escritorio (las pestañas del tracker ya no están en la web).
+ROOT = os.path.join(_HERE, '..', 'desktop', 'ui')
+# Assets compartidos: data/, icons/ e img/ nunca se duplican en desktop/ui; se
+# sirven desde la fuente única, igual que en el .exe embebido.
+ASSETS = os.path.join(_HERE, '..', 'albion-app')
 
 PARTY = ['SheniaLiam', 'GrailHealer', 'SpetsnazTank', 'MistRunner']
 ZONES = ['Martlock', 'Mase Knoll', 'Blackthorn Quarry', 'Caerleon', 'Thetford']
@@ -190,7 +199,7 @@ STATE = State()
 _STOP = threading.Event()
 DIAG_ON = False
 
-CODES_PATH = pathlib.Path(ROOT) / 'data' / 'photon_codes.json'
+CODES_PATH = pathlib.Path(ASSETS) / 'data' / 'photon_codes.json'
 _CODES_CACHE: dict | None = None
 
 
@@ -313,6 +322,19 @@ def simulate() -> None:
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
+
+    # Los assets compartidos no viven en desktop/ui: se sirven desde
+    # albion-app/ (data/, icons/, img/), igual que en el frontend embebido
+    # que arma sync_frontend.sh para el .exe.
+    def translate_path(self, path):
+        shared = ('data', 'icons', 'img')
+        head = path.lstrip('/').split('/', 1)[0].split('?', 1)[0]
+        base = self.directory
+        self.directory = ASSETS if head in shared else base
+        try:
+            return super().translate_path(path)
+        finally:
+            self.directory = base
 
     def _json(self, body, code: int = 200) -> None:
         raw = json.dumps(body).encode()

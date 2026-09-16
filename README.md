@@ -16,14 +16,15 @@ Combina las recetas reales del juego con precios de mercado de la comunidad para
 
 | | |
 |---|---|
-| 🌐 **Abrir la app** | https://ayudantealbion.github.io |
-| 💾 **Descargas y versiones** | [Releases](https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases) |
+| 🌐 **Abrir la app web** | https://ayudantealbion.github.io |
+| 💾 **App de escritorio** | Artefacto de la última ejecución del [workflow Escritorio](https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/actions/workflows/desktop.yml) (pestaña Actions) |
+| 🏷️ **Versiones publicadas** | [Releases](https://github.com/AyudanteAlbion/AyudanteAlbion.github.io/releases) |
 | 💬 **Discord de la app** | https://discord.gg/FH3RzqMPA4 |
 | 🛡️ **Gremio Spetsnaz Grail** | [spetsnazgrail.com](https://spetsnazgrail.com) · [Discord](https://discord.gg/TCNWUUA7UY) |
 
-Funciona en el navegador o como ejecutable de escritorio para Windows. No necesita instalación ni cuenta para usar las herramientas de cálculo.
+Funciona en el navegador o como aplicación de escritorio para Windows, con ventana propia. No necesita instalación ni cuenta para usar las herramientas de cálculo.
 
-El escritorio tiene además una **edición Tracker** con estadísticas en vivo del juego —medidor de daño, fama y plata por hora, mapas y botín— que el navegador no puede ofrecer. Ver [Ediciones](#ediciones-web-escritorio-y-tracker).
+La app de escritorio trae además **estadísticas en vivo del juego** —medidor de daño, fama y plata por hora, mapas y botín— en las pestañas **Sesión, Recolección y Mazmorras**, exclusivas de escritorio: el navegador no puede leer el tráfico del juego. Ver [Web y escritorio](#web-y-escritorio).
 
 ---
 
@@ -55,10 +56,12 @@ El escritorio tiene además una **edición Tracker** con estadísticas en vivo d
 | Módulo | Qué resuelve |
 |---|---|
 | **Registro de operaciones** | Diario de compras y ventas con P&L, filtros por fecha, tier, encantamiento y mercado, selección y borrado por lote, exportación CSV, respaldo y sincronización entre dispositivos |
-| **Recolección** | Seguimiento por recurso, sesión y período, con valor por hora, mapas productivos, distribución por tipo, gráfico temporal e historial detallado |
-| **Mazmorras** | Análisis de runs por tipo, tier, encantamiento y período, con fama, ReSpec, poder, favor, plata, botín, muertes, eficiencia y gestión del historial local |
+| **Recolección** 💾 | Seguimiento por recurso, sesión y período, con valor por hora, mapas productivos, distribución por tipo, gráfico temporal e historial detallado |
+| **Mazmorras** 💾 | Análisis de runs por tipo, tier, encantamiento y período, con fama, ReSpec, poder, favor, plata, botín, muertes, eficiencia y gestión del historial local |
 | **Perfil** | Fama, kills y muertes de tu personaje desde el killboard oficial, y el costo real de Foco según tus especializaciones |
 | **Fórmulas** | Referencia de todas las cuentas que usa la app, para poder verificarlas |
+
+💾 Solo en la app de escritorio: se alimentan de la actividad real del juego, que el navegador no puede leer.
 
 ### Spetsnaz Grail
 
@@ -119,29 +122,29 @@ La app nunca confía en una sesión hasta que el servidor confirma su firma y su
 
 ---
 
-## Ediciones: web, escritorio y Tracker
+## Web y escritorio
 
-La app se distribuye en tres formas. Las dos de escritorio son ejecutables para Windows 10/11 x64: al abrirlos levantan un servidor local en el puerto 3000 (usan otro si está ocupado) y funcionan igual que la web, incluido el ingreso con Discord.
+El proyecto son **dos productos independientes**. Solo comparten los datos del juego (tablas e íconos de ítems); el código de cada uno evoluciona por su cuenta:
 
-| | 🌐 Web | 💾 `AyudanteAlbion.exe` | 📊 `AyudanteAlbion-Tracker.exe` |
-|---|:---:|:---:|:---:|
-| Crafteo, Mercado, Personal, SG | ✅ | ✅ | ✅ |
-| Funciona sin instalar nada | ✅ | ✅ | ✅ |
-| Sin permisos de administrador | ✅ | ✅ | — |
-| **Pestaña Sesión** (estadísticas en vivo) | — | — | ✅ |
-| Medidor de daño y curación | — | — | ✅ |
-| Fama, plata y respec por hora | — | — | ✅ |
-| Historial de mapas y botín | — | — | ✅ |
+| | 🌐 Web | 💾 App de escritorio |
+|---|---|---|
+| Qué es | https://ayudantealbion.github.io | `AyudanteAlbionDesktop.exe` (Windows 10/11 x64) |
+| Dónde vive el código | [`albion-app/`](albion-app/) | [`desktop/`](desktop/) |
+| Crafteo, Mercado, Registro, Perfil, SG | ✅ | ✅ |
+| Funciona sin instalar nada | ✅ | ✅ |
+| Pestaña **Sesión** (estadísticas en vivo) | — | ✅ |
+| Pestañas **Recolección** y **Mazmorras** | — | ✅ |
+| Medidor de daño y curación | — | ✅ |
+| Fama, plata y respec por hora | — | ✅ |
+| Historial de mapas y botín | — | ✅ |
 
-### Por qué hay dos ejecutables
+### Por qué hay pestañas exclusivas de escritorio
 
-Las estadísticas en vivo necesitan **leer el tráfico de red del juego**, algo que el navegador no puede hacer y que requiere permisos elevados. Antes que imponerle eso a todo el mundo, la edición estándar queda idéntica a la de siempre y quien quiera el tracking baja la edición Tracker.
+Las estadísticas en vivo necesitan **leer el tráfico de red del juego**, algo que el navegador no puede hacer y que requiere permisos elevados. Por eso **Sesión, Recolección y Mazmorras** solo existen en la app de escritorio: la web pública no las muestra ni carga su código. Hasta hace poco había además dos ejecutables (estándar y Tracker, compilados con *build tags* desde el retirado `albion-exe/`); hoy es **un solo binario**, con el motor del tracker siempre integrado y apagado por defecto.
 
-La separación es real, no un interruptor: el motor de estadísticas se compila con un *build tag* de Go (`go build -tags tracker`), así que en la edición estándar **ese código no existe dentro del binario**.
+La app de escritorio es una ventana nativa (WebView2) con su propio backend Go embebido: no abre el navegador ni levanta un servidor accesible por otros programas. `AyudanteAlbion.exe` / `AyudanteAlbion-Tracker.exe` eran el ejecutable clásico, retirado y sin soporte.
 
-### La pestaña Sesión
-
-Solo aparece en la edición Tracker. El frontend es el mismo en las tres formas y decide qué mostrar preguntando `GET /api/tracker/status`: la web responde 404, la estándar responde «no disponible» y la Tracker responde con el motor listo.
+### Las pestañas exclusivas: Sesión, Recolección y Mazmorras
 
 El tracking **arranca apagado** y se activa a mano. Siguiendo los límites públicos aplicados a otras herramientas de la comunidad: solo monitorea el tráfico, no modifica el cliente del juego, no dibuja overlay, no ve jugadores fuera de tu campo de visión y descarta estadísticas de quien no sea tu personaje o parte de tu party. Esto no equivale a una aprobación de SBI ni permite garantizar riesgo cero. Consultá la [auditoría de cumplimiento y sus fuentes](docs/cumplimiento-albion.md).
 
@@ -153,36 +156,25 @@ Detalle técnico completo en [`docs/tracker-escritorio.md`](docs/tracker-escrito
 
 ---
 
-## Publicación de versiones
+## Publicación y distribución
 
-Para probar Windows sin publicar una versión, el workflow **Test desktop
-releases** ejecuta `./build.sh` completo en cada PR que toca el escritorio y
-también se puede iniciar manualmente. La ejecución deja dos artefactos
-separados durante 7 días:
+Cada producto se publica por su lado, con su propio workflow:
 
-- `AyudanteAlbion-Desktop-<commit>`: edición estándar.
-- `AyudanteAlbion-Tracker-<commit>`: edición Tracker y su tabla de códigos.
+- **La web** se despliega sola en GitHub Pages con cada push a `main` que toca
+  `albion-app/` (workflow **Web**). Nada que hacer.
+- **La app de escritorio** se compila en Windows con cada cambio de `desktop/`
+  o de los datos compartidos (workflow **Escritorio**). El paquete —`.exe`,
+  `photon_codes.json`, `SHA256SUMS.txt` y `BUILD_INFO.txt`— queda como
+  **artefacto de la ejecución** durante 7 días en la pestaña *Actions*, listo
+  para bajar y usar. No crea tags ni releases.
 
-Estos paquetes temporales no crean tags, no aparecen en GitHub Releases y no
-generan avisos en Discord. El check **Analyze (go)** de CodeQL sigue corriendo
-por separado: analiza el código Go, mientras que **Build desktop .exe** prueba
-la compilación cruzada real de las dos ediciones para Windows, incluido
-`-tags tracker`.
-
-Las versiones públicas de Windows se publican únicamente creando un tag
-semántico en `main`, por ejemplo:
-
-```bash
-git tag v1.2.8
-git push origin v1.2.8
-```
-
-El workflow **Build release assets** valida el repositorio y compila los dos
-`.exe`, el `.zip` y sus checksums como artefactos temporales. Cuando termina con
-éxito, **Publish release** descarga esos artefactos, verifica sus SHA-256 y
-recién entonces crea o actualiza la release de GitHub. La compilación y la
-publicación usan workflows y permisos separados; este flujo de producción no
-tiene ejecución manual, para que una prueba no pueda publicar por accidente.
+Las versiones públicas se publican **a mano**: se crea un tag semántico en
+`main` y se adjunta a la release el último artefacto verificado (los checksums
+SHA-256 viajan en el propio paquete, así que la integridad se comprueba antes
+de subir nada). Los antiguos workflows automáticos de release (`build.yml`,
+`release.yml`, `test-desktop-releases.yml`) se retiraron junto con el
+ejecutable clásico y `build.sh`; el detalle está en
+[`.github/workflows/README.md`](.github/workflows/README.md).
 
 En Discord, el canal de Actualizaciones recibe el changelog de la versión en
 curso cuando `CHANGELOG.md` cambia en `main`, y una alerta cuando se publica
@@ -215,12 +207,15 @@ commit antiguos.
 La validación local no requiere instalar dependencias adicionales:
 
 ```bash
-python3 scripts/validate_repo.py
+npm test
 ```
 
-Comprueba sintaxis de JavaScript y Python, JSON, `wrangler.toml`, referencias
-HTML y entradas necesarias para el build. GitHub Actions la ejecuta en cada
-pull request que afecte al código o a la infraestructura.
+Ejecuta `scripts/validate_repo.py` (sintaxis de JavaScript y Python, JSON,
+`wrangler.toml`, referencias HTML y entradas del build), la validación de la
+tabla de códigos Photon y las pruebas de contratos de `scripts/phase_qa.js`,
+que cubren la web **y** el fork del escritorio (`desktop/ui/`). GitHub Actions
+corre lo mismo en cada pull request que afecte al código o a la
+infraestructura, y el workflow **Escritorio** suma los tests de Go del tracker.
 
 ---
 
@@ -232,9 +227,10 @@ pull request que afecte al código o a la infraestructura.
 | [`docs/farming.md`](docs/farming.md) | Bonos de isla, fuentes de datos y alcance del cálculo de Granja |
 | [`docs/tracker-mapas-reales.md`](docs/tracker-mapas-reales.md) | Diseño del Tracker por Zona y sus fuentes de datos |
 | [`docs/frontend-modules.md`](docs/frontend-modules.md) | Arquitectura del frontend y reglas de contribución |
-| [`docs/tracker-escritorio.md`](docs/tracker-escritorio.md) | Ediciones del ejecutable y motor de estadísticas en vivo |
+| [`docs/tracker-escritorio.md`](docs/tracker-escritorio.md) | Arquitectura de la app de escritorio y del tracker en vivo |
 | [`docs/photon-codes.md`](docs/photon-codes.md) | Cómo actualizar los códigos del tracker tras un parche de Albion |
-| [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Formato de mensajes de commit con archivo y hora UTC |
+| [`docs/COMMIT_CONVENTION.md`](docs/COMMIT_CONVENTION.md) | Formato de mensajes de commit (archivo o carpeta de primer nivel) |
+| [`.github/workflows/README.md`](.github/workflows/README.md) | Qué workflow publica o compila cada producto, y cuáles se retiraron |
 | [`SECURITY.md`](SECURITY.md) | Política de seguridad y reporte de vulnerabilidades |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios de todas las versiones |
 | [`docs/releases/`](docs/releases/) | Notas publicadas de cada versión |

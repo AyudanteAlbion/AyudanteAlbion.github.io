@@ -10,6 +10,52 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
 
 ---
 
+## [v1.4.0] — sin publicar
+
+### Cambiado
+
+- **Las pestañas Sesión, Recolección y Mazmorras pasan a ser exclusivas de la
+  app de escritorio.** Las tres se alimentan de la captura de red del juego,
+  imposible en un navegador, así que la web ya no las muestra ni carga su
+  código (`js/tracker/*` y sus CSS); la app de escritorio las mantiene tal
+  cual, ya implementadas. La web conserva todas las herramientas de cálculo,
+  mercado, registro, perfil y SG.
+- El interruptor «seguimiento de comercio» del Registro de operaciones ya no
+  aparece en la web: solo tiene efecto en la app de escritorio, la única con
+  rastreo en vivo.
+- README actualizado al modelo vigente: dos productos independientes (web en
+  `albion-app/` y escritorio en `desktop/`), un solo `.exe`, distribución del
+  binario como artefacto del workflow **Escritorio** y cierre del capítulo del
+  ejecutable clásico con sus dos ediciones.
+- `docs/tracker-escritorio.md` reescrito: describe la app de escritorio Wails
+  y el motor del tracker tal como están hoy (antes documentaba `albion-exe/`
+  y el modelo de dos ejecutables con build tags).
+- `tools/tracker_dev.py` ahora sirve `desktop/ui/` (donde están las pestañas
+  del tracker) con `data/`, `icons/` e `img/` resueltos desde `albion-app/`,
+  como hace el frontend embebido del `.exe`.
+- `CODEOWNERS`: retira las rutas muertas `/build.sh` y `/albion-exe/`, y
+  protege `/desktop/`.
+- `docs/photon-codes.md`, `docs/frontend-modules.md` y `desktop/ui/README.md`
+  actualizados a la separación web/escritorio.
+
+### Corregido
+
+- El despliegue de la web (`web.yml`) ahora copia `albion-app/css/` al sitio y
+  lo incluye en los disparadores: el `index.html` enlaza hojas de ese directorio
+  que en producción devolvían **404** y dejaban módulos sin estilos (quedaba
+  `css/trade-tracking.css`, del Registro de operaciones).
+
+### Eliminado
+
+- `DATA_CHECK.zip` (16 MB) y `DATA_CHECK1.zip` (10 MB) de la raíz: volcados de
+  código C# sin referencias ni relación con el proyecto.
+- De la web: `js/tracker/client.js`, `js/tracker/ui.js`,
+  `js/tracker/gathering.js`, `js/tracker/dungeons.js` y las hojas
+  `css/tracker-setup.css`, `css/gathering.css` y `css/dungeons.css` (siguen
+  existiendo, sin cambios, en la app de escritorio).
+
+---
+
 ## [v1.3.0] — sin publicar
 
 Notas completas: [`docs/releases/v1.3.0.md`](docs/releases/v1.3.0.md) ·
