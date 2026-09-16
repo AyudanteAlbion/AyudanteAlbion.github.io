@@ -224,18 +224,29 @@ func (c *Codes) validateContract() error {
 	if err != nil {
 		return err
 	}
-	if eventKey != 252 || operationKey != 253 {
-		return fmt.Errorf("las claves autoritativas deben ser eventCode=252 y operationCode=253")
+	returnKey, err := readKey("returnCode")
+	if err != nil {
+		return err
+	}
+	if eventKey != 252 || operationKey != 253 || returnKey != 254 {
+		return fmt.Errorf("las claves de protocolo deben ser eventCode=252, operationCode=253 y returnCode=254")
 	}
 
 	requiredEvents := map[string][]string{
-		"NewCharacter":      {"id", "name", "guid", "guild", "alliance"},
-		"Leave":             {"id"},
-		"JoinFinished":      {"zone"},
-		"PartyJoined":       {"guids", "names"},
-		"PartyPlayerJoined": {"guid", "name"},
-		"PartyPlayerLeft":   {"guid"},
-		"PartyDisbanded":    {},
+		"NewCharacter":       {"id", "name", "guid", "guild", "alliance"},
+		"Leave":              {"id"},
+		"JoinFinished":       {"zone"},
+		"HealthUpdate":       {"target", "value", "source"},
+		"UpdateFame":         {"gained"},
+		"UpdateReSpecPoints": {"gained"},
+		"TakeSilver":         {"id", "amount"},
+		"UpdateCurrency":     {"gained"},
+		"PartySilverGained":  {"amount"},
+		"OtherGrabbedLoot":   {"itemId", "quantity", "looter"},
+		"PartyJoined":        {"guids", "names"},
+		"PartyPlayerJoined":  {"guid", "name"},
+		"PartyPlayerLeft":    {"guid"},
+		"PartyDisbanded":     {},
 	}
 	for name, fields := range requiredEvents {
 		found := false

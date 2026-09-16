@@ -174,6 +174,7 @@ type State struct {
 	mu                sync.RWMutex
 	capture           CaptureState
 	identity          LocalIdentity
+	lastIdentityGUID  string
 	entities          []Entity
 	party             PartyState
 	world             WorldState
@@ -313,15 +314,18 @@ func (s *State) MarkPacket() {
 	s.mu.Unlock()
 }
 
-func (s *State) MarkPhoton(adapter string, encrypted bool) {
+func (s *State) MarkPhoton(adapter string, encrypted bool, packets int) {
+	if packets < 1 {
+		packets = 1
+	}
 	s.mu.Lock()
-	s.capture.PhotonPackets++
+	s.capture.PhotonPackets += uint64(packets)
 	s.capture.LastPhotonAt = time.Now().UnixMilli()
 	if adapter != "" {
 		s.capture.Adapter = adapter
 	}
 	if encrypted {
-		s.capture.EncryptedDropped++
+		s.capture.EncryptedDropped += uint64(packets)
 	}
 	s.recomputePhaseLocked()
 	s.mu.Unlock()
@@ -359,7 +363,7 @@ func normalizeIdentity(identity LocalIdentity) LocalIdentity {
 }
 
 func (s *State) applyJoinIdentityLocked(identity LocalIdentity) {
-	changedCharacter := s.identity.Valid && s.identity.GUID != identity.GUID
+	changedCharacter := s.lastIdentityGUID != "" && s.lastIdentityGUID != identity.GUID
 	identity.Valid = true
 	identity.DetectedAt = time.Now().UnixMilli()
 	identity.Revision = s.identity.Revision + 1
@@ -369,6 +373,7 @@ func (s *State) applyJoinIdentityLocked(identity LocalIdentity) {
 		identity.Detection = "filtered"
 	}
 	s.identity = identity
+	s.lastIdentityGUID = identity.GUID
 	if changedCharacter {
 		s.resetMetricsLocked()
 	}
@@ -487,7 +492,9 @@ func (s *State) syncRegistryLocked(entities []Entity, members []Entity) {
 			member.ObjectID = &id
 		}
 		s.party.Members = append(s.party.Members, member)
-		s.ensureCombatantLocked(entity)
+		if s.metricsAllowedLocked() {
+			s.ensureCombatantLocked(entity)
+		}
 	}
 }
 
@@ -785,9 +792,11 @@ func (s *State) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.resetMetricsLocked()
-	for _, entity := range s.entities {
-		if entity.InParty {
-			s.ensureCombatantLocked(entity)
+	if s.metricsAllowedLocked() {
+		for _, entity := range s.entities {
+			if entity.InParty {
+				s.ensureCombatantLocked(entity)
+			}
 		}
 	}
 }

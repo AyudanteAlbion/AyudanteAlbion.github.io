@@ -110,7 +110,7 @@ func (p *packetPipeline) Ingest(packet CapturedDatagram) {
 		return
 	}
 
-	p.state.MarkPhoton(packet.Adapter, inspection.Encrypted)
+	p.state.MarkPhoton(packet.Adapter, inspection.Encrypted, inspection.Packets)
 	if server, confirmed := p.server.Observe(packet, time.Now()); confirmed {
 		p.state.ConfirmServer(server)
 	}

@@ -9,27 +9,7 @@ import (
 
 func testCodes(t *testing.T) *Codes {
 	t.Helper()
-	codes, err := parseCodes([]byte(`{
-		"version": "test",
-		"gameVersion": "test",
-		"parameterKeys": {"eventCode": 252, "operationCode": 253, "returnCode": 254},
-		"events": {"NewCharacter": 29, "JoinFinished": 2, "PartyJoined": 231, "PartyDisbanded": 232, "PartyPlayerJoined": 233, "PartyPlayerLeft": 235},
-		"operations": {"Join": 2, "ChangeCluster": 41},
-		"eventParameters": {
-			"NewCharacter": {"id": 0, "name": 1, "guid": 7, "guild": 8, "alliance": 51},
-			"JoinFinished": {"zone": 0},
-			"ChangeCluster": {"zone": 0},
-			"PartyJoined": {"guids": 8, "names": 9},
-			"PartyPlayerJoined": {"id": 0, "guid": 1, "name": 2},
-			"PartyPlayerLeft": {"id": 0, "guid": 1},
-			"PartyDisbanded": {}
-		},
-		"selfOperation": {"operation": "Join", "parameters": {"id": 0, "guid": 1, "name": 2, "zone": 8, "guild": 58, "alliance": 79}}
-	}`), "test")
-	if err != nil {
-		t.Fatalf("parseCodes() error = %v", err)
-	}
-	return codes
+	return shippedCodes(t)
 }
 
 func TestJoinResponseIdentifiesLocalCharacter(t *testing.T) {
