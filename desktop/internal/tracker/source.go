@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// Source es cualquier productor de eventos de juego. LiveSource captura
-// paquetes Photon y Simulator permite usar la interfaz sin el juego; ambos se
-// enchufan sin tocar ni el hub, ni el estado, ni el frontend.
+// Source is a producer selected explicitly by the user. LiveSource and
+// SocketSource are real capture providers; Simulator is an opt-in demo and is
+// never selected as a fallback for a failed real capture.
 type Source interface {
 	// Name identifica la fuente en la UI («simulador», «npcap»…).
 	Name() string
@@ -40,7 +40,7 @@ type DeviceConfigurable interface {
 // de instalar Npcap, y para las pruebas automáticas.
 type Simulator struct{}
 
-func (Simulator) Name() string { return "simulador" }
+func (Simulator) Name() string { return "Demo — NO ES TRACKING REAL" }
 
 func (Simulator) Available() (bool, string) { return true, "" }
 
@@ -50,7 +50,11 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 	party := []string{"SheniaLiam", "GrailHealer", "SpetsnazTank", "MistRunner"}
 	zones := []string{"Martlock", "Mase Knoll", "Blackthorn Quarry", "Caerleon", "Thetford"}
 	items := []string{"T6_BAG", "T5_MAIN_CURSEDSTAFF", "T4_2H_BOW", "T6_ARMOR_LEATHER_SET2", "T5_HEAD_PLATE_SET1"}
-	resources := []struct{ id, name, kind string; tier int; value int64 }{
+	resources := []struct {
+		id, name, kind string
+		tier           int
+		value          int64
+	}{
 		{"T5_WOOD", "Troncos de cedro", "wood", 5, 620},
 		{"T6_ORE", "Mineral de titanio", "ore", 6, 1180},
 		{"T5_FIBER", "Fibra celeste", "fiber", 5, 710},
@@ -61,9 +65,17 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 	dungeonTypes := []string{"solo", "standard", "static", "avalonian", "corrupted", "hellgate", "hce", "mists", "knightfall", "abyssal", "ancient"}
 	abilities := []string{"Bola de fuego", "Tajo", "Flecha perforante", "Maldición", "Golpe heroico"}
 
-	st.SetCharacter(party[0])
-	st.SetParty(party)
-	st.SetCapturing(true, true)
+	st.SetDemoCapture(true)
+	_ = st.ApplyJoinIdentity(LocalIdentity{ObjectID: 1, GUID: "00000000-0000-0000-0000-000000000001", Name: party[0]})
+	entities := make([]Entity, 0, len(party))
+	for i, name := range party {
+		entities = append(entities, Entity{
+			GUID:     fmt.Sprintf("00000000-0000-0000-0000-%012d", i+1),
+			ObjectID: int64(i + 1), HasObjectID: true, Name: name,
+			Local: i == 0, InParty: true,
+		})
+	}
+	st.SyncRegistry(entities, entities)
 	hub.Publish(NewEvent("status", st.Snapshot()))
 
 	st.EnterZone(zones[0])
@@ -177,64 +189,4 @@ func (b BrokenSource) Available() (bool, string) { return false, b.Reason }
 
 func (b BrokenSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	return errors.New(b.Reason)
-}
-
-// FallbackSource usa la fuente principal cuando está disponible y, si no,
-// la de respaldo. Sirve para que la edición Tracker siga siendo usable sin
-// Npcap instalado: se ve la interfaz real con datos simulados, y en cuanto
-// Npcap aparece, el siguiente arranque usa la captura de verdad.
-type FallbackSource struct {
-	Primary  Source
-	Fallback Source
-}
-
-func (f FallbackSource) active() Source {
-	if ok, _ := f.Primary.Available(); ok {
-		return f.Primary
-	}
-	return f.Fallback
-}
-
-func (f FallbackSource) Name() string {
-	if ok, _ := f.Primary.Available(); ok {
-		return f.Primary.Name()
-	}
-	_, reason := f.Primary.Available()
-	return f.Fallback.Name() + " — " + reason
-}
-
-// Available siempre es true: si la principal no está, corre la de respaldo.
-func (f FallbackSource) Available() (bool, string) {
-	if ok, _ := f.Primary.Available(); ok {
-		return true, ""
-	}
-	_, reason := f.Primary.Available()
-	return true, reason + " Mientras tanto se muestran datos simulados."
-}
-
-func (f FallbackSource) Run(ctx context.Context, st *State, hub *Hub) error {
-	return f.active().Run(ctx, st, hub)
-}
-
-// SetDiagnostic y Diagnostic delegan en la fuente activa si la soporta.
-func (f FallbackSource) SetDiagnostic(on bool) {
-	if d, ok := f.active().(Diagnosable); ok {
-		d.SetDiagnostic(on)
-	}
-}
-
-func (f FallbackSource) Devices() ([]map[string]string, error) {
-	if d, ok := f.Primary.(DeviceConfigurable); ok { return d.Devices() }
-	return []map[string]string{}, errors.New("la fuente no expone adaptadores")
-}
-
-func (f FallbackSource) SetDevice(name string) {
-	if d, ok := f.Primary.(DeviceConfigurable); ok { d.SetDevice(name) }
-}
-
-func (f FallbackSource) Diagnostic() map[string]any {
-	if d, ok := f.active().(Diagnosable); ok {
-		return d.Diagnostic()
-	}
-	return map[string]any{"enabled": false, "known": []any{}, "unknown": []any{}}
 }

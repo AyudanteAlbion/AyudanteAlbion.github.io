@@ -4,11 +4,18 @@
 package tracker
 
 import (
-	"reflect"
 	"testing"
 
 	"ayudante-albion-desktop/internal/tracker/photon"
 )
+
+func snapshotPartyNames(snapshot Snapshot) []string {
+	result := make([]string, 0, len(snapshot.PartyState.Members))
+	for _, member := range snapshot.PartyState.Members {
+		result = append(result, member.Name)
+	}
+	return result
+}
 
 // This exercises the Photon parameter layout used by SAT's PartyJoined and
 // PartyPlayerLeft handlers: the roster uses concatenated 16-byte GUIDs and a
@@ -20,14 +27,14 @@ func TestPartyEventsCorrelateRosterByGUID(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Yo"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Yo", 253: int64(2)},
 	})
 	allGUIDs := append(append([]byte(nil), localGUIDBytes...), partyGUIDBytes...)
 	handler.event(&photon.EventData{
 		Code:       231,
 		Parameters: map[byte]any{8: allGUIDs, 9: []string{"Yo", "Aliada"}, 252: int64(231)},
 	})
-	if got, want := state.Snapshot().Party, []string{"Yo", "Aliada"}; !reflect.DeepEqual(got, want) {
+	if got, want := snapshotPartyNames(state.Snapshot()), []string{"Yo", "Aliada"}; len(got) != len(want) || (len(got) > 0 && (got[0] != want[0] || len(got) > 1 && got[1] != want[1])) {
 		t.Fatalf("Party after PartyJoined = %#v, want %#v", got, want)
 	}
 
@@ -35,7 +42,7 @@ func TestPartyEventsCorrelateRosterByGUID(t *testing.T) {
 		Code:       235,
 		Parameters: map[byte]any{1: partyGUIDBytes, 252: int64(235)},
 	})
-	if got, want := state.Snapshot().Party, []string{"Yo"}; !reflect.DeepEqual(got, want) {
+	if got, want := snapshotPartyNames(state.Snapshot()), []string{"Yo"}; len(got) != len(want) || (len(got) > 0 && (got[0] != want[0] || len(got) > 1 && got[1] != want[1])) {
 		t.Fatalf("Party after PartyPlayerLeft = %#v, want %#v", got, want)
 	}
 
@@ -47,7 +54,7 @@ func TestPartyEventsCorrelateRosterByGUID(t *testing.T) {
 		Code:       232,
 		Parameters: map[byte]any{252: int64(232)},
 	})
-	if got, want := state.Snapshot().Party, []string{"Yo"}; !reflect.DeepEqual(got, want) {
+	if got, want := snapshotPartyNames(state.Snapshot()), []string{"Yo"}; len(got) != len(want) || (len(got) > 0 && (got[0] != want[0] || len(got) > 1 && got[1] != want[1])) {
 		t.Fatalf("Party after PartyDisbanded = %#v, want %#v", got, want)
 	}
 }

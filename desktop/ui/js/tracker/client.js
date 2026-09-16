@@ -20,6 +20,9 @@
     source: '',
     runError: '',
     trackingCharacter: '',
+    capture: { phase: 'off' },
+    identityValid: false,
+    filterMatched: true,
     codes: null,          // versión y conteo de la tabla de códigos Photon
     codesWarning: ''
   };
@@ -28,7 +31,14 @@
   var stream = null;
   var retryDelay = 1000;
 
+  var METRIC_EVENTS = { damage:1, heal:1, loot:1, gathering:1, dungeon:1, dungeonRun:1, trade:1, vault:1 };
+  function metricsAccepted() {
+    return state.capture && state.capture.phase === 'demo' || (state.identityValid && state.filterMatched);
+  }
   function emit(type, payload) {
+    // Defense in depth for every browser-side statistics/persistence consumer.
+    // The backend already applies the same gate before publishing real metrics.
+    if (METRIC_EVENTS[type] && !metricsAccepted()) return;
     for (var i = 0; i < listeners.length; i++) {
       try {
         listeners[i](type, payload);
@@ -65,6 +75,9 @@
       state.source = data.source || '';
       state.runError = data.runError || '';
       state.trackingCharacter = data.trackingCharacter || '';
+      state.capture = data.capture || { phase: state.capturing ? 'preparing' : 'off' };
+      state.identityValid = !!data.identityValid;
+      state.filterMatched = data.filterMatched !== false;
       state.codes = data.codes || null;
       state.codesWarning = data.codesWarning || '';
     } catch (e) {
@@ -75,6 +88,9 @@
       state.source = '';
       state.runError = '';
       state.trackingCharacter = '';
+      state.capture = { phase: 'off' };
+      state.identityValid = false;
+      state.filterMatched = true;
       state.codes = null;
       state.codesWarning = '';
     }
@@ -91,6 +107,9 @@
       source: state.source,
       runError: state.runError,
       trackingCharacter: state.trackingCharacter,
+      capture: state.capture,
+      identityValid: state.identityValid,
+      filterMatched: state.filterMatched,
       codes: state.codes,
       codesWarning: state.codesWarning,
       // AAEnvironment es la única fuente para saber si existe una ventana
@@ -120,6 +139,9 @@
       if (!ev || !ev.type) return;
       if (ev.type === 'snapshot' || ev.type === 'status') {
         state.capturing = !!(ev.payload && ev.payload.capturing);
+        state.capture = (ev.payload && ev.payload.capture) || state.capture;
+        state.identityValid = !!(ev.payload && ev.payload.identity && ev.payload.identity.valid);
+        state.filterMatched = !(ev.payload && ev.payload.identity && ev.payload.identity.filterMatched === false);
       } else if (ev.type === 'warning' && ev.payload && typeof ev.payload.message === 'string' && ev.payload.message.indexOf('La captura se detuvo: ') === 0) {
         state.runError = ev.payload.message.slice('La captura se detuvo: '.length);
       }

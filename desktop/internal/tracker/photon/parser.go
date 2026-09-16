@@ -80,6 +80,36 @@ func NewParser(h Handler) *Parser {
 	}
 }
 
+// Inspection classifies Photon framing without decoding player data. Capture
+// providers use it before adapter selection and expose only these counters.
+type Inspection struct {
+	Valid     bool
+	Encrypted bool
+	Packets   int
+}
+
+// Inspect validates every coalesced Photon envelope in a UDP payload. An
+// encrypted envelope is valid Photon traffic but is reported for discard.
+func Inspect(payload []byte) Inspection {
+	result := Inspection{}
+	if len(payload) == 0 {
+		return result
+	}
+	for offset := 0; offset < len(payload); {
+		length, ok := photonPacketLength(payload[offset:])
+		if !ok || length <= 0 {
+			return Inspection{}
+		}
+		if payload[offset+2] == 1 {
+			result.Encrypted = true
+		}
+		result.Packets++
+		offset += length
+	}
+	result.Valid = result.Packets > 0
+	return result
+}
+
 // Receive procesa uno o varios paquetes Photon presentes en el payload UDP.
 // Devuelve false si encuentra un paquete inválido o incompleto; el llamador
 // sigue con la siguiente captura porque perder paquetes es normal en UDP.

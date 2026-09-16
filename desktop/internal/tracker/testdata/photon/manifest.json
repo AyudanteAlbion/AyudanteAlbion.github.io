@@ -1,0 +1,11 @@
+{
+  "origin": "Fixtures anonimizados construidos desde layouts Protocol18 observados y pruebas GPL de SAT 9f4471b2; no contienen nombres ni GUID reales.",
+  "fixtures": [
+    "join_response.hex",
+    "change_cluster.hex",
+    "party_complete.hex",
+    "multi_message_udp.hex",
+    "encrypted_discard.hex",
+    "join_response_fragmented.json"
+  ]
+}

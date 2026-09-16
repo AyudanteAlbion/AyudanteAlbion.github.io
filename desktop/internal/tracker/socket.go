@@ -1,34 +1,55 @@
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// Raw socket lifecycle is adapted for Go from Statistics Analysis Tool (SAT)
+// revision 9f4471b2905f4152938d84721492c6ac86499750 (GPL-3.0-only).
+
 package tracker
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
-	"net"
+	"fmt"
 	"runtime"
 	"time"
-
-	"ayudante-albion-desktop/internal/tracker/photon"
 )
 
-// SocketSource usa un socket IP sin procesar. En Windows no necesita Npcap,
-// pero el sistema solo permite abrirlo a procesos elevados.
-type SocketSource struct {
-	store *CodeStore
+// platformRawCapture is produced by socket_windows.go. Both IP families and
+// all usable local addresses feed the same packet channel.
+type platformRawCapture struct {
+	packets   <-chan CapturedDatagram
+	errors    <-chan error
+	count     int
+	signature string
+	close     func()
 }
 
-func NewSocketSource(store *CodeStore) *SocketSource { return &SocketSource{store: store} }
-func (s *SocketSource) Name() string                 { return "socket de Windows" }
+type SocketSource struct {
+	store       *CodeStore
+	diagnostics *protocolDiagnostics
+}
+
+func NewSocketSource(store *CodeStore) *SocketSource {
+	return &SocketSource{store: store, diagnostics: newProtocolDiagnostics()}
+}
+func (s *SocketSource) Name() string               { return "socket de Windows (SIO_RCVALL)" }
+func (s *SocketSource) SetDiagnostic(on bool)      { s.diagnostics.setEnabled(on) }
+func (s *SocketSource) Diagnostic() map[string]any { return s.diagnostics.snapshot(s.store) }
 
 func (s *SocketSource) Available() (bool, string) {
 	if runtime.GOOS != "windows" {
 		return false, "Socket solo está disponible en Windows"
 	}
-	conn, err := net.ListenPacket("ip4:udp", "0.0.0.0")
-	if err != nil {
-		return false, "no se pudo abrir el socket sin procesar — ejecutá la herramienta como administrador"
+	ctx, cancel := context.WithCancel(context.Background())
+	capture, err := openPlatformRawCapture(ctx)
+	cancel()
+	if capture != nil && capture.close != nil {
+		capture.close()
 	}
-	_ = conn.Close()
+	if err != nil {
+		return false, err.Error()
+	}
+	if capture == nil || capture.count == 0 {
+		return false, "no se pudo abrir ningún socket de captura"
+	}
 	return true, ""
 }
 
@@ -46,54 +67,98 @@ func (s *SocketSource) Run(ctx context.Context, st *State, hub *Hub) error {
 		hub.Publish(NewEvent("warning", map[string]any{"message": warn}))
 	}
 
-	conn, err := net.ListenPacket("ip4:udp", "0.0.0.0")
-	if err != nil {
-		return errors.New("no se pudo iniciar Socket; ejecutá Ayudante Albion como administrador")
+	entities := NewEntityStore()
+	pipeline := newPacketPipeline(s.diagnostics, st, hub, codes, entities, nil)
+	var active *platformRawCapture
+	var activeCancel context.CancelFunc
+	open := func() error {
+		if activeCancel != nil {
+			activeCancel()
+		}
+		if active != nil && active.close != nil {
+			active.close()
+		}
+		captureCtx, cancel := context.WithCancel(ctx)
+		capture, err := openPlatformRawCapture(captureCtx)
+		if err != nil {
+			cancel()
+			return err
+		}
+		active, activeCancel = capture, cancel
+		st.CaptureOpened("socket", capture.count)
+		hub.Publish(NewEvent("status", st.Snapshot()))
+		return nil
 	}
-	defer conn.Close()
+	if err := open(); err != nil {
+		return err
+	}
+	defer func() {
+		if activeCancel != nil {
+			activeCancel()
+		}
+		if active != nil && active.close != nil {
+			active.close()
+		}
+	}()
 
-	// Socket has one reader, but it uses the same GUID/ObjectId entity model as
-	// Npcap so local identity and party correlation behave identically.
-	h := newHandlersWithEntities(nil, st, hub, codes, NewEntityStore())
-	parser := photon.NewParser(photon.Handler{OnEvent: h.event, OnRequest: h.request, OnResponse: h.response})
-	st.SetCapturing(true, false)
-	hub.Publish(NewEvent("status", st.Snapshot()))
-
-	buf := make([]byte, 65536)
-	for ctx.Err() == nil {
-		_ = conn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
-		n, _, readErr := conn.ReadFrom(buf)
-		if readErr != nil {
-			if timeout, ok := readErr.(net.Error); ok && timeout.Timeout() {
+	snapshotTicker := time.NewTicker(time.Second)
+	networkTicker := time.NewTicker(3 * time.Second)
+	defer snapshotTicker.Stop()
+	defer networkTicker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case packet, ok := <-active.packets:
+			if !ok {
+				pipeline.ResetTransport()
+				st.CaptureRecovering("socket", "la red cambió; reabriendo raw sockets")
+				hub.Publish(NewEvent("status", st.Snapshot()))
+				if err := reopenRawCapture(ctx, open); err != nil {
+					return err
+				}
 				continue
 			}
-			return readErr
-		}
-		if payload := socketUDPPayload(buf[:n]); payload != nil {
-			st.MarkPacket()
-			parser.Receive(payload)
+			pipeline.Ingest(packet)
+		case err, ok := <-active.errors:
+			if !ok || err != nil {
+				pipeline.ResetTransport()
+				st.CaptureRecovering("socket", "un raw socket dejó de responder; esperando una red activa")
+				hub.Publish(NewEvent("status", st.Snapshot()))
+				hub.Publish(NewEvent("warning", map[string]any{"message": "Socket se recuperará después de un error de red."}))
+				if reopenErr := reopenRawCapture(ctx, open); reopenErr != nil {
+					return fmt.Errorf("socket: %w", reopenErr)
+				}
+			}
+		case <-networkTicker.C:
+			if signature, err := platformNetworkSignature(); err == nil && signature != active.signature {
+				pipeline.ResetTransport()
+				st.CaptureRecovering("socket", "se detectó un cambio de red; reabriendo raw sockets")
+				hub.Publish(NewEvent("status", st.Snapshot()))
+				if err := reopenRawCapture(ctx, open); err != nil {
+					return fmt.Errorf("cambio de red: %w", err)
+				}
+			}
+		case <-snapshotTicker.C:
+			hub.Publish(NewEvent("snapshot", st.Snapshot()))
 		}
 	}
-	st.SetCapturing(false, false)
-	hub.Publish(NewEvent("status", st.Snapshot()))
-	return ctx.Err()
 }
 
-// Un socket ip4:udp entrega la cabecera UDP seguida del payload. Solo se
-// aceptan los puertos de juego documentados; el resto se descarta sin parsear.
-func socketUDPPayload(packet []byte) []byte {
-	if len(packet) < 9 {
-		return nil
+func reopenRawCapture(ctx context.Context, open func() error) error {
+	for {
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		if err := open(); err == nil {
+			return nil
+		}
+		// Losing every address during a Wi-Fi/VPN switch is expected. Initial
+		// startup already validated elevation, so keep waiting rather than
+		// silently ending tracking or changing to Demo.
 	}
-	src := binary.BigEndian.Uint16(packet[0:2])
-	dst := binary.BigEndian.Uint16(packet[2:4])
-	allowed := func(port uint16) bool { return port == 5055 || port == 5056 || port == 5058 }
-	if !allowed(src) && !allowed(dst) {
-		return nil
-	}
-	length := int(binary.BigEndian.Uint16(packet[4:6]))
-	if length < 9 || length > len(packet) {
-		length = len(packet)
-	}
-	return packet[8:length]
 }

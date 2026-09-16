@@ -72,12 +72,13 @@
       '    <div><span class="trk-eyebrow">SESIÓN</span><h2>Sesión en vivo</h2></div>' +
       '    <div class="trk-actions">' +
       '      <button class="btn primary" id="trkToggle" type="button">Activar tracking</button>' +
-      '      <button class="btn ghost" id="trkRefreshCharacter" type="button" title="Volver a detectar tu personaje desde el juego">↻ Refrescar personaje</button>' +
+      '      <button class="btn ghost" id="trkRefreshCharacter" type="button" title="Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar.">↻ Detectar de nuevo</button>' +
       '      <button class="btn ghost" id="trkReset" type="button">Reiniciar sesión</button>' +
       '      <button class="btn ghost" id="trkCopy" type="button">Copiar ranking</button>' +
       '    </div>' +
       '  </div>' +
       '  <div class="trk-status" id="trkStatus" role="status">Tracking detenido.</div>' +
+      '  <p class="trk-note">Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar.</p>' +
       '  <div class="trk-kpis" id="trkKpis"></div>' +
       '</div>' +
       '<div class="trk-split trk-config-split">' +
@@ -85,9 +86,9 @@
       '  <div class="trk-head"><div><span class="trk-eyebrow">SEGUIMIENTO</span><h3>Configuración de red</h3></div><label class="trk-switch"><input id="trkTrackingSwitch" type="checkbox"><span></span></label></div>' +
       '  <p class="trk-switch-label" id="trkSwitchLabel">El rastreo está inactivo</p>' +
       '  <div class="trk-form-grid">' +
-      '   <label>Proveedor de paquetes<select id="trkProvider"><option value="npcap">Npcap (recomendado)</option><option value="socket">Socket (requiere administrador)</option></select><small>Los cambios del proveedor requieren reiniciar la herramienta.</small></label>' +
+      '   <label>Proveedor de paquetes<select id="trkProvider"><option value="npcap">Npcap (tracking real recomendado)</option><option value="socket">Socket (tracking real · requiere administrador)</option><option value="demo">Demo explícita (NO es tracking real)</option></select><small>Nunca se cambia a demo automáticamente si falla una captura real.</small></label>' +
       '   <label>Adaptador de red<select id="trkAdapter"><option value="">Automático · escuchar todos</option></select><small>Dejá Automático si no sabés qué interfaz usa el juego.</small></label>' +
-      '   <label class="trk-full">Nombre de personaje a rastrear<input id="trkCharacterName" type="text" maxlength="32" placeholder="Detección automática"><small>Opcional: se aplica al reiniciar seguimiento y filtra estadísticas, no la detección.</small></label>' +
+      '   <label class="trk-full">Filtro de personaje<input id="trkCharacterName" type="text" maxlength="32" placeholder="Todos los personajes detectados"><small>Filtro real del backend: si el JoinResponse detecta otro personaje, no se acepta ninguna métrica.</small></label>' +
       '  </div>' +
       '  <button class="btn" id="trkRestartNetwork" type="button">↻ Reiniciar seguimiento de red</button>' +
       '  <p class="trk-note">Npcap usa un controlador de bajo nivel. Socket no necesita Npcap, pero exige ejecutar la herramienta como administrador.</p>' +
@@ -142,6 +143,13 @@
   function readSettings() {
     try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { return {}; }
   }
+  function providerLabel(provider) {
+    return provider === 'demo' ? 'Demo (NO real)' : (provider === 'socket' ? 'Socket real' : 'NPCap real');
+  }
+  function setArmed(armed) {
+    var settings = readSettings(); settings.armed = !!armed;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
   function saveSettings() {
     var data = {
       provider: el('trkProvider').value, adapter: el('trkAdapter').value,
@@ -149,7 +157,8 @@
       language: el('trkLanguage').value, nav: el('trkNavVisibility').value,
       notifications: el('trkNotifications').value, proxy: el('trkProxy').value.trim(),
       gamePath: el('trkGamePath').value.trim(), companionPath: el('trkCompanionPath').value.trim(),
-      prerelease: el('trkPrerelease').checked
+      prerelease: el('trkPrerelease').checked,
+      armed: !!readSettings().armed
     };
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(data)); } catch (e) {}
     return data;
@@ -193,7 +202,8 @@
       if (want) {
         var cfg = readSettings();
         await AATracker.restart(cfg.provider || 'npcap', cfg.adapter || '', cfg.character || '');
-      } else await AATracker.stop();
+        setArmed(true);
+      } else { await AATracker.stop(); setArmed(false); }
     }
     catch (err) { setStatus('No se pudo cambiar el rastreo: ' + err.message); }
     paintControls();
@@ -203,7 +213,8 @@
     var cfg = saveSettings();
     try {
       await AATracker.restart(cfg.provider, cfg.adapter, cfg.character || '');
-      setStatus('Seguimiento de red reiniciado.');
+      setArmed(true);
+      setStatus(cfg.provider === 'demo' ? 'Demo iniciada: no es tracking real.' : 'Seguimiento de red real reiniciado.');
     } catch (e) { setStatus('No se pudo reiniciar: ' + e.message); }
     btn.disabled = false; paintControls();
   }
@@ -214,26 +225,33 @@
   }
   function paintState(snap) {
     var node = el('trkStateGrid'); if (!node) return;
-    var packets = Number(snap.packets || 0);
-    var decoded = Number(snap.decoded || 0);
-    // "paquetes UDP" no equivale a datos del juego: el filtro solo sabe los
-    // puertos. Exigimos al menos un mensaje Photon decodificado para afirmar
-    // que la captura está leyendo Albion y no tráfico residual/cifrado.
-    var hasData = !!(decoded || snap.character || snap.zone || snap.fame || snap.silver || (snap.combatants && snap.combatants.length));
-    var hasPacketsOnly = packets > 0 && !hasData;
-    // Join identifica al personaje; ChangeCluster solo actualiza la zona. Si
-    // la captura empezó con la sesión ya abierta, cambiar de mapa no puede
-    // recuperar la identidad: hay que volver al selector y entrar de nuevo.
-    var joinHint = hasData ? 'Volvé al selector de personaje y entrá de nuevo para recibir Join; cambiar de zona no alcanza.' : '';
-    var dataHint = hasPacketsOnly
-      ? 'Hay ' + packets + ' paquete(s) UDP, pero ninguno se pudo interpretar como mensaje Photon. Revisá Npcap/adaptador, puertos o cifrado.'
-      : (hasData ? 'Photon decodificados: ' + decoded + ' · UDP: ' + packets : '');
-    node.innerHTML = statusItem(hasData, 'Datos del juego recibidos', 'Esperando datos del juego', dataHint) +
-      statusItem(hasData, 'Servidor detectado', 'Servidor no detectado', hasData ? 'Albion Online · UDP' : dataHint) +
-      statusItem(!!snap.character, 'Personaje detectado', 'Personaje no detectado', snap.character, joinHint) +
-      statusItem(!!snap.zone, 'Ubicación detectada', 'Ubicación no detectada', snap.zone, joinHint);
+    var capture = snap.capture || { phase: snap.capturing ? 'preparing' : 'off' };
+    var identity = snap.identity || {};
+    var phase = capture.phase || 'off';
+    var order = { off:0, preparing:1, capturing_network:2, photon_detected:3, server_confirmed:4, waiting_join:5, character_detected:6 };
+    var rank = order[phase] || 0;
+    var isDemo = phase === 'demo' || !!snap.simulated;
+    var steps = [
+      [phase === 'off', 'Apagado', 'Apagado', capture.error || ''],
+      [rank >= 1, 'Preparando captura', 'Preparando captura', capture.provider || ''],
+      [rank >= 2, 'Capturando red', 'Capturando red', (capture.openSources || 0) + ' fuente(s) · ' + (capture.adapter || 'adaptador automático')],
+      [rank >= 3, 'Photon detectado', 'Photon detectado', (capture.photonPackets || 0) + ' Photon · ' + (capture.packetsReceived || 0) + ' UDP'],
+      [!!capture.serverConfirmed, 'Servidor Albion confirmado', 'Servidor Albion confirmado', capture.server || ''],
+      [rank >= 5, 'Esperando JoinResponse', 'Esperando JoinResponse', identity.valid ? 'JoinResponse recibido' : 'Cerrá sesión en Albion y volvé a entrar.'],
+      [!!identity.valid, 'Personaje detectado', 'Personaje detectado', identity.valid ? identity.name : 'JoinResponse es la única fuente de identidad']
+    ];
+    if (isDemo) {
+      node.innerHTML = '<div class="trk-demo-warning"><strong>MODO DEMO · NO ES TRACKING REAL</strong><small>Todos los datos son ficticios y no vienen de Albion.</small></div>';
+    } else {
+      node.innerHTML = steps.map(function (step) { return statusItem(step[0], step[1], step[2], step[3]); }).join('');
+    }
     var badge = el('trkLiveBadge');
-    if (badge) { badge.classList.toggle('active', hasData); badge.innerHTML = '<i></i> ' + (hasData ? 'Recibiendo datos' : 'En espera'); }
+    if (badge) {
+      badge.classList.toggle('active', phase === 'character_detected');
+      badge.classList.toggle('demo', isDemo);
+      var labels = {off:'Apagado',preparing:'Preparando captura',capturing_network:'Capturando red',photon_detected:'Photon detectado',server_confirmed:'Servidor confirmado',waiting_join:'Esperando JoinResponse',character_detected:'Personaje detectado',demo:'Demo · no real'};
+      badge.innerHTML = '<i></i> ' + (labels[phase] || 'En espera');
+    }
   }
 
   function setupContent(step) {
@@ -242,9 +260,9 @@
       '<span class="trk-setup-icon">✦</span><h2>Bienvenido a Ayudante Albion</h2><p>Vamos a preparar el seguimiento en vivo. La configuración toma menos de dos minutos y podés cambiarla después.</p>',
       '<span class="trk-setup-icon">▣</span><h2>Seleccioná la carpeta del juego</h2><p>Elegí la carpeta raíz de Albion Online, no la subcarpeta <code>game</code>.</p><div class="trk-launcher-grid"><div><b>Launcher independiente</b><code>C:\\AlbionOnline</code><small>Debe contener game, launcher, staging, EasyAntiCheat_Setup.exe y uninstall.exe.</small></div><div><b>Launcher de Steam</b><code>D:\\SteamLibrary\\steamapps\\common\\Albion Online</code><small>Normalmente está dentro de steamapps\\common.</small></div></div><div class="trk-path-row"><input id="trkSetupPath" type="text" value="' + esc(s.gamePath || '') + '" placeholder="C:\\AlbionOnline"><button class="btn" id="trkSetupBrowse" type="button">Examinar…</button></div>',
       '<span class="trk-setup-icon">✓</span><h2>Antes de continuar</h2><p>Albion Online debe estar instalado y poder iniciarse normalmente. El asistente no modifica los archivos del juego.</p><div class="trk-setup-callout">La captura es de solo lectura y se limita al tráfico UDP de Albion en los puertos <b>5055, 5056 y 5058</b>.</div>',
-      '<span class="trk-setup-icon">⌁</span><h2>Elegí el modo de seguimiento</h2><p>Podés cambiar el proveedor más adelante; hacerlo requiere reiniciar la herramienta.</p><div class="trk-provider-grid"><button data-provider="npcap" class="trk-provider-card ' + ((s.provider || 'npcap') === 'npcap' ? 'selected' : '') + '"><span>RECOMENDADO</span><b>NPCap</b><small>Controlador de red de bajo nivel. Requiere instalar NPCap por separado.</small><a href="https://npcap.com/#download" target="_blank" rel="noopener">Descargar NPCap ↗</a></button><button data-provider="socket" class="trk-provider-card ' + (s.provider === 'socket' ? 'selected' : '') + '"><b>Socket</b><small>Usa sockets sin procesar de Windows. No requiere NPCap, pero la app debe ejecutarse como administrador.</small></button></div>',
+      '<span class="trk-setup-icon">⌁</span><h2>Elegí el modo de seguimiento</h2><p>Los proveedores reales nunca caen silenciosamente al simulador.</p><div class="trk-provider-grid"><button data-provider="npcap" class="trk-provider-card ' + ((s.provider || 'npcap') === 'npcap' ? 'selected' : '') + '"><span>RECOMENDADO</span><b>NPCap · real</b><small>Controlador de red de bajo nivel. Requiere instalar NPCap por separado.</small><a href="https://npcap.com/#download" target="_blank" rel="noopener">Descargar NPCap ↗</a></button><button data-provider="socket" class="trk-provider-card ' + (s.provider === 'socket' ? 'selected' : '') + '"><b>Socket · real</b><small>Usa SIO_RCVALL en IPv4/IPv6. Requiere ejecutar la app como administrador.</small></button><button data-provider="demo" class="trk-provider-card trk-provider-demo ' + (s.provider === 'demo' ? 'selected' : '') + '"><span>NO REAL</span><b>Demo explícita</b><small>Genera datos ficticios para probar la interfaz. Nunca se presenta como captura de Albion.</small></button></div>',
       '<span class="trk-setup-icon">◎</span><h2>Personaje a rastrear</h2><p>La detección es automática al entrar al juego. Si indicás un nombre, solo se acumularán estadísticas cuando el Join detectado coincida con ese personaje.</p><input id="trkSetupCharacter" class="trk-setup-input" type="text" maxlength="32" value="' + esc(s.character || '') + '" placeholder="Nombre del personaje (opcional)">',
-      '<span class="trk-setup-icon">✓</span><h2>Todo listo</h2><p>Al activar el rastreo, el panel de Estado se actualizará cuando Albion empiece a enviar paquetes. Si no aparecen datos, revisá el adaptador de red y los permisos.</p><div class="trk-setup-summary"><span>Carpeta <b>' + esc(s.gamePath || 'Sin seleccionar') + '</b></span><span>Proveedor <b>' + esc((s.provider || 'npcap') === 'npcap' ? 'NPCap' : 'Socket') + '</b></span></div>'
+      '<span class="trk-setup-icon">✓</span><h2>Todo listo</h2><p>Cuando actives el rastreo por primera vez, quedará armado para iniciarse antes del próximo JoinResponse en aperturas futuras. Podés apagarlo cuando quieras.</p><div class="trk-setup-summary"><span>Carpeta <b>' + esc(s.gamePath || 'Sin seleccionar') + '</b></span><span>Proveedor <b>' + esc(providerLabel(s.provider || 'npcap')) + '</b></span></div>'
     ];
     return pages[step];
   }
@@ -393,15 +411,20 @@
         }).join('') + '</tbody></table>';
     }
     var operations = data.operations || {};
+    var envelope = data.envelope || {};
+    var capture = (latest && latest.capture) || {};
     node.innerHTML =
-      '<p class="muted small"><strong>Importante:</strong> la tabla de arriba son códigos cargados en la app (no prueba que hayan llegado por red). Esta sección muestra los códigos observados en la captura actual. ' +
-      'Los <em>desconocidos</em> son los que hay que agregar o corregir en la tabla.</p>' +
-      table('Eventos desconocidos', data.unknown, false) +
-      table('Eventos reconocidos', data.known, true) +
-      '<p class="muted small">La identidad llega en la respuesta de la operación <code>Join</code>. ' +
-      'Estas tablas registran solo código y frecuencia; no exponen nombres, GUIDs ni otros parámetros.</p>' +
-      table('Operaciones desconocidas', operations.unknown, false) +
-      table('Operaciones reconocidas', operations.known, true);
+      '<p class="muted small"><strong>Contadores seguros:</strong> UDP ' + esc(String(capture.packetsReceived || 0)) +
+      ' · Photon ' + esc(String(capture.photonPackets || 0)) + ' · decodificados ' + esc(String(capture.decodedMessages || 0)) +
+      ' · cifrados descartados ' + esc(String(capture.encryptedDropped || 0)) + ' · inválidos ' + esc(String(capture.malformedDropped || 0)) + '.</p>' +
+      '<p class="muted small">Los códigos 252/253 son la única autoridad. Los bytes del envelope se muestran abajo solo para diagnóstico. Mensajes sin código autoritativo: ' + esc(String(data.missingAuthoritativeCode || 0)) + '.</p>' +
+      table('Eventos desconocidos (252)', data.unknown, false) +
+      table('Eventos reconocidos (252)', data.known, true) +
+      table('Operaciones desconocidas (253)', operations.unknown, false) +
+      table('Operaciones reconocidas (253)', operations.known, true) +
+      table('Bytes de envelope · eventos (no autoritativos)', envelope.events, false) +
+      table('Bytes de envelope · operaciones (no autoritativos)', envelope.operations, false) +
+      '<p class="muted small">Este diagnóstico nunca expone nombres, GUIDs ni contenido de paquetes.</p>';
   }
 
   async function onToggle() {
@@ -412,9 +435,11 @@
       var info = AATracker.state();
       if (info.capturing) {
         await AATracker.stop();
+        setArmed(false);
       } else {
         var cfg = readSettings();
         await AATracker.restart(cfg.provider || 'npcap', cfg.adapter || '', cfg.character || '');
+        setArmed(true);
       }
     } catch (e) {
       setStatus('No se pudo cambiar el estado del tracking: ' + e.message);
@@ -429,7 +454,7 @@
     if (!btn) return;
     btn.disabled = true;
     detectingCharacter = true;
-    setStatus('Reiniciando la detección del personaje…');
+    setStatus('Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar. La captura quedó esperando JoinResponse.');
     try {
       var data = await AATracker.refreshCharacter();
       if (data && data.snapshot) {
@@ -485,9 +510,13 @@
     } else if (info.runError) {
       setStatus('La captura se detuvo: ' + info.runError);
     } else if (detectingCharacter) {
-      setStatus('Esperando un nuevo ingreso de personaje… Volvé al selector y entrá de nuevo; cambiar de zona no alcanza.');
+      setStatus('Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar. Cambiar de zona no alcanza.');
+    } else if (info.capture && info.capture.phase === 'demo') {
+      setStatus('MODO DEMO · NO ES TRACKING REAL · datos ficticios.');
+    } else if (info.identityValid && !info.filterMatched) {
+      setStatus('Personaje detectado, pero no coincide con el filtro del backend. No se acepta ninguna métrica.');
     } else if (info.capturing) {
-      setStatus('Tracking activo · fuente: ' + (info.source || 'desconocida'));
+      setStatus('Tracking real · ' + ((info.capture && info.capture.phase) || 'preparando') + ' · fuente: ' + (info.source || 'desconocida'));
     } else {
       setStatus('Tracking detenido. Activalo para empezar a medir.');
     }
@@ -496,8 +525,12 @@
   function paintKpis(snap) {
     var node = el('trkKpis');
     if (!node) return;
+    var identity = snap.identity || {};
     var cards = [
-      ['Personaje', esc(snap.character || '—')],
+      ['Personaje', esc(identity.name || snap.character || '—')],
+      ['GUID interno', esc(identity.guid || '—')],
+      ['Object ID', identity.objectId ? esc(String(identity.objectId)) : '—'],
+      ['Gremio / alianza', esc((identity.guild || '—') + ' / ' + (identity.alliance || '—'))],
       ['Zona', esc(snap.zone || '—')],
       ['Tiempo', clock(snap.seconds)],
       ['Fama', num(snap.fame)],
@@ -611,6 +644,12 @@
     setInterval(paint, 500);
 
     AATracker.connect();
+    var armed = readSettings();
+    if (armed.armed && !info.capturing) {
+      AATracker.restart(armed.provider || 'npcap', armed.adapter || '', armed.character || '').catch(function (error) {
+        setStatus('El tracking estaba armado, pero no pudo prepararse: ' + error.message);
+      });
+    }
     AATracker.session().then(function (snap) {
       latest = snap;
       dirty = true;

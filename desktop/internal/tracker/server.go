@@ -15,6 +15,7 @@ type Engine struct {
 	state  *State
 	source Source
 	codes  *CodeStore
+	store  *sessionStore
 
 	mu        sync.Mutex
 	cancel    context.CancelFunc
@@ -31,7 +32,7 @@ func NewEngine(src Source, codes *CodeStore, touch func()) *Engine {
 	if touch == nil {
 		touch = func() {}
 	}
-	return &Engine{hub: NewHub(), state: NewState(), source: src, codes: codes, touch: touch}
+	return &Engine{hub: NewHub(), state: NewState(), source: src, codes: codes, store: newSessionStore(), touch: touch}
 }
 
 func (e *Engine) runStatus() (bool, string) {
@@ -59,8 +60,26 @@ func (e *Engine) Start() error {
 	e.runID++
 	runID := e.runID
 	e.lastError = ""
+	provider := e.source.Name()
+	if configured, ok := e.source.(ProviderConfigurable); ok {
+		provider = configured.Provider()
+	}
 	e.mu.Unlock()
 
+	e.state.PrepareCapture(provider)
+	e.hub.Publish(NewEvent("status", e.state.Snapshot()))
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = e.store.Save(e.state.Snapshot())
+			}
+		}
+	}()
 	go func() {
 		e.finishRun(runID, e.source.Run(ctx, e.state, e.hub))
 	}()
@@ -79,9 +98,12 @@ func (e *Engine) finishRun(runID uint64, err error) {
 	}
 	e.mu.Unlock()
 
-	e.state.SetCapturing(false, false)
+	_ = e.store.Save(e.state.Snapshot())
 	if err != nil && !errors.Is(err, context.Canceled) {
+		e.state.CaptureFailed(err.Error())
 		e.hub.Publish(NewEvent("warning", map[string]any{"message": "La captura se detuvo: " + err.Error()}))
+	} else {
+		e.state.StopCapture()
 	}
 	e.hub.Publish(NewEvent("status", e.state.Snapshot()))
 }
@@ -98,7 +120,9 @@ func (e *Engine) Stop() {
 	e.runID++
 	e.lastError = ""
 	e.mu.Unlock()
-	e.state.SetCapturing(false, false)
+	_ = e.store.Save(e.state.Snapshot())
+	e.state.StopCapture()
+	e.hub.Publish(NewEvent("status", e.state.Snapshot()))
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {
@@ -114,14 +138,18 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		e.touch()
 		ok, reason := e.source.Available()
 		running, runError := e.runStatus()
+		snapshot := e.state.Snapshot()
 		body := map[string]any{
-			"edition":   "tracker",
-			"available": ok,
-			"reason":    reason,
+			"edition":           "tracker",
+			"available":         ok,
+			"reason":            reason,
 			"source":            e.source.Name(),
 			"trackingCharacter": e.state.TrackingCharacter(),
 			"capturing":         running,
-			"listeners": e.hub.Subscribers(),
+			"capture":           snapshot.Capture,
+			"identityValid":     snapshot.Identity.Valid,
+			"filterMatched":     snapshot.Identity.FilterMatched,
+			"listeners":         e.hub.Subscribers(),
 		}
 		if runError != "" {
 			body["runError"] = runError
@@ -291,6 +319,7 @@ func (e *Engine) Register(mux *http.ServeMux) {
 			http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
 			return
 		}
+		_ = e.store.Save(e.state.Snapshot())
 		e.state.Reset()
 		snap := e.state.Snapshot()
 		e.hub.Publish(NewEvent("snapshot", snap))

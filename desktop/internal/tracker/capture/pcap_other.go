@@ -14,6 +14,8 @@ import (
 type Device struct {
 	Name        string
 	Description string
+	Up          bool
+	Loopback    bool
 }
 
 // Handle es una captura abierta sobre una interfaz.

@@ -33,16 +33,16 @@ var (
 	loadOnce sync.Once
 	dll      *syscall.DLL
 
-	procFindAllDevs  *syscall.Proc
-	procFreeAllDevs  *syscall.Proc
-	procOpenLive     *syscall.Proc
-	procClose        *syscall.Proc
-	procNextEx       *syscall.Proc
-	procCompile      *syscall.Proc
-	procSetFilter    *syscall.Proc
-	procFreeCode     *syscall.Proc
-	procLibVersion   *syscall.Proc
-	procDataLink     *syscall.Proc
+	procFindAllDevs *syscall.Proc
+	procFreeAllDevs *syscall.Proc
+	procOpenLive    *syscall.Proc
+	procClose       *syscall.Proc
+	procNextEx      *syscall.Proc
+	procCompile     *syscall.Proc
+	procSetFilter   *syscall.Proc
+	procFreeCode    *syscall.Proc
+	procLibVersion  *syscall.Proc
+	procDataLink    *syscall.Proc
 
 	loadErr error
 )
@@ -58,10 +58,10 @@ type pcapIf struct {
 
 // pcap_pkthdr
 type pcapPktHdr struct {
-	TsSec   int32
-	TsUsec  int32
-	CapLen  uint32
-	Len     uint32
+	TsSec  int32
+	TsUsec int32
+	CapLen uint32
+	Len    uint32
 }
 
 // bpf_program
@@ -141,6 +141,8 @@ func Version() string {
 type Device struct {
 	Name        string
 	Description string
+	Up          bool
+	Loopback    bool
 }
 
 // Devices lista las interfaces que Npcap puede abrir.
@@ -161,7 +163,13 @@ func Devices() ([]Device, error) {
 
 	var out []Device
 	for d := head; d != nil; d = d.Next {
-		out = append(out, Device{Name: goStr(d.Name), Description: goStr(d.Description)})
+		// libpcap flags: LOOPBACK=0x1, UP=0x2. Older WinPcap builds may
+		// report zero; treat those as up for backward compatibility.
+		out = append(out, Device{
+			Name: goStr(d.Name), Description: goStr(d.Description),
+			Loopback: d.Flags&0x1 != 0,
+			Up:       d.Flags&0x2 != 0 || d.Flags == 0,
+		})
 	}
 	if len(out) == 0 {
 		return nil, errors.New("no hay interfaces de red disponibles (¿falta ejecutar como administrador?)")
