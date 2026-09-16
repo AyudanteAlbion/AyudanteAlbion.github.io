@@ -144,6 +144,50 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, diag.Diagnostic())
 	})
 
+	mux.HandleFunc("/api/tracker/devices", func(w http.ResponseWriter, r *http.Request) {
+		e.touch()
+		configurable, ok := e.source.(DeviceConfigurable)
+		if !ok {
+			writeJSON(w, http.StatusOK, map[string]any{"devices": []any{}})
+			return
+		}
+		devices, err := configurable.Devices()
+		if err != nil {
+			writeJSON(w, http.StatusConflict, map[string]any{"devices": []any{}, "reason": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"devices": devices})
+	})
+
+	// Aplica el proveedor y el adaptador elegidos y reinicia la captura. Socket
+	// valida al arrancar que Windows haya concedido permisos de administrador.
+	mux.HandleFunc("/api/tracker/restart", func(w http.ResponseWriter, r *http.Request) {
+		e.touch()
+		if r.Method != http.MethodPost {
+			http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
+		if configurable, ok := e.source.(ProviderConfigurable); ok {
+			if err := configurable.SetProvider(r.URL.Query().Get("provider")); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "reason": err.Error()})
+				return
+			}
+		}
+		if configurable, ok := e.source.(DeviceConfigurable); ok {
+			configurable.SetDevice(r.URL.Query().Get("adapter"))
+		}
+		if ok, reason := e.source.Available(); !ok {
+			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": reason})
+			return
+		}
+		e.Stop()
+		if err := e.Start(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "reason": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "capturing": true, "source": e.source.Name()})
+	})
+
 	mux.HandleFunc("/api/tracker/start", func(w http.ResponseWriter, r *http.Request) {
 		e.touch()
 		if r.Method != http.MethodPost {
@@ -168,21 +212,9 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "capturing": false})
 	})
 
-	mux.HandleFunc("/api/tracker/reset", func(w http.ResponseWriter, r *http.Request) {
-		e.touch()
-		if r.Method != http.MethodPost {
-			http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
-			return
-		}
-		e.state.Reset()
-		snap := e.state.Snapshot()
-		e.hub.Publish(NewEvent("snapshot", snap))
-		writeJSON(w, http.StatusOK, snap)
-	})
-
-	// Refrescar personaje no intenta adivinar la identidad desde los eventos de
-	// otros jugadores. Borra la identidad previa y espera la próxima respuesta
-	// Join del servidor, la fuente autoritativa del personaje local.
+	// Fuerza una nueva detección del personaje. Se limpia solo la identidad
+	// (no las estadísticas de la sesión) y se reinicia/activa la captura para
+	// que el próximo Join de Albion vuelva a fijarla.
 	mux.HandleFunc("/api/tracker/character/refresh", func(w http.ResponseWriter, r *http.Request) {
 		e.touch()
 		if r.Method != http.MethodPost {
@@ -193,21 +225,32 @@ func (e *Engine) Register(mux *http.ServeMux) {
 			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": reason})
 			return
 		}
-		if !e.running() {
-			if err := e.Start(); err != nil {
-				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": err.Error()})
-				return
-			}
+		wasRunning := e.running()
+		if wasRunning {
+			e.Stop()
 		}
-		e.state.ForgetIdentity()
+		e.state.ClearCharacter()
+		if err := e.Start(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "reason": err.Error()})
+			return
+		}
+		snap := e.state.Snapshot()
+		e.hub.Publish(NewEvent("status", snap))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "capturing": true, "restarted": wasRunning, "snapshot": snap,
+		})
+	})
+
+	mux.HandleFunc("/api/tracker/reset", func(w http.ResponseWriter, r *http.Request) {
+		e.touch()
+		if r.Method != http.MethodPost {
+			http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
 		e.state.Reset()
 		snap := e.state.Snapshot()
 		e.hub.Publish(NewEvent("snapshot", snap))
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":       true,
-			"capturing": e.running(),
-			"snapshot":  snap,
-		})
+		writeJSON(w, http.StatusOK, snap)
 	})
 
 	mux.HandleFunc("/api/tracker/session", func(w http.ResponseWriter, r *http.Request) {

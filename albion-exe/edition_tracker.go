@@ -31,13 +31,17 @@ func registerEdition(mux *http.ServeMux, touch func(), appFiles fs.FS) {
 
 	// Npcap disponible → captura real. Si no, el simulador: la interfaz sigue
 	// siendo usable y se ve exactamente cómo va a funcionar una vez instalado.
-	var source tracker.Source = tracker.NewLiveSource(store)
-	if ok, _ := source.Available(); !ok {
-		source = tracker.FallbackSource{
-			Primary:  source,
+	live := tracker.NewLiveSource(store)
+	var npcap tracker.Source = live
+	if ok, _ := live.Available(); !ok {
+		npcap = tracker.FallbackSource{
+			Primary:  live,
 			Fallback: tracker.Simulator{},
 		}
 	}
-
+	// El usuario puede elegir Npcap (predeterminado) o el socket sin procesar
+	// de Windows. SelectableSource mantiene el proveedor detrás de la misma
+	// API que consume el frontend (AATracker.restart/devices).
+	source := tracker.NewSelectableSource(npcap, tracker.NewSocketSource(store))
 	tracker.NewEngine(source, store, touch).Register(mux)
 }
