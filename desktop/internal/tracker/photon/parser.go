@@ -20,6 +20,15 @@ const (
 	msgOperationRequest  = 2
 	msgOperationResponse = 3
 	msgEventData         = 4
+	// msgOperationResponseAlt es una variante que algunos builds de Albion
+	// usan para el mismo OperationResponse en vez del tipo 3 estándar.
+	// Confirmado en implementaciones independientes del mismo protocolo
+	// (p.ej. ao-data/albiondata-client, que la llama msgResponseAlt, y
+	// cantalupo555/albion-lens, que la llama MessageTypeInternalResponse):
+	// ambas la despachan al mismo decodificador que el tipo 3. Si no se
+	// reconoce, el tracker nunca ve la respuesta a Join ni a ChangeCluster
+	// y se queda en "Personaje no detectado"/"Ubicación no detectada".
+	msgOperationResponseAlt = 7
 
 	fragmentTTL      = 30 * time.Second
 	maxFragmentSets  = 64
@@ -330,7 +339,7 @@ func (p *Parser) message(data []byte) bool {
 		if p.handler.OnRequest != nil {
 			p.handler.OnRequest(op)
 		}
-	case msgOperationResponse:
+	case msgOperationResponse, msgOperationResponseAlt:
 		var op *OperationResponse
 		var err error
 		if protocol18 {
