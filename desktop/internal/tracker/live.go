@@ -33,17 +33,19 @@ const bpfFilter = "((ip and ((udp and (port 5055 or port 5056 or port 5058)) or 
 type LiveSource struct {
 	store *CodeStore
 
-	mu                sync.Mutex
-	diag              bool
-	diagSeen          map[int32]int
-	diagOps           map[int32]int
-	diagEventEnvelope map[byte]int
-	diagOpEnvelope    map[byte]int
-	diagMissingCodes  uint64
-	lastError         string
-	device            string // vacío = todas las interfaces disponibles
-	activeDevice      string
-	lastValid         time.Time
+	mu                    sync.Mutex
+	diag                  bool
+	diagSeen              map[int32]int
+	diagOps               map[int32]int
+	diagEventEnvelope     map[byte]int
+	diagOpEnvelope        map[byte]int
+	diagMissingCodes      uint64
+	diagMissingEventCodes uint64
+	diagMissingOpCodes    uint64
+	lastError             string
+	device                string // vacío = todas las interfaces disponibles
+	activeDevice          string
+	lastValid             time.Time
 }
 
 // NewLiveSource arma la fuente de captura con la tabla de códigos indicada.
@@ -125,6 +127,8 @@ func (l *LiveSource) SetDiagnostic(on bool) {
 		l.diagEventEnvelope = make(map[byte]int)
 		l.diagOpEnvelope = make(map[byte]int)
 		l.diagMissingCodes = 0
+		l.diagMissingEventCodes = 0
+		l.diagMissingOpCodes = 0
 	}
 	l.mu.Unlock()
 }
@@ -174,12 +178,13 @@ func (l *LiveSource) Diagnostic() map[string]any {
 		return out
 	}
 	return map[string]any{
-		"enabled":                  l.diag,
-		"known":                    events["known"],
-		"unknown":                  events["unknown"],
-		"operations":               operations,
-		"envelope":                 map[string]any{"events": envelopes(l.diagEventEnvelope), "operations": envelopes(l.diagOpEnvelope)},
-		"missingAuthoritativeCode": l.diagMissingCodes,
+		"enabled":                   l.diag,
+		"known":                     events["known"],
+		"unknown":                   events["unknown"],
+		"operations":                operations,
+		"envelope":                  map[string]any{"events": envelopes(l.diagEventEnvelope), "operations": envelopes(l.diagOpEnvelope)},
+		"missingAuthoritativeCode":  l.diagMissingCodes,
+		"missingAuthoritativeCodes": map[string]uint64{"event252": l.diagMissingEventCodes, "operation253": l.diagMissingOpCodes},
 	}
 }
 
@@ -517,7 +522,7 @@ func (h *handlers) request(op *photon.OperationRequest) {
 	h.recordEnvelope(false, op.Code)
 	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
 	if !ok {
-		h.recordMissingCode()
+		h.recordMissingCode(false)
 		return
 	}
 	h.recordOperation(code)
@@ -535,7 +540,7 @@ func (h *handlers) response(op *photon.OperationResponse) {
 	}
 	code, ok := realCode(op.Parameters, h.codes.OperationCodeKey(), op.Code)
 	if !ok {
-		h.recordMissingCode()
+		h.recordMissingCode(false)
 		return
 	}
 	h.recordOperation(code)
@@ -558,13 +563,18 @@ func (h *handlers) recordEnvelope(event bool, code byte) {
 	h.src.mu.Unlock()
 }
 
-func (h *handlers) recordMissingCode() {
+func (h *handlers) recordMissingCode(event bool) {
 	if h.src == nil {
 		return
 	}
 	h.src.mu.Lock()
 	if h.src.diag {
 		h.src.diagMissingCodes++
+		if event {
+			h.src.diagMissingEventCodes++
+		} else {
+			h.src.diagMissingOpCodes++
+		}
 	}
 	h.src.mu.Unlock()
 }
@@ -683,7 +693,7 @@ func (h *handlers) event(ev *photon.EventData) {
 	// Parameter 252 is authoritative. The envelope byte is diagnostic only.
 	code, ok := realCode(ev.Parameters, h.codes.EventCodeKey(), ev.Code)
 	if !ok {
-		h.recordMissingCode()
+		h.recordMissingCode(true)
 		return
 	}
 

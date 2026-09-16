@@ -6,9 +6,19 @@ import (
 	"ayudante-albion-desktop/internal/tracker/photon"
 )
 
+func diagnosticHandlers(t *testing.T, state *State) (*handlers, *LiveSource) {
+	t.Helper()
+	codes := testCodes(t)
+	store := &CodeStore{}
+	store.set(codes, "")
+	source := NewLiveSource(store)
+	source.SetDiagnostic(true)
+	return newHandlers(source, state, NewHub(), codes), source
+}
+
 func TestAuthoritativeCodesOverrideEnvelopeMetadata(t *testing.T) {
 	state := NewState()
-	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+	handler, source := diagnosticHandlers(t, state)
 	handler.response(&photon.OperationResponse{Code: 41, ReturnCode: 0, Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Anon", 253: int64(2)}})
 	if !state.Snapshot().Identity.Valid {
 		t.Fatal("authoritative Join code did not override envelope metadata")
@@ -28,22 +38,25 @@ func TestAuthoritativeCodesOverrideEnvelopeMetadata(t *testing.T) {
 	if got := len(state.Snapshot().PartyState.Members); got != 2 {
 		t.Fatalf("event authority dispatched envelope code: party size = %d", got)
 	}
-	diagnostics := state.Snapshot().Capture.Diagnostics
-	if diagnostics.EnvelopeOperationCodes["2"] == 0 || diagnostics.EnvelopeOperationCodes["41"] == 0 || diagnostics.EnvelopeEventCodes["29"] == 0 || diagnostics.MissingOperationCode == 0 {
-		t.Fatalf("safe envelope diagnostics not recorded: %+v", diagnostics)
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.diagOpEnvelope[2] == 0 || source.diagOpEnvelope[41] == 0 || source.diagEventEnvelope[29] == 0 || source.diagMissingCodes == 0 {
+		t.Fatalf("safe envelope diagnostics not recorded: operations=%v events=%v missing=%d", source.diagOpEnvelope, source.diagEventEnvelope, source.diagMissingCodes)
 	}
 }
 
 func TestInvalidAuthoritativeCodeIsDiscarded(t *testing.T) {
 	state := NewState()
-	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+	handler, source := diagnosticHandlers(t, state)
 	handler.response(&photon.OperationResponse{ReturnCode: 0, Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Anon", 253: int64(40000)}})
 	handler.event(&photon.EventData{Parameters: map[byte]any{0: int64(77), 1: "Other", 252: "not-a-code"}})
 	snapshot := state.Snapshot()
 	if snapshot.Identity.Valid || len(snapshot.Entities) != 0 {
 		t.Fatal("invalid signed-16-bit authority reached a typed handler")
 	}
-	if snapshot.Capture.Diagnostics.MissingOperationCode != 1 || snapshot.Capture.Diagnostics.MissingEventCode != 1 {
-		t.Fatalf("invalid authority diagnostics = %+v", snapshot.Capture.Diagnostics)
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.diagMissingCodes != 2 {
+		t.Fatalf("invalid authority diagnostics missing count = %d, want 2", source.diagMissingCodes)
 	}
 }

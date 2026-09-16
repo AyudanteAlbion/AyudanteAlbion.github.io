@@ -10,7 +10,7 @@ func TestAllRealMetricsRequireValidMatchingLocalIdentity(t *testing.T) {
 		t.Fatal("pre-identity metric was accepted")
 	}
 	snapshot := state.Snapshot()
-	if snapshot.Damage != 0 || snapshot.Fame != 0 || snapshot.Silver != 0 || snapshot.Respec != 0 || len(snapshot.Loot) != 0 {
+	if snapshot.Fame != 0 || snapshot.Silver != 0 || snapshot.Respec != 0 || len(snapshot.Loot) != 0 || len(snapshot.Combatants) != 0 {
 		t.Fatalf("pre-identity metrics leaked: %+v", snapshot)
 	}
 

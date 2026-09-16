@@ -40,7 +40,7 @@ func TestIPv4FragmentReassemblyOutOfOrder(t *testing.T) {
 	if !ok {
 		t.Fatal("complete fragmented UDP datagram was not emitted")
 	}
-	if string(datagram.Payload) != string(application) || datagram.SourcePort != 5055 || datagram.DestPort != 5056 {
+	if string(datagram.Payload) != string(application) || datagram.SourcePort != 5055 || datagram.DestinationPort != 5056 {
 		t.Fatalf("unexpected datagram: %+v", datagram)
 	}
 }

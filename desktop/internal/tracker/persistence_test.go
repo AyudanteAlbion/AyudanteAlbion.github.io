@@ -34,7 +34,7 @@ func TestSessionPersistenceRequiresRealConfirmedIdentity(t *testing.T) {
 	}
 
 	demo := NewState()
-	demo.SetSimulated(true)
+	demo.SetDemoCapture(true)
 	demo.ApplyJoinIdentity(identity)
 	before := len(entries)
 	if err := store.Save(demo.Snapshot()); err != nil {
