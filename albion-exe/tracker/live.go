@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ type LiveSource struct {
 	diagSeen  map[int32]int
 	diagOps   map[int32]int
 	lastError string
+	device    string // vacío = todas las interfaces disponibles
 }
 
 // NewLiveSource arma la fuente de captura con la tabla de códigos indicada.
@@ -46,6 +48,18 @@ func (l *LiveSource) Name() string {
 }
 
 // Available informa si se puede capturar en esta PC.
+func (l *LiveSource) Devices() ([]map[string]string, error) {
+	devices, err := capture.Devices()
+	if err != nil { return nil, err }
+	out := make([]map[string]string, 0, len(devices))
+	for _, d := range devices { out = append(out, map[string]string{"name": d.Name, "description": d.Description}) }
+	return out, nil
+}
+
+func (l *LiveSource) SetDevice(name string) {
+	l.mu.Lock(); l.device = name; l.mu.Unlock()
+}
+
 func (l *LiveSource) Available() (bool, string) {
 	ok, reason := capture.Available()
 	if !ok {
@@ -135,8 +149,13 @@ func (l *LiveSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	}
 
 	devices, err := capture.Devices()
-	if err != nil {
-		return err
+	if err != nil { return err }
+	l.mu.Lock(); selected := l.device; l.mu.Unlock()
+	if selected != "" {
+		filtered := devices[:0]
+		for _, d := range devices { if d.Name == selected { filtered = append(filtered, d) } }
+		if len(filtered) == 0 { return fmt.Errorf("el adaptador seleccionado ya no está disponible") }
+		devices = filtered
 	}
 
 	// Albion habla por una sola interfaz, pero cuál depende de la PC (Wi-Fi,
@@ -206,6 +225,7 @@ func (l *LiveSource) pump(ctx context.Context, device string, st *State, hub *Hu
 				continue // timeout de lectura
 			}
 			if payload := udpPayload(data, handle.LinkType()); payload != nil {
+				st.MarkPacket()
 				parser.Receive(payload)
 			}
 		}
@@ -395,6 +415,13 @@ func (h *handlers) nameOf(id int64) string {
 	return h.names[id]
 }
 
+// isSelf dice si el id de entidad es el del personaje propio.
+func (h *handlers) isSelf(id int64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.selfID >= 0 && h.selfID == id
+}
+
 // request se conserva como respaldo para versiones que incluyan la identidad
 // en el pedido del cliente. La fuente principal es response: Albion devuelve
 // los datos del personaje propio en la respuesta exitosa a Join.
@@ -405,6 +432,7 @@ func (h *handlers) request(op *photon.OperationRequest) {
 	}
 	h.recordOperation(code)
 	h.identify(code, op.Parameters)
+	h.operation(code, op.Parameters)
 }
 
 // response procesa las respuestas del servidor. La aplicación de referencia
@@ -420,6 +448,7 @@ func (h *handlers) response(op *photon.OperationResponse) {
 	}
 	h.recordOperation(code)
 	h.identify(code, op.Parameters)
+	h.operation(code, op.Parameters)
 }
 
 // recordOperation mantiene el diagnóstico libre de contenido: registra solo
@@ -464,7 +493,88 @@ func (h *handlers) identify(code int32, params map[byte]any) {
 			}
 		}
 	}
+
+	// El mismo JoinResponse trae el mapa donde apareció el personaje
+	// (parámetro 8 = MapIndex). Sin esto la ubicación quedaba en "no
+	// detectada" hasta el primer cambio de zona, que además nunca llegaba
+	// porque ChangeCluster no se estaba escuchando.
+	if zoneIdx, ok := h.codes.SelfOp.Parameters["zone"]; ok && zoneIdx >= 0 && zoneIdx <= 255 {
+		if zone := clusterName(params[byte(zoneIdx)]); zone != "" {
+			h.enterZone(zone)
+		}
+	}
 	h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+}
+
+// operation atiende las operaciones que no identifican al personaje pero sí
+// cambian el contexto de la sesión. ChangeCluster es la importante: Albion la
+// manda como OPERACIÓN (no como evento) cada vez que el personaje cambia de
+// zona, y su respuesta trae el cluster nuevo en el parámetro 0.
+func (h *handlers) operation(code int32, params map[byte]any) {
+	name, ok := h.codes.OperationName(code)
+	if !ok || name != "ChangeCluster" {
+		return
+	}
+	idx, ok := h.codes.Param(name, "zone")
+	if !ok {
+		return
+	}
+	zone := clusterName(params[idx])
+	if zone == "" {
+		return
+	}
+	h.enterZone(zone)
+}
+
+// enterZone registra el mapa nuevo y avisa al frontend. Al cambiar de cluster
+// el servidor deja de reportar a las entidades del mapa anterior, así que el
+// índice de nombres se descarta: los jugadores de la zona nueva llegan otra
+// vez por NewCharacter. La identidad propia se conserva, que es justamente lo
+// que permite seguir midiendo sin volver a iniciar sesión.
+func (h *handlers) enterZone(zone string) {
+	if zone == "" {
+		return
+	}
+	if h.st.Zone() == zone {
+		return // reenvío de la misma zona: no duplicar la visita
+	}
+
+	h.mu.Lock()
+	selfID, selfName := h.selfID, ""
+	if selfID >= 0 {
+		selfName = h.names[selfID]
+	}
+	h.names = make(map[int64]string)
+	if selfName != "" {
+		h.names[selfID] = selfName
+	}
+	h.mu.Unlock()
+
+	h.st.EnterZone(zone)
+	h.hub.Publish(NewEvent("map", map[string]any{"zone": zone}))
+	h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+}
+
+// clusterName normaliza el identificador de zona que manda Albion. Puede ser
+// un índice numérico ("1234"), un nombre de cluster, o una cadena compuesta
+// "guid@tipo@extra" en mazmorras y refugios: en ese caso la app de referencia
+// se queda con el primer tramo.
+func clusterName(v any) string {
+	switch value := v.(type) {
+	case string:
+		name := value
+		if i := strings.IndexByte(name, '@'); i > 0 {
+			name = name[:i]
+		}
+		return name
+	case nil:
+		return ""
+	default:
+		if n, ok := num(v); ok {
+			return fmt.Sprintf("%d", n)
+		}
+	}
+	return ""
 }
 
 func (h *handlers) event(ev *photon.EventData) {
@@ -497,6 +607,13 @@ func (h *handlers) event(ev *photon.EventData) {
 		if ok1 && ok2 && who != "" {
 			h.mu.Lock()
 			h.names[id] = who
+			// Si la captura arrancó con la sesión ya iniciada nunca se vio el
+			// JoinResponse, pero el personaje propio igual se reanuncia al
+			// entrar a cada zona. Recuperar su id permite atribuirle daño y
+			// plata sin pedirle al usuario que reinicie el juego.
+			if h.selfID < 0 && who == h.st.Character() {
+				h.selfID = id
+			}
 			h.mu.Unlock()
 		}
 
@@ -507,10 +624,12 @@ func (h *handlers) event(ev *photon.EventData) {
 			h.mu.Unlock()
 		}
 
-	case "JoinFinished", "ChangeCluster":
-		if zone, ok := h.paramStr(name, p, "zone"); ok && zone != "" {
-			h.st.EnterZone(zone)
-			h.hub.Publish(NewEvent("map", map[string]any{"zone": zone}))
+	// ChangeCluster NO existe como evento: es una operación y se atiende en
+	// operation(). Acá solo queda JoinFinished, que confirma la entrada al
+	// mapa después de un Join.
+	case "JoinFinished":
+		if idx, ok := h.codes.Param(name, "zone"); ok {
+			h.enterZone(clusterName(p[idx]))
 		}
 
 	case "HealthUpdate":
@@ -527,9 +646,19 @@ func (h *handlers) event(ev *photon.EventData) {
 			h.st.AddRespec(gained / 10000)
 		}
 
-	case "UpdateCurrency", "TakeSilver", "PartySilverGained":
+	case "TakeSilver":
+		// La plata recogida del mundo solo cuenta si la levantó el personaje
+		// propio: el servidor también reporta la de la party.
+		if id, ok := h.paramNum(name, p, "id"); ok && !h.isSelf(id) {
+			break
+		}
+		if gained, ok := h.paramNum(name, p, "amount"); ok && gained > 0 {
+			h.st.AddSilver(gained / 10000)
+		}
+
+	case "UpdateCurrency", "PartySilverGained":
 		field := "gained"
-		if name != "UpdateCurrency" {
+		if name == "PartySilverGained" {
 			field = "amount"
 		}
 		if gained, ok := h.paramNum(name, p, field); ok && gained > 0 {
@@ -539,6 +668,12 @@ func (h *handlers) event(ev *photon.EventData) {
 	case "PartyPlayerJoined":
 		if who, ok := h.paramStr(name, p, "name"); ok && who != "" {
 			h.st.AddPartyMember(who)
+			h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+		}
+
+	case "PartyPlayerLeft":
+		if id, ok := h.paramNum(name, p, "id"); ok {
+			h.st.RemovePartyMember(h.nameOf(id))
 			h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 		}
 
@@ -574,8 +709,8 @@ func (h *handlers) health(event string, p map[byte]any) {
 	}
 
 	if amount < 0 {
-		if source == "" {
-			return // daño de algo que no tenemos identificado
+		if !h.st.IsTrackedPlayer(source) {
+			return // nunca medir enemigos ni jugadores ajenos a la party
 		}
 		h.st.AddDamage(source, target, -amount)
 		h.hub.Publish(NewEvent("damage", map[string]any{
@@ -584,8 +719,8 @@ func (h *handlers) health(event string, p map[byte]any) {
 		return
 	}
 
-	if source == "" {
-		return
+	if !h.st.IsTrackedPlayer(source) {
+		return // la curación ajena tampoco debe perfilar a terceros
 	}
 	h.st.AddHealing(source, amount, 0)
 	h.hub.Publish(NewEvent("heal", map[string]any{
@@ -594,15 +729,21 @@ func (h *handlers) health(event string, p map[byte]any) {
 }
 
 func (h *handlers) loot(event string, p map[byte]any) {
-	looterID, _ := h.paramNum(event, p, "looter")
 	itemID, hasItem := h.paramNum(event, p, "itemId")
 	qty, _ := h.paramNum(event, p, "quantity")
 	if !hasItem {
 		return
 	}
-	looter := h.nameOf(looterID)
-	if looter == "" {
-		looter = "desconocido"
+	// Albion manda el nombre del saqueador como texto, no como id de entidad.
+	// Si alguna tabla vieja lo declara numérico se resuelve contra el índice.
+	looter, ok := h.paramStr(event, p, "looter")
+	if !ok || looter == "" {
+		if id, ok := h.paramNum(event, p, "looter"); ok {
+			looter = h.nameOf(id)
+		}
+	}
+	if !h.st.IsTrackedPlayer(looter) {
+		return // botín únicamente propio o de la party actual
 	}
 	if qty <= 0 {
 		qty = 1

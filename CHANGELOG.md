@@ -93,6 +93,17 @@ README de la versión: [`docs/releases/v1.3.0-README.md`](docs/releases/v1.3.0-R
 - **Plata y botín dejan de contar de más.** `TakeSilver` solo suma si la levantó
   el personaje propio, y el saqueador de `OtherGrabbedLoot` se lee como nombre
   (que es como lo manda el juego) en lugar de como id de entidad.
+- **El fix de detección de personaje/zona de arriba llega por fin al ejecutable
+  real.** Se había corregido antes en `desktop/internal/tracker` (la copia
+  usada por la variante Wails), pero `AyudanteAlbion-Tracker.exe` se compila
+  desde `albion-exe/tracker`, una copia forkeada aparte que nunca recibió el
+  port: seguía tratando `ChangeCluster` como evento y no leía la zona del
+  `Join` inicial, así que el bug persistía en la app que la gente baja aunque
+  el changelog ya lo diera por corregido. Ahora `albion-exe/tracker` está
+  sincronizado con la versión corregida (incluidos los endpoints
+  `/api/tracker/devices` y `/api/tracker/restart` que la interfaz ya llamaba
+  para elegir Npcap/socket y adaptador de red, y que faltaban del todo en el
+  backend distribuido).
 - **Los avisos de cambios vuelven a llegar a Discord**: el workflow ahora
   detecta `CHANGELOG.md` y `README.md` comparando los árboles Git anterior y
   nuevo del push. Antes dependía de la lista `commits` del evento, que podía no

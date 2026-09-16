@@ -58,6 +58,7 @@ type Snapshot struct {
 	Combatants  []Combatant `json:"combatants"`
 	Maps        []MapVisit  `json:"maps"`
 	Loot        []LootEntry `json:"loot"`
+	Packets     uint64      `json:"packets"`
 }
 
 const (
@@ -82,6 +83,7 @@ type State struct {
 	players   map[string]*Combatant
 	maps      []MapVisit
 	loot      []LootEntry
+	packets   uint64
 }
 
 // NewState crea el estado de una sesión nueva.
@@ -114,23 +116,22 @@ func (s *State) SetCapturing(on, simulated bool) {
 func (s *State) SetCharacter(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Solo puede haber una fila propia. Esto también cubre un cambio de
+	// personaje sin reiniciar la aplicación.
+	for _, player := range s.players {
+		player.Self = false
+	}
 	s.character = name
 	if name != "" {
 		s.player(name).Self = true
 	}
 }
 
-// ForgetIdentity elimina la identidad y party detectadas para esperar una
-// nueva respuesta Join. Se usa al pedir que se refresque el personaje: las
-// estadísticas se reinician después para no mezclar dos identidades.
-func (s *State) ForgetIdentity() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.character = ""
-	s.party = nil
-	for _, c := range s.players {
-		c.Self = false
-	}
+// ClearCharacter descarta la detección actual sin tocar los contadores de la
+// sesión. La captura volverá a completarla al recibir el próximo Join del
+// juego (al entrar o cambiar de zona/personaje).
+func (s *State) ClearCharacter() {
+	s.SetCharacter("")
 }
 
 // SetParty reemplaza la lista de miembros de la party.
@@ -157,6 +158,60 @@ func (s *State) AddPartyMember(name string) {
 	}
 	s.party = append(s.party, name)
 	s.player(name)
+}
+
+// RemovePartyMember deja de aceptar estadísticas nuevas de quien salió de la
+// party. Su fila histórica se conserva en la sesión, igual que en un medidor
+// de grupo convencional.
+func (s *State) RemovePartyMember(name string) {
+	if name == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.party[:0]
+	for _, member := range s.party {
+		if member != name {
+			out = append(out, member)
+		}
+	}
+	s.party = out
+}
+
+// IsTrackedPlayer limita el análisis al personaje propio y su party. Aunque
+// el protocolo anuncie otros personajes visibles, nunca se agregan enemigos o
+// jugadores ajenos al medidor ni al registro de botín.
+func (s *State) IsTrackedPlayer(name string) bool {
+	if name == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if name == s.character {
+		return true
+	}
+	for _, member := range s.party {
+		if member == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Character devuelve el personaje detectado, o vacío si todavía no se sabe.
+// Existe para no armar un Snapshot completo (que ordena y copia todo) cada vez
+// que llega un evento.
+func (s *State) Character() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.character
+}
+
+// Zone devuelve el mapa actual, o vacío si todavía no se detectó.
+func (s *State) Zone() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.zone
 }
 
 // EnterZone cierra la visita anterior y abre una nueva.
@@ -223,6 +278,7 @@ func (s *State) AddKill(killer, victim string) {
 }
 
 // AddFame, AddSilver y AddRespec acumulan las ganancias de la sesión.
+func (s *State) MarkPacket()       { s.mu.Lock(); s.packets++; s.mu.Unlock() }
 func (s *State) AddFame(v int64)   { s.mu.Lock(); s.fame += v; s.mu.Unlock() }
 func (s *State) AddSilver(v int64) { s.mu.Lock(); s.silver += v; s.mu.Unlock() }
 func (s *State) AddRespec(v int64) { s.mu.Lock(); s.respec += v; s.mu.Unlock() }
@@ -247,6 +303,7 @@ func (s *State) Reset() {
 	defer s.mu.Unlock()
 	s.startedAt = time.Now()
 	s.fame, s.silver, s.respec = 0, 0, 0
+	s.packets = 0
 	s.players = make(map[string]*Combatant)
 	s.loot = nil
 	s.maps = nil
@@ -332,5 +389,6 @@ func (s *State) Snapshot() Snapshot {
 		Combatants:  list,
 		Maps:        maps,
 		Loot:        loot,
+		Packets:     s.packets,
 	}
 }
