@@ -25,6 +25,53 @@ func TestGUIDFromPhotonUsesSystemGuidByteOrder(t *testing.T) {
 	}
 }
 
+// El GUID puede llegar en varias formas según cómo lo empaquete Photon. Si
+// alguna no se reconoce, se pierde la identidad local entera, así que todas
+// deben resolver al mismo GUID canónico.
+func TestGUIDFromPhotonAcceptsEveryWireShape(t *testing.T) {
+	const want = "00112233-4455-6677-8899-aabbccddeeff"
+
+	generic := make([]any, 0, len(localGUIDBytes))
+	for _, b := range localGUIDBytes {
+		generic = append(generic, b)
+	}
+	var fixed [16]byte
+	copy(fixed[:], localGUIDBytes)
+	custom := photon.CustomValue{Code: 1, Data: localGUIDBytes}
+
+	cases := map[string]any{
+		"CustomValue":         custom,
+		"puntero CustomValue": &custom,
+		"[]byte":              localGUIDBytes,
+		"[16]byte":            fixed,
+		"[]any de bytes":      generic,
+		"texto canónico":      want,
+		"texto sin guiones":   "00112233445566778899aabbccddeeff",
+		"texto en mayúsculas": "00112233-4455-6677-8899-AABBCCDDEEFF",
+	}
+	for name, value := range cases {
+		got, ok := GUIDFromPhoton(value)
+		if !ok || got != want {
+			t.Errorf("GUIDFromPhoton(%s) = %q/%v, want %q/true", name, got, ok, want)
+		}
+	}
+}
+
+func TestGUIDFromPhotonRejectsInvalidShapes(t *testing.T) {
+	cases := map[string]any{
+		"nil":            nil,
+		"entero":         int64(42),
+		"corto":          []byte{0x01, 0x02},
+		"texto corto":    "00112233",
+		"[]any no bytes": []any{"a", "b"},
+	}
+	for name, value := range cases {
+		if got, ok := GUIDFromPhoton(value); ok {
+			t.Errorf("GUIDFromPhoton(%s) = %q, want rechazo", name, got)
+		}
+	}
+}
+
 func TestEntityStoreRebindsObjectIDByGUID(t *testing.T) {
 	store := NewEntityStore()
 	localGUID, _ := GUIDFromPhoton(localGUIDBytes)

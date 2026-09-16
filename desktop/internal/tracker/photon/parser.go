@@ -30,10 +30,12 @@ const (
 	// y se queda en "Personaje no detectado"/"Ubicación no detectada".
 	msgOperationResponseAlt = 7
 
-	// protocol16Signature es la firma de los mensajes Protocol16 ('ó', 0xF3).
-	// El juego hoy manda Protocol18 con firma 0x00, pero varias capturas y
-	// builds usan otros valores de relleno: solo esta firma exacta selecciona
-	// el decodificador viejo.
+	// protocol16Signature es la firma histórica de Photon ('ó', 0xF3).
+	// YA NO selecciona decodificador: es el signifier byte del mensaje, no un
+	// número de versión, y usarlo como selector hacía que el juego actual
+	// cayera en Protocol16 y perdiera el JoinResponse. Se conserva como
+	// constante documental y para las pruebas de capturas históricas, que hoy
+	// se resuelven por el reintento de `message`.
 	protocol16Signature = 0xf3
 
 	fragmentTTL      = 30 * time.Second
@@ -96,6 +98,14 @@ type Inspection struct {
 
 // Inspect validates every coalesced Photon envelope in a UDP payload. An
 // encrypted envelope is valid Photon traffic but is reported for discard.
+//
+// El relleno final NO invalida el datagrama. La aplicación de referencia
+// avanza paquete a paquete y corta el recorrido cuando el enmarcado falla,
+// conservando lo que ya reconoció. Acá antes se devolvía Inspection{} ante
+// cualquier byte sobrante: como pipeline.Ingest descarta el datagrama cuando
+// Inspect no lo da por válido, un JoinResponse perfectamente decodificable se
+// tiraba ANTES de llegar al parser. Ese era el corte más temprano de la
+// cadena y el motivo de "Personaje no detectado" con Photon entrando.
 func Inspect(payload []byte) Inspection {
 	result := Inspection{}
 	if len(payload) == 0 {
@@ -104,7 +114,7 @@ func Inspect(payload []byte) Inspection {
 	for offset := 0; offset < len(payload); {
 		length, ok := photonPacketLength(payload[offset:])
 		if !ok || length <= 0 {
-			return Inspection{}
+			break
 		}
 		if payload[offset+2] == 1 {
 			result.Encrypted = true
@@ -117,8 +127,13 @@ func Inspect(payload []byte) Inspection {
 }
 
 // Receive procesa uno o varios paquetes Photon presentes en el payload UDP.
-// Devuelve false si encuentra un paquete inválido o incompleto; el llamador
+// Devuelve false si ningún paquete del datagrama pudo procesarse; el llamador
 // sigue con la siguiente captura porque perder paquetes es normal en UDP.
+//
+// Un fallo de enmarcado corta el recorrido pero NO descarta lo ya entregado,
+// igual que ReceivePacket en la aplicación de referencia. Devolver false de
+// entrada hacía que el relleno final de un datagrama válido contara como
+// malformado y ocultaba mensajes ya decodificados.
 func (p *Parser) Receive(payload []byte) bool {
 	p.sweep()
 	if len(payload) == 0 {
@@ -126,17 +141,20 @@ func (p *Parser) Receive(payload []byte) bool {
 	}
 
 	ok := true
+	handled := 0
 	for offset := 0; offset < len(payload); {
 		packetLength, frameOK := photonPacketLength(payload[offset:])
 		if !frameOK {
-			return false
+			// Relleno o basura al final: se conserva lo ya procesado.
+			break
 		}
 		if !p.receivePacket(payload[offset : offset+packetLength]) {
 			ok = false
 		}
+		handled++
 		offset += packetLength
 	}
-	return ok
+	return ok && handled > 0
 }
 
 // photonPacketLength reads just enough of a Photon envelope to split a
@@ -241,7 +259,11 @@ func (p *Parser) receivePacket(payload []byte) bool {
 			}
 		}
 	}
-	return offset == len(payload) && ok
+	// No se exige haber consumido el búfer completo: la longitud de cada
+	// comando ya acota su mensaje, y los datagramas reales traen relleno al
+	// final. Pedir offset == len(payload) marcaba como malformado un paquete
+	// cuyos comandos se habían decodificado sin un solo error.
+	return ok
 }
 
 // photonCRC is Photon/eNet's reflected CRC-32 over the full packet. The CRC
@@ -332,12 +354,19 @@ func (p *Parser) fragment(body []byte, key fragmentKey) bool {
 // message decodifica un mensaje Photon ya completo.
 //
 // El primer byte es la FIRMA del mensaje y el segundo el tipo. La aplicación
-// de referencia descarta la firma (la saltea sin mirarla) y decodifica
-// siempre con Protocol18, que es el formato que habla el juego hoy. Antes acá
-// se usaba esa firma para elegir entre Protocol18 y Protocol16: cualquier
-// valor distinto de 0x00 —el 0xF3 clásico de Photon, entre otros— caía en el
-// decodificador viejo, fallaba y el mensaje se perdía entero. Por eso se
-// conserva Protocol16 solo detrás de una firma explícita de captura histórica.
+// de referencia SALTEA la firma sin mirarla y decodifica siempre con
+// Protocol18, que es el formato que habla el juego hoy.
+//
+// Acá esa firma se usaba como selector de decodificador: si valía 0xF3 el
+// mensaje caía en Protocol16, fallaba y se perdía entero. Ese byte es el
+// signifier byte de Photon, no un número de versión, así que el criterio era
+// incorrecto y bastaba para que el JoinResponse nunca llegara.
+//
+// Ahora se intenta Protocol18 primero, siempre, y solo si falla se reintenta
+// con Protocol16 desde el inicio del cuerpo. Así el juego actual funciona sin
+// depender de la firma y las capturas históricas se siguen leyendo. El
+// reintento necesita un lector nuevo porque el primer intento ya consumió
+// bytes del búfer.
 //
 // Tampoco se exige que el lector consuma el búfer completo: los mensajes
 // reales traen relleno al final y descartarlos por un byte sobrante tiraba
@@ -351,49 +380,37 @@ func (p *Parser) message(data []byte) bool {
 	if data[1]&0x80 != 0 {
 		return false
 	}
-	r := &reader{buf: data, pos: 2}
-	// Protocol16 solo para capturas antiguas, marcadas con su firma propia.
-	protocol18 := data[0] != protocol16Signature
+	// Cada intento arranca con su propio lector, posicionado después de la
+	// firma y el tipo de mensaje.
+	newReader := func() *reader { return &reader{buf: data, pos: 2} }
 
 	switch msgType {
 	case msgEventData:
-		var ev *EventData
-		var err error
-		if protocol18 {
-			ev, err = r.p18EventData(0)
-		} else {
-			ev, err = r.eventData(0)
-		}
+		ev, err := newReader().p18EventData(0)
 		if err != nil {
-			return false
+			if ev, err = newReader().eventData(0); err != nil {
+				return false
+			}
 		}
 		if p.handler.OnEvent != nil {
 			p.handler.OnEvent(ev)
 		}
 	case msgOperationRequest:
-		var op *OperationRequest
-		var err error
-		if protocol18 {
-			op, err = r.p18OperationRequest(0)
-		} else {
-			op, err = r.operationRequest(0)
-		}
+		op, err := newReader().p18OperationRequest(0)
 		if err != nil {
-			return false
+			if op, err = newReader().operationRequest(0); err != nil {
+				return false
+			}
 		}
 		if p.handler.OnRequest != nil {
 			p.handler.OnRequest(op)
 		}
 	case msgOperationResponse, msgOperationResponseAlt:
-		var op *OperationResponse
-		var err error
-		if protocol18 {
-			op, err = r.p18OperationResponse(0)
-		} else {
-			op, err = r.operationResponse(0)
-		}
+		op, err := newReader().p18OperationResponse(0)
 		if err != nil {
-			return false
+			if op, err = newReader().operationResponse(0); err != nil {
+				return false
+			}
 		}
 		if p.handler.OnResponse != nil {
 			p.handler.OnResponse(op)

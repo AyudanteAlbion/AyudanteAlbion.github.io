@@ -36,18 +36,98 @@ func TestJoinResponseIdentifiesLocalCharacter(t *testing.T) {
 	}
 }
 
-func TestFailedJoinResponseDoesNotIdentifyCharacter(t *testing.T) {
+// Un JoinResponse sin los datos de identidad no puede detectar a nadie. Esta
+// es la garantía real: antes se probaba con ReturnCode != 0 y parámetros
+// completos, pero la aplicación de referencia IGNORA el ReturnCode, así que
+// filtrar por él descartaba Joins legítimos. Lo que debe rechazarse es la
+// ausencia de datos, no el código de retorno.
+func TestJoinResponseWithoutIdentityDataDoesNotIdentifyCharacter(t *testing.T) {
 	state := NewState()
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
 
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 1,
-		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "NoDebeUsarse", 253: int64(2)},
+		Parameters: map[byte]any{253: int64(2)},
 	})
 
 	if got := state.Snapshot().Character; got != "" {
-		t.Fatalf("Character = %q after failed Join, want empty", got)
+		t.Fatalf("Character = %q sin datos de identidad, want empty", got)
+	}
+	if state.MetricsAllowed() {
+		t.Fatal("no puede aceptarse ninguna métrica sin identidad")
+	}
+}
+
+// El ReturnCode NO descarta la respuesta: SAT lo recibe y lo ignora. Un Join
+// completo debe identificar al personaje aunque el código no sea cero.
+func TestJoinResponseIsAcceptedRegardlessOfReturnCode(t *testing.T) {
+	state := NewState()
+	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+
+	handler.response(&photon.OperationResponse{
+		Code:       2,
+		ReturnCode: 1,
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "PersonajeDePrueba", 253: int64(2)},
+	})
+
+	if got := state.Snapshot().Character; got != "PersonajeDePrueba" {
+		t.Fatalf("Character = %q con ReturnCode=1, want PersonajeDePrueba", got)
+	}
+	if !state.MetricsAllowed() {
+		t.Fatal("un Join completo debe habilitar las métricas")
+	}
+}
+
+// Join sin GUID: se muestra el personaje, pero no se acepta ninguna métrica.
+// Es la diferencia entre MOSTRAR y ATRIBUIR.
+func TestJoinResponseWithoutGUIDShowsCharacterButBlocksMetrics(t *testing.T) {
+	state := NewState()
+	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+
+	handler.response(&photon.OperationResponse{
+		Code:       2,
+		ReturnCode: 0,
+		Parameters: map[byte]any{0: int64(42), 2: "PersonajeSinGUID", 253: int64(2)},
+	})
+
+	snapshot := state.Snapshot()
+	if snapshot.Character != "PersonajeSinGUID" {
+		t.Fatalf("Character = %q, want PersonajeSinGUID", snapshot.Character)
+	}
+	if snapshot.Identity.Valid {
+		t.Fatal("una identidad sin GUID no puede marcarse como válida")
+	}
+	if snapshot.Identity.Detection != "partial" {
+		t.Fatalf("Detection = %q, want partial", snapshot.Identity.Detection)
+	}
+	if state.MetricsAllowed() {
+		t.Fatal("sin GUID no puede atribuirse ninguna métrica")
+	}
+}
+
+// Una identidad completa nunca debe degradarse por un Join parcial posterior.
+func TestPartialJoinDoesNotDowngradeConfirmedIdentity(t *testing.T) {
+	state := NewState()
+	handler := newHandlers(nil, state, NewHub(), testCodes(t))
+
+	handler.response(&photon.OperationResponse{
+		Code:       2,
+		ReturnCode: 0,
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "PersonajeDePrueba", 253: int64(2)},
+	})
+	handler.response(&photon.OperationResponse{
+		Code:       2,
+		ReturnCode: 0,
+		Parameters: map[byte]any{0: int64(43), 2: "PersonajeDePrueba", 253: int64(2)},
+	})
+
+	snapshot := state.Snapshot()
+	if !snapshot.Identity.Valid || snapshot.Identity.GUID == "" {
+		t.Fatalf("la identidad confirmada se degradó: %#v", snapshot.Identity)
+	}
+	if !state.MetricsAllowed() {
+		t.Fatal("las métricas deben seguir habilitadas tras un Join parcial")
 	}
 }
 

@@ -1,5 +1,9 @@
 # Plan de corrección: detección de personaje
 
+> **Estado: los 4 puntos están implementados.** El detalle de cada cambio, con
+> archivo y línea, está en la sección «Resultado» al final. Este documento se
+> conserva como registro del razonamiento y de las alternativas descartadas.
+
 Plan para los 4 puntos detectados en
 [`docs/sat-deteccion-personaje.md`](sat-deteccion-personaje.md), alineando el
 tracker con el comportamiento de **AlbionOnline-StatisticsAnalysis (SAT)**.
@@ -269,3 +273,64 @@ aparece en el paso 1 o 2, los siguientes son mejoras de robustez, no urgencias.
   coinciden con SAT.
 - Las métricas y la persistencia siguen exigiendo identidad **completa**.
 - El filtro de personaje sigue siendo una compuerta real del backend.
+
+---
+
+## Resultado
+
+Los 4 puntos quedaron implementados. Cambios por archivo:
+
+### B — framing tolerante
+- `photon/parser.go` · `Inspect()`: `return Inspection{}` → `break`, conserva
+  los paquetes ya reconocidos.
+- `photon/parser.go` · `receivePacket()`: `return offset == len(payload) && ok`
+  → `return ok`.
+- `photon/parser.go` · `Receive()`: corta con `break` y devuelve
+  `ok && handled > 0`, sin descartar lo ya entregado.
+
+### A — la firma no selecciona decodificador
+- `photon/parser.go` · `message()`: siempre Protocol18; si falla, reintento con
+  Protocol16 usando un lector nuevo. La constante `protocol16Signature` queda
+  como documentación, ya no como selector.
+
+### C — el ReturnCode no descarta
+- `live.go` · `response()`: se elimina `if op.ReturnCode != 0 { return }`.
+- `diagnostics.go`: nuevo contador `returnCodes`, expuesto en el snapshot de
+  diagnóstico.
+
+### D — mostrar vs. atribuir
+- `operations.go` · `decodeJoinResponse()`: devuelve
+  `(datos, confirmado, identificable)`.
+- `state.go` · `ApplyPartialJoinIdentity()`: estado `partial`, con `Valid` en
+  false. No degrada una identidad ya confirmada.
+- `state.go` · `Snapshot()` y `Character()`: muestran el nombre en parcial.
+- `entity.go` · `GUIDFromPhoton()`: acepta `*CustomValue`, `[]any` de bytes y
+  texto (con o sin guiones, cualquier capitalización).
+- `server.go` y `ui/js/tracker/ui.js`: la interfaz explica que falta el GUID.
+
+### Pruebas añadidas
+- `TestInspectKeepsValidPacketsDespiteTrailingPadding` — cubre `Inspect()`, el
+  hueco que dejaba pasar el bug.
+- `TestPipelineDetectsCharacterFromPaddedJoinResponse` — fixture real por la
+  ruta de producción (`pipeline.Ingest`).
+- `TestReceiveDecodesPacketWithTrailingPadding`, `TestInspectStillRejectsGarbage`.
+- Firma `0xF3` agregada a `TestMessageSignatureDoesNotSelectDecoder`.
+- `TestJoinResponseIsAcceptedRegardlessOfReturnCode`,
+  `TestJoinResponseWithoutIdentityDataDoesNotIdentifyCharacter` (reemplaza al
+  test que dependía del `ReturnCode`).
+- `TestJoinResponseWithoutGUIDShowsCharacterButBlocksMetrics`,
+  `TestPartialJoinDoesNotDowngradeConfirmedIdentity`.
+- `TestGUIDFromPhotonAcceptsEveryWireShape` y su contraparte de rechazo.
+
+### Verificación hecha
+- `npm test` en verde.
+- Lógica de `Inspect()` simulada sobre los 5 fixtures reales: con relleno de 1,
+  2 y 11 bytes siguen válidos; `multi_message_udp` conserva sus 3 paquetes; la
+  basura se sigue rechazando.
+- Comprobado que el fixture cifrado sigue haciendo `Receive() == false` y que
+  el cuerpo Protocol16 del test falla en Protocol18 (tipo 42 inexistente) y
+  cae al fallback.
+- **Pendiente:** `go test -race ./internal/tracker/...`. No hay Go en el
+  entorno de trabajo; lo corre el workflow **Escritorio** en el PR.
+- **Pendiente:** prueba manual en Windows con el juego abierto, única forma de
+  confirmar el punto A contra el valor real del byte de firma.
