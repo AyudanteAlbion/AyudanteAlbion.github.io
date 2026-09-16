@@ -26,6 +26,22 @@ var ipv4AssemblyTTL = 15 * time.Second
 
 func photonPort(port uint16) bool { return port == 5055 || port == 5056 || port == 5058 }
 
+// looksLikePhoton reconoce un envelope Photon por su primer byte cuando el
+// datagrama NO viaja por un puerto conocido. Es lo que hace que el tracker
+// siga funcionando con VPN, ExitLag o cualquier proxy que remapee los puertos:
+// la aplicación de referencia aplica exactamente este mismo criterio antes de
+// descartar un paquete por puerto.
+func looksLikePhoton(payload []byte) bool {
+	if len(payload) < 3 {
+		return false
+	}
+	switch payload[0] {
+	case 0xf1, 0xf2, 0xfe:
+		return true
+	}
+	return false
+}
+
 type ipv4FragmentKey struct {
 	src, dst [4]byte
 	id       uint16
@@ -283,14 +299,16 @@ func parseUDP(packet []byte, adapter string, sourceIP, destinationIP net.IP) (Ca
 	}
 	sourcePort := binary.BigEndian.Uint16(packet[0:2])
 	destinationPort := binary.BigEndian.Uint16(packet[2:4])
-	if !photonPort(sourcePort) && !photonPort(destinationPort) {
-		return CapturedDatagram{}, false
-	}
 	length := int(binary.BigEndian.Uint16(packet[4:6]))
 	if length == 0 {
 		length = len(packet)
 	}
 	if length < 8 || length > len(packet) {
+		return CapturedDatagram{}, false
+	}
+	// Puerto conocido o, si no, envelope que se ve como Photon. Exigir solo el
+	// puerto dejaba sin tracking a quien juega con VPN/ExitLag.
+	if !photonPort(sourcePort) && !photonPort(destinationPort) && !looksLikePhoton(packet[8:length]) {
 		return CapturedDatagram{}, false
 	}
 	return CapturedDatagram{Adapter: adapter, SourceIP: sourceIP, DestinationIP: destinationIP, SourcePort: sourcePort, DestinationPort: destinationPort, Payload: append([]byte(nil), packet[8:length]...)}, true

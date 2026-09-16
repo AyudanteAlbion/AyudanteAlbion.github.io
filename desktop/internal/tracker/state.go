@@ -32,11 +32,14 @@ type CaptureState struct {
 	Adapter          string       `json:"adapter,omitempty"`
 	OpenSources      int          `json:"openSources"`
 	Error            string       `json:"error,omitempty"`
+	FramesCaptured   uint64       `json:"framesCaptured"`
+	FramesUnparsed   uint64       `json:"framesUnparsed"`
 	PacketsReceived  uint64       `json:"packetsReceived"`
 	PhotonPackets    uint64       `json:"photonPackets"`
 	DecodedMessages  uint64       `json:"decodedMessages"`
 	EncryptedDropped uint64       `json:"encryptedDropped"`
 	MalformedDropped uint64       `json:"malformedDropped"`
+	LinkType         int32        `json:"linkType,omitempty"`
 	ServerConfirmed  bool         `json:"serverConfirmed"`
 	Server           string       `json:"server,omitempty"`
 	StartedAt        int64        `json:"startedAt,omitempty"`
@@ -315,6 +318,22 @@ func (s *State) MarkPacket() {
 	s.mu.Lock()
 	s.capture.PacketsReceived++
 	s.capture.LastPacketAt = time.Now().UnixMilli()
+	s.mu.Unlock()
+}
+
+// MarkFrame cuenta CADA trama que entrega el driver de captura, antes de
+// interpretarla. Es el contador que faltaba: sin él, "UDP 0" no distinguía
+// entre "no llega nada de la red" y "llegan tramas pero se descartan al
+// interpretarlas", que son dos problemas con arreglos distintos.
+func (s *State) MarkFrame(linkType int32, parsed bool) {
+	s.mu.Lock()
+	s.capture.FramesCaptured++
+	if linkType != 0 {
+		s.capture.LinkType = linkType
+	}
+	if !parsed {
+		s.capture.FramesUnparsed++
+	}
 	s.mu.Unlock()
 }
 

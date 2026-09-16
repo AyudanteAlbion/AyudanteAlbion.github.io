@@ -275,7 +275,12 @@ func (l *LiveSource) pumpHandle(ctx context.Context, device string, handle *capt
 		if !ok {
 			continue
 		}
-		if datagram, valid := parseCapturedFrame(data, handle.LinkType(), device, reassembler); valid {
+		datagram, valid := parseCapturedFrame(data, handle.LinkType(), device, reassembler)
+		// Se cuenta la trama SIEMPRE, se haya podido interpretar o no: una
+		// captura con tramas y cero datagramas apunta al tipo de enlace del
+		// adaptador, no a la red ni al protocolo.
+		pipeline.MarkFrame(handle.LinkType(), valid)
+		if valid {
 			pipeline.Ingest(datagram)
 		}
 	}

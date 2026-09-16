@@ -134,6 +134,9 @@ func openPlatformRawCapture(ctx context.Context) (*platformRawCapture, error) {
 
 	packets := make(chan CapturedDatagram, 256)
 	errorsCh := make(chan error, len(addresses))
+	// frames cuenta las tramas crudas que Windows entrega, antes de
+	// interpretarlas, igual que hace el proveedor Npcap.
+	frames := make(chan bool, 256)
 	connections := make([]*net.IPConn, 0, len(addresses))
 	openedAddresses := make([]localCaptureAddress, 0, len(addresses))
 	var lastErr error
@@ -220,6 +223,10 @@ func openPlatformRawCapture(ctx context.Context) (*platformRawCapture, error) {
 					}
 					datagram, valid = parseUDP(data, "socket:"+local.adapter, source, local.ip)
 				}
+				select {
+				case frames <- valid:
+				default:
+				}
 				if valid {
 					select {
 					case packets <- datagram:
@@ -231,7 +238,7 @@ func openPlatformRawCapture(ctx context.Context) (*platformRawCapture, error) {
 		}(conn, address)
 	}
 	go func() { <-captureCtx.Done(); closeAll() }()
-	go func() { wg.Wait(); close(packets); close(errorsCh) }()
+	go func() { wg.Wait(); close(packets); close(errorsCh); close(frames) }()
 	signature, _ := platformNetworkSignature()
-	return &platformRawCapture{packets: packets, errors: errorsCh, count: len(connections), signature: signature, close: closeAll}, nil
+	return &platformRawCapture{packets: packets, errors: errorsCh, frames: frames, count: len(connections), signature: signature, close: closeAll}, nil
 }

@@ -56,6 +56,24 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
 
 ### Corregido
 
+- **El tracker se quedaba en cero con el juego abierto.** El primer byte de
+  cada mensaje Photon es la *firma*, no un selector de formato: se usaba para
+  elegir entre Protocol18 y Protocol16, así que todo mensaje cuya firma no
+  fuera `0x00` (el `0xF3` clásico, entre otros) caía en el decodificador viejo
+  y se descartaba entero. Ahora se decodifica siempre con Protocol18 —igual que
+  la aplicación de referencia— y Protocol16 queda reservado a su firma
+  explícita. Además, un byte de relleno al final ya no invalida un mensaje bien
+  decodificado, y los `flags` de cabecera desconocidos se enmarcan como un
+  paquete normal en vez de tirarlo.
+- **Tracking con VPN, ExitLag o proxies:** un datagrama de Albion en un puerto
+  remapeado se reconoce por su envelope Photon (`0xF1`/`0xF2`/`0xFE`) y ya no
+  se descarta por no venir en 5055/5056/5058. El tráfico ajeno en puertos
+  ajenos se sigue ignorando.
+- **El diagnóstico ya distingue "no llega nada" de "llega y se descarta".** Se
+  cuentan las tramas entregadas por el driver antes de interpretarlas, junto al
+  tipo de enlace del adaptador; el panel explica qué revisar en cada caso. Sin
+  ese contador, "UDP 0" no permitía saber si fallaba NPCap, el adaptador o el
+  protocolo.
 - La detección de personaje deja de inferirse desde el nombre o un ObjectId
   transitorio: se confirma únicamente con la respuesta exitosa de Join y se
   conserva por GUID. La tabla y los fixtures ahora usan `NewCharacter=29`, no

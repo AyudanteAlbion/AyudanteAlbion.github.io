@@ -142,6 +142,13 @@ func (p *packetPipeline) duplicateLocked(packet CapturedDatagram, now time.Time)
 	return false
 }
 
+// MarkFrame registra una trama entregada por el driver de captura, con o sin
+// datagrama utilizable. Deja a la vista el tramo del camino que antes no tenía
+// ningún contador.
+func (p *packetPipeline) MarkFrame(linkType int32, parsed bool) {
+	p.state.MarkFrame(linkType, parsed)
+}
+
 func (p *packetPipeline) Ingest(packet CapturedDatagram) {
 	if len(packet.Payload) == 0 {
 		return

@@ -413,10 +413,22 @@
     var operations = data.operations || {};
     var envelope = data.envelope || {};
     var capture = (latest && latest.capture) || {};
+    // Pista de arranque: con todo en cero, el primer contador que se mueve
+    // dice dónde se corta la cadena. Sin tramas el problema es el driver o el
+    // adaptador; con tramas pero sin UDP, el tipo de enlace o los puertos.
+    var frames = capture.framesCaptured || 0;
+    var hint = '';
+    if (!frames) {
+      hint = '<p class="muted small"><strong>No llegó ninguna trama de red.</strong> Revisá que NPCap esté instalado (y que no quede WinPcap viejo), que el adaptador elegido sea el que usa el juego y que la app tenga permisos.</p>';
+    } else if (!(capture.packetsReceived || 0)) {
+      hint = '<p class="muted small"><strong>Llegan tramas pero ningún datagrama de Albion.</strong> ' + esc(String(capture.framesUnparsed || 0)) + ' sin interpretar' + (capture.linkType ? ' · tipo de enlace ' + esc(String(capture.linkType)) : '') + '. Suele ser un adaptador virtual (VPN) distinto al del juego.</p>';
+    }
     node.innerHTML =
-      '<p class="muted small"><strong>Contadores seguros:</strong> UDP ' + esc(String(capture.packetsReceived || 0)) +
+      '<p class="muted small"><strong>Contadores seguros:</strong> tramas ' + esc(String(frames)) +
+      ' · UDP ' + esc(String(capture.packetsReceived || 0)) +
       ' · Photon ' + esc(String(capture.photonPackets || 0)) + ' · decodificados ' + esc(String(capture.decodedMessages || 0)) +
       ' · cifrados descartados ' + esc(String(capture.encryptedDropped || 0)) + ' · inválidos ' + esc(String(capture.malformedDropped || 0)) + '.</p>' +
+      hint +
       '<p class="muted small">Los códigos 252/253 son la única autoridad. Los bytes del envelope se muestran abajo solo para diagnóstico. Mensajes sin código autoritativo: ' + esc(String(data.missingAuthoritativeCode || 0)) + '.</p>' +
       table('Eventos desconocidos (252)', data.unknown, false) +
       table('Eventos reconocidos (252)', data.known, true) +

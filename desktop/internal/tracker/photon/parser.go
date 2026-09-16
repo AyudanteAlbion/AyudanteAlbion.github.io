@@ -30,6 +30,12 @@ const (
 	// y se queda en "Personaje no detectado"/"Ubicación no detectada".
 	msgOperationResponseAlt = 7
 
+	// protocol16Signature es la firma de los mensajes Protocol16 ('ó', 0xF3).
+	// El juego hoy manda Protocol18 con firma 0x00, pero varias capturas y
+	// builds usan otros valores de relleno: solo esta firma exacta selecciona
+	// el decodificador viejo.
+	protocol16Signature = 0xf3
+
 	fragmentTTL      = 30 * time.Second
 	maxFragmentSets  = 64
 	maxPayloadLength = 1 << 20 // 1 MB: tope defensivo contra longitudes absurdas
@@ -152,9 +158,10 @@ func photonPacketLength(payload []byte) (int, bool) {
 			return 0, false
 		}
 		offset += crcLength
-	} else if flags != 0 {
-		return 0, false
 	}
+	// Cualquier otro valor de flags se enmarca igual que un paquete sin
+	// cifrar. La aplicación de referencia solo trata distinto el 1 (cifrado) y
+	// el 0xCC (CRC); rechazar el resto tiraba datagramas perfectamente válidos.
 
 	for i := 0; i < int(payload[3]); i++ {
 		if offset+commandHeaderLength > len(payload) {
@@ -176,9 +183,6 @@ func (p *Parser) receivePacket(payload []byte) bool {
 	flags := payload[2]
 	if flags == 1 {
 		// El contenido está cifrado y el tracker nunca intenta descifrarlo.
-		return false
-	}
-	if flags != 0 && flags != 0xcc {
 		return false
 	}
 
@@ -325,9 +329,19 @@ func (p *Parser) fragment(body []byte, key fragmentKey) bool {
 	return p.message(full)
 }
 
-// message decodifica un mensaje Photon ya completo. Protocol18 usa cero como
-// primer byte de la cabecera confiable; Protocol16 conserva la firma F3. El
-// marcador selecciona el decodificador para conservar capturas antiguas.
+// message decodifica un mensaje Photon ya completo.
+//
+// El primer byte es la FIRMA del mensaje y el segundo el tipo. La aplicación
+// de referencia descarta la firma (la saltea sin mirarla) y decodifica
+// siempre con Protocol18, que es el formato que habla el juego hoy. Antes acá
+// se usaba esa firma para elegir entre Protocol18 y Protocol16: cualquier
+// valor distinto de 0x00 —el 0xF3 clásico de Photon, entre otros— caía en el
+// decodificador viejo, fallaba y el mensaje se perdía entero. Por eso se
+// conserva Protocol16 solo detrás de una firma explícita de captura histórica.
+//
+// Tampoco se exige que el lector consuma el búfer completo: los mensajes
+// reales traen relleno al final y descartarlos por un byte sobrante tiraba
+// JoinResponse y ChangeCluster ya decodificados correctamente.
 func (p *Parser) message(data []byte) bool {
 	if len(data) < 2 {
 		return false
@@ -338,7 +352,8 @@ func (p *Parser) message(data []byte) bool {
 		return false
 	}
 	r := &reader{buf: data, pos: 2}
-	protocol18 := data[0] == 0
+	// Protocol16 solo para capturas antiguas, marcadas con su firma propia.
+	protocol18 := data[0] != protocol16Signature
 
 	switch msgType {
 	case msgEventData:
@@ -349,7 +364,7 @@ func (p *Parser) message(data []byte) bool {
 		} else {
 			ev, err = r.eventData(0)
 		}
-		if err != nil || r.left() != 0 {
+		if err != nil {
 			return false
 		}
 		if p.handler.OnEvent != nil {
@@ -363,7 +378,7 @@ func (p *Parser) message(data []byte) bool {
 		} else {
 			op, err = r.operationRequest(0)
 		}
-		if err != nil || r.left() != 0 {
+		if err != nil {
 			return false
 		}
 		if p.handler.OnRequest != nil {
@@ -377,7 +392,7 @@ func (p *Parser) message(data []byte) bool {
 		} else {
 			op, err = r.operationResponse(0)
 		}
-		if err != nil || r.left() != 0 {
+		if err != nil {
 			return false
 		}
 		if p.handler.OnResponse != nil {
