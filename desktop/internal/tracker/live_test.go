@@ -10,6 +10,9 @@ import (
 func testCodes(t *testing.T) *Codes {
 	t.Helper()
 	codes, err := parseCodes([]byte(`{
+		"version": "test",
+		"gameVersion": "test",
+		"parameterKeys": {"eventCode": 252, "operationCode": 253, "returnCode": 254},
 		"events": {"NewCharacter": 29, "JoinFinished": 2, "PartyJoined": 231, "PartyDisbanded": 232, "PartyPlayerJoined": 233, "PartyPlayerLeft": 235},
 		"operations": {"Join": 2, "ChangeCluster": 41},
 		"eventParameters": {
@@ -38,7 +41,7 @@ func TestJoinResponseIdentifiesLocalCharacter(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 2: "PersonajeDePrueba"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "PersonajeDePrueba", 253: int64(2)},
 	})
 
 	snapshot := state.Snapshot()
@@ -60,7 +63,7 @@ func TestFailedJoinResponseDoesNotIdentifyCharacter(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 1,
-		Parameters: map[byte]any{0: int64(42), 2: "NoDebeUsarse"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "NoDebeUsarse", 253: int64(2)},
 	})
 
 	if got := state.Snapshot().Character; got != "" {
@@ -112,11 +115,11 @@ func TestProtocol18EventPacketRoutesToTracker(t *testing.T) {
 func protocol18JoinResponsePacket(name string) []byte {
 	body := []byte{
 		0, 3, 2, 0, 0, 8, // reliable marker, response, Join, success, null debug
-		7, // Protocol18 parameter table count (one byte)
+		8,         // Protocol18 parameter table count (one byte)
 		0, 10, 84, // parameter 0: compressed long entity id = 42 (zig-zag varint)
 		1, 19, 1, 16, // parameter 1: custom GUID value (type 1, 16 bytes)
 	}
-	body = append(body, make([]byte, 16)...)
+	body = append(body, localGUIDBytes...)
 	body = append(body,
 		2, 7, // parameter 2: UTF-8 character name
 	)
@@ -127,6 +130,7 @@ func protocol18JoinResponsePacket(name string) []byte {
 		43, 74, 2, 0, 2, // parameter 43: two compressed long values
 		64, 69, 2, 0, 0, 0, 0, 0, 0, 128, 63, // parameter 64: two float positions
 		58, 7, 5, 'G', 'u', 'i', 'l', 'd', // parameter 58: guild name
+		253, 11, 2, // authoritative operation code (Join)
 	)
 	return protocol18ReliablePacket(body)
 }
@@ -134,12 +138,15 @@ func protocol18JoinResponsePacket(name string) []byte {
 func protocol18NewCharacterPacket(name string) []byte {
 	body := []byte{
 		0, 4, 29, // reliable marker, event, NewCharacter code
-		2, // Protocol18 parameter table count (one byte)
+		4,         // Protocol18 parameter table count (one byte)
 		0, 11, 77, // parameter 0: Int1 entity id = 77
 		1, 7, // parameter 1: UTF-8 character name
 	}
 	body = append(body, protocol18VarUint(uint32(len(name)))...)
 	body = append(body, name...)
+	body = append(body, 7, 19, 1, 16) // parameter 7: custom GUID
+	body = append(body, partyGUIDBytes...)
+	body = append(body, 252, 11, 29) // authoritative event code
 	return protocol18ReliablePacket(body)
 }
 
@@ -181,7 +188,7 @@ func TestDiagnosticSeparatesOperationCodes(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 2: "PersonajeDePrueba"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "PersonajeDePrueba", 253: int64(2)},
 	})
 
 	diagnostic := source.Diagnostic()
@@ -208,7 +215,7 @@ func TestJoinResponseAlsoSetsZone(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 2: "PersonajeDePrueba", 8: "Martlock"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "PersonajeDePrueba", 8: "Martlock", 253: int64(2)},
 	})
 
 	snapshot := state.Snapshot()
@@ -233,12 +240,12 @@ func TestChangeClusterOperationUpdatesZone(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 2: "PersonajeDePrueba", 8: "Martlock"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "PersonajeDePrueba", 8: "Martlock", 253: int64(2)},
 	})
 	handler.response(&photon.OperationResponse{
 		Code:       41,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: "Thetford"},
+		Parameters: map[byte]any{0: "Thetford", 253: int64(41)},
 	})
 
 	snapshot := state.Snapshot()
@@ -268,7 +275,7 @@ func TestChangeClusterRequestUpdatesZone(t *testing.T) {
 
 	handler.request(&photon.OperationRequest{
 		Code:       41,
-		Parameters: map[byte]any{0: "Lymhurst"},
+		Parameters: map[byte]any{0: "Lymhurst", 253: int64(41)},
 	})
 
 	if got := state.Snapshot().Zone; got != "Lymhurst" {
@@ -320,7 +327,7 @@ func TestZoneChangeKeepsSelfAndDropsOtherEntities(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 2: "Yo", 8: "Martlock"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Yo", 8: "Martlock", 253: int64(2)},
 	})
 	handler.event(&photon.EventData{
 		Code:       29,
@@ -348,7 +355,7 @@ func TestNewCharacterRebindsKnownLocalGUID(t *testing.T) {
 	handler.response(&photon.OperationResponse{
 		Code:       2,
 		ReturnCode: 0,
-		Parameters: map[byte]any{0: int64(42), 1: localGUID, 2: "Yo"},
+		Parameters: map[byte]any{0: int64(42), 1: localGUID, 2: "Yo", 253: int64(2)},
 	})
 	handler.enterZone("Thetford")
 	handler.event(&photon.EventData{
@@ -383,10 +390,11 @@ func TestProtocol18ChangeClusterPacketUpdatesZone(t *testing.T) {
 func protocol18ChangeClusterPacket(cluster string) []byte {
 	body := []byte{
 		0, 3, 41, 0, 0, 8, // reliable marker, response, ChangeCluster, success, null debug
-		1,    // one parameter
+		2,    // cluster plus authoritative operation code
 		0, 7, // parameter 0: UTF-8 cluster name
 	}
 	body = append(body, protocol18VarUint(uint32(len(cluster)))...)
 	body = append(body, cluster...)
+	body = append(body, 253, 11, 41)
 	return protocol18ReliablePacket(body)
 }

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,10 +24,10 @@ type Codes struct {
 	GameVersion string                     `json:"gameVersion"`
 	ParamKeys   map[string]json.RawMessage `json:"parameterKeys"`
 
-	RawEvents   map[string]json.RawMessage `json:"events"`
-	RawOps      map[string]json.RawMessage `json:"operations"`
-	RawParams   map[string]json.RawMessage `json:"eventParameters"`
-	SelfOp      struct {
+	RawEvents map[string]json.RawMessage `json:"events"`
+	RawOps    map[string]json.RawMessage `json:"operations"`
+	RawParams map[string]json.RawMessage `json:"eventParameters"`
+	SelfOp    struct {
 		Operation  string         `json:"operation"`
 		Parameters map[string]int `json:"parameters"`
 	} `json:"selfOperation"`
@@ -117,6 +119,13 @@ func (c *Codes) Events() []CodeEntry { return codeList(c.eventByCode) }
 
 func (c *Codes) Operations() []CodeEntry { return codeList(c.opByCode) }
 
+func safeCodeOrigin(origin string) string {
+	if index := strings.LastIndexAny(origin, `/\\`); index >= 0 {
+		return origin[index+1:]
+	}
+	return origin
+}
+
 // Info resume el estado de la tabla para mostrarlo en la interfaz.
 func (c *Codes) Info() map[string]any {
 	return map[string]any{
@@ -124,7 +133,7 @@ func (c *Codes) Info() map[string]any {
 		"gameVersion":   c.GameVersion,
 		"events":        len(c.eventByCode),
 		"operations":    len(c.opByCode),
-		"loadedFrom":    c.loadedFrom,
+		"loadedFrom":    safeCodeOrigin(c.loadedFrom),
 		"loadedAt":      c.loadedAt.UnixMilli(),
 		"eventList":     c.Events(),
 		"operationList": c.Operations(),
@@ -146,8 +155,8 @@ func (c *Codes) index() error {
 		if n == nil {
 			return nil
 		}
-		if *n < 0 || *n > 65535 {
-			return fmt.Errorf("%s %q: el código %d está fuera de rango (0-65535)", kind, name, *n)
+		if *n < 0 || *n > 32767 {
+			return fmt.Errorf("%s %q: el código %d está fuera del rango Photon int16 (0-32767)", kind, name, *n)
 		}
 		if prev, dup := dst[int32(*n)]; dup {
 			return fmt.Errorf("%s %q: el código %d ya lo usa %q", kind, name, *n, prev)
@@ -185,6 +194,94 @@ func (c *Codes) index() error {
 
 	if len(c.eventByCode) == 0 {
 		return errors.New("la tabla no define ningún evento")
+	}
+	return c.validateContract()
+}
+
+// validateContract prevents a syntactically valid but incompatible external
+// table from becoming active. The identity/party contract is intentionally
+// mandatory because every metrics consumer depends on it.
+func (c *Codes) validateContract() error {
+	if strings.TrimSpace(c.Version) == "" || strings.TrimSpace(c.GameVersion) == "" {
+		return errors.New("faltan version o gameVersion")
+	}
+	readKey := func(name string) (byte, error) {
+		raw, ok := c.ParamKeys[name]
+		if !ok {
+			return 0, fmt.Errorf("falta parameterKeys.%s", name)
+		}
+		var value int
+		if err := json.Unmarshal(raw, &value); err != nil || value < 0 || value > 255 {
+			return 0, fmt.Errorf("parameterKeys.%s debe ser un byte", name)
+		}
+		return byte(value), nil
+	}
+	eventKey, err := readKey("eventCode")
+	if err != nil {
+		return err
+	}
+	operationKey, err := readKey("operationCode")
+	if err != nil {
+		return err
+	}
+	if eventKey != 252 || operationKey != 253 {
+		return fmt.Errorf("las claves autoritativas deben ser eventCode=252 y operationCode=253")
+	}
+
+	requiredEvents := map[string][]string{
+		"NewCharacter":      {"id", "name", "guid", "guild", "alliance"},
+		"Leave":             {"id"},
+		"JoinFinished":      {"zone"},
+		"PartyJoined":       {"guids", "names"},
+		"PartyPlayerJoined": {"guid", "name"},
+		"PartyPlayerLeft":   {"guid"},
+		"PartyDisbanded":    {},
+	}
+	for name, fields := range requiredEvents {
+		found := false
+		for _, indexedName := range c.eventByCode {
+			if indexedName == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("falta el evento obligatorio %q", name)
+		}
+		for _, field := range fields {
+			index, ok := c.eventParams[name][field]
+			if !ok || index < 0 || index > 251 {
+				return fmt.Errorf("falta un índice válido para %s.%s", name, field)
+			}
+		}
+	}
+	requiredOperations := map[string][]string{"Join": nil, "ChangeCluster": {"zone"}}
+	for name, fields := range requiredOperations {
+		found := false
+		for _, indexedName := range c.opByCode {
+			if indexedName == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("falta la operación obligatoria %q", name)
+		}
+		for _, field := range fields {
+			index, ok := c.eventParams[name][field]
+			if !ok || index < 0 || index > 251 {
+				return fmt.Errorf("falta un índice válido para %s.%s", name, field)
+			}
+		}
+	}
+	if c.SelfOp.Operation != "Join" {
+		return errors.New("selfOperation.operation debe ser Join")
+	}
+	for _, field := range []string{"id", "guid", "name", "zone", "guild", "alliance"} {
+		index, ok := c.SelfOp.Parameters[field]
+		if !ok || index < 0 || index > 251 {
+			return fmt.Errorf("falta selfOperation.parameters.%s", field)
+		}
 	}
 	return nil
 }
@@ -225,6 +322,13 @@ func parseCodes(raw []byte, origin string) (*Codes, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("%s: JSON inválido (%w)", origin, err)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			err = errors.New("hay más de un documento JSON")
+		}
+		return nil, fmt.Errorf("%s: contenido adicional inválido (%w)", origin, err)
 	}
 	if err := c.index(); err != nil {
 		return nil, fmt.Errorf("%s: %w", origin, err)

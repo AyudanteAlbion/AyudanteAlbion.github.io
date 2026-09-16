@@ -33,11 +33,9 @@ func newRouter() (http.Handler, *tracker.Engine) {
 	fileServer := http.FileServer(http.FS(sub))
 	mux := http.NewServeMux()
 
-	// Edición unificada: el motor del tracker SIEMPRE se compila y se monta.
-	// El tracking arranca apagado y se enciende desde la UI. Si Npcap no está
-	// instalado, se usa el simulador (FallbackSource): la interfaz se ve real
-	// con datos de ejemplo y, en cuanto Npcap aparece, el siguiente arranque
-	// captura de verdad.
+	// Edición unificada: el motor del tracker siempre se compila y arranca
+	// apagado. A capture failure is reported as such; demo data is available
+	// only when the user explicitly selects the visually distinct demo provider.
 	engine := buildTrackerEngine(sub)
 	engine.Register(mux)
 
@@ -64,9 +62,8 @@ func newRouter() (http.Handler, *tracker.Engine) {
 	return handler, engine
 }
 
-// buildTrackerEngine arma el motor con la fuente de captura real y respaldo al
-// simulador, tomando la tabla de códigos embebida (y las externas junto al
-// .exe / en la carpeta del usuario, que tienen prioridad).
+// buildTrackerEngine wires both real capture providers plus an explicit demo,
+// using the embedded/reloadable validated Photon code table.
 func buildTrackerEngine(appFiles fs.FS) *tracker.Engine {
 	store := tracker.NewCodeStore(appFiles, tracker.DefaultPaths()...)
 	if _, err := store.Load(); err != nil {
@@ -76,18 +73,9 @@ func buildTrackerEngine(appFiles fs.FS) *tracker.Engine {
 		return tracker.NewEngine(tracker.BrokenSource{Reason: err.Error()}, store, nil)
 	}
 
-	// Npcap disponible → captura real. Si no, el simulador: la interfaz sigue
-	// siendo usable y se ve exactamente cómo va a funcionar una vez instalado.
+	// No silent fallback: selecting Npcap always means Npcap and selecting
+	// Socket always means a Windows raw socket. Demo must be chosen explicitly.
 	live := tracker.NewLiveSource(store)
-	var npcap tracker.Source = live
-	if ok, _ := live.Available(); !ok {
-		npcap = tracker.FallbackSource{
-			Primary:  live,
-			Fallback: tracker.Simulator{},
-		}
-	}
-	// El usuario puede elegir Npcap (predeterminado) o el socket sin procesar
-	// de Windows. SelectableSource mantiene el proveedor detrás de la misma API.
-	source := tracker.NewSelectableSource(npcap, tracker.NewSocketSource(store))
+	source := tracker.NewSelectableSource(live, tracker.NewSocketSource(store))
 	return tracker.NewEngine(source, store, nil)
 }

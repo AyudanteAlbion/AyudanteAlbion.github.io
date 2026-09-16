@@ -9,7 +9,12 @@
 .trk-live-badge i,.trk-state-item>i { display:block; width:9px; height:9px; border-radius:50%; background:#db8b2a; box-shadow:0 0 0 4px rgba(219,139,42,.11); flex:none; }
 .trk-live-badge.active { color:var(--green); border-color:rgba(20,185,138,.3); background:var(--green-soft); }
 .trk-live-badge.active i,.trk-state-item.ok>i { background:var(--green); box-shadow:0 0 0 4px rgba(20,185,138,.12); }
+.trk-live-badge.demo { color:#ffb454; border-color:rgba(255,180,84,.5); background:rgba(255,123,40,.12); }
+.trk-live-badge.demo i { background:#ff8b37; box-shadow:0 0 0 4px rgba(255,139,55,.14); }
 .trk-state-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:18px; }
+.trk-demo-warning { grid-column:1/-1; display:flex; flex-direction:column; gap:5px; padding:18px; color:#ffd5a5; background:repeating-linear-gradient(135deg,rgba(255,123,40,.13),rgba(255,123,40,.13) 12px,rgba(255,123,40,.06) 12px,rgba(255,123,40,.06) 24px); border:1px solid rgba(255,145,58,.55); border-radius:9px; }
+.trk-demo-warning strong { letter-spacing:.08em; }
+.trk-demo-warning small { color:#eebf91; }
 .trk-state-item { display:flex; align-items:center; gap:12px; min-height:68px; padding:12px; background:rgba(0,0,0,.16); border:1px solid var(--border); border-radius:9px; }
 .trk-state-item strong,.trk-state-item small { display:block; }
 .trk-state-item strong { font-size:.83rem; }
@@ -60,6 +65,8 @@
 .trk-launcher-grid small { color:var(--muted); font-size:.72rem; line-height:1.5; }
 .trk-provider-card { position:relative; min-height:170px; padding:20px; color:var(--text); background:var(--panel-2); border:1px solid var(--border-strong); border-radius:12px; font:inherit; text-align:left; cursor:pointer; }
 .trk-provider-card.selected { border-color:var(--gold); box-shadow:0 0 0 2px var(--accent-soft); }
+.trk-provider-card.trk-provider-demo { background:rgba(110,54,20,.24); border-color:rgba(255,145,58,.35); }
+.trk-provider-card.trk-provider-demo.selected { border-color:#ff913a; box-shadow:0 0 0 2px rgba(255,145,58,.16); }
 .trk-provider-card>span { position:absolute; top:12px; right:12px; color:var(--gold); font-size:.6rem; font-weight:800; letter-spacing:.1em; }
 .trk-provider-card b,.trk-provider-card small,.trk-provider-card a { display:block; }
 .trk-provider-card b { margin-bottom:10px; font-size:1.05rem; }

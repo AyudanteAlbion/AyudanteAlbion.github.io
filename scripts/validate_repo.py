@@ -304,8 +304,10 @@ def validate_tracker_safety() -> None:
 
     live = (desktop / "internal" / "tracker" / "live.go").read_text(encoding="utf-8")
     required_guards = {
-        "if !h.st.IsTrackedPlayer(source)": "filtro propio/party para combate",
-        "if !h.st.IsTrackedPlayer(looter)": "filtro propio/party para botín",
+        "if !h.trackingAllowed()": "identidad local/filtro antes de métricas",
+        "!source.InParty": "membresía GUID de party para combate",
+        "h.entities.PartyByName(looter)": "resolución de botín contra party identificada",
+        "h.st.AddLoot(entry)": "guardia de estado para aceptar botín",
         'case "PartyPlayerLeft"': "baja de integrantes que salen de la party",
     }
     for marker, description in required_guards.items():

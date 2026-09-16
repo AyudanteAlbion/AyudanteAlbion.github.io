@@ -18,10 +18,11 @@ type SelectableSource struct {
 	provider string
 	npcap    Source
 	socket   Source
+	demo     Source
 }
 
 func NewSelectableSource(npcap, socket Source) *SelectableSource {
-	return &SelectableSource{provider: "npcap", npcap: npcap, socket: socket}
+	return &SelectableSource{provider: "npcap", npcap: npcap, socket: socket, demo: Simulator{}}
 }
 
 func (s *SelectableSource) Provider() string {
@@ -34,7 +35,7 @@ func (s *SelectableSource) SetProvider(provider string) error {
 	if provider == "" {
 		provider = "npcap"
 	}
-	if provider != "npcap" && provider != "socket" {
+	if provider != "npcap" && provider != "socket" && provider != "demo" {
 		return fmt.Errorf("proveedor desconocido: %s", provider)
 	}
 	s.mu.Lock()
@@ -50,17 +51,20 @@ func (s *SelectableSource) active() Source {
 	if provider == "socket" {
 		return s.socket
 	}
+	if provider == "demo" {
+		return s.demo
+	}
 	return s.npcap
 }
 
-func (s *SelectableSource) Name() string                  { return s.active().Name() }
-func (s *SelectableSource) Available() (bool, string)     { return s.active().Available() }
+func (s *SelectableSource) Name() string              { return s.active().Name() }
+func (s *SelectableSource) Available() (bool, string) { return s.active().Available() }
 func (s *SelectableSource) Run(ctx context.Context, st *State, hub *Hub) error {
 	return s.active().Run(ctx, st, hub)
 }
 
 func (s *SelectableSource) Devices() ([]map[string]string, error) {
-	if s.Provider() == "socket" {
+	if s.Provider() != "npcap" {
 		return []map[string]string{}, nil
 	}
 	if d, ok := s.npcap.(DeviceConfigurable); ok {

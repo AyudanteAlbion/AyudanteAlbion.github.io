@@ -1,13 +1,100 @@
+// SPDX-License-Identifier: GPL-3.0-only
+
 package tracker
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
 
-// Combatant son los números acumulados de un jugador dentro de la sesión.
+// CapturePhase is the user-visible progress of the real capture pipeline.
+// Values are API contracts; keep them stable for the desktop frontend.
+type CapturePhase string
+
+const (
+	CaptureOff         CapturePhase = "off"
+	CapturePreparing   CapturePhase = "preparing"
+	CaptureNetwork     CapturePhase = "capturing_network"
+	CapturePhoton      CapturePhase = "photon_detected"
+	CaptureServer      CapturePhase = "server_confirmed"
+	CaptureWaitingJoin CapturePhase = "waiting_join"
+	CaptureCharacter   CapturePhase = "character_detected"
+	CaptureDemo        CapturePhase = "demo"
+)
+
+// CaptureState is transport state only. It deliberately contains no player or
+// party data, so diagnostics can publish it without leaking game identities.
+type CaptureState struct {
+	Phase            CapturePhase `json:"phase"`
+	Provider         string       `json:"provider"`
+	Adapter          string       `json:"adapter,omitempty"`
+	OpenSources      int          `json:"openSources"`
+	Error            string       `json:"error,omitempty"`
+	PacketsReceived  uint64       `json:"packetsReceived"`
+	PhotonPackets    uint64       `json:"photonPackets"`
+	DecodedMessages  uint64       `json:"decodedMessages"`
+	EncryptedDropped uint64       `json:"encryptedDropped"`
+	MalformedDropped uint64       `json:"malformedDropped"`
+	ServerConfirmed  bool         `json:"serverConfirmed"`
+	Server           string       `json:"server,omitempty"`
+	StartedAt        int64        `json:"startedAt,omitempty"`
+	LastPacketAt     int64        `json:"lastPacketAt,omitempty"`
+	LastPhotonAt     int64        `json:"lastPhotonAt,omitempty"`
+	RealCapture      bool         `json:"realCapture"`
+}
+
+// LocalIdentity is set only by a successful JoinResponse. Name filters and
+// NewCharacter packets are never allowed to manufacture local identity.
+type LocalIdentity struct {
+	ObjectID      int64  `json:"objectId,omitempty"`
+	GUID          string `json:"guid,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Guild         string `json:"guild,omitempty"`
+	Alliance      string `json:"alliance,omitempty"`
+	Detection     string `json:"detection"` // waiting | detected | filtered
+	Valid         bool   `json:"valid"`
+	FilterMatched bool   `json:"filterMatched"`
+	DetectedAt    int64  `json:"detectedAt,omitempty"`
+	Revision      uint64 `json:"revision"`
+}
+
+// PartyMemberState uses GUID as the durable membership key. ObjectID is merely
+// the current-zone index used by combat packets and can be absent after a zone
+// transition.
+type PartyMemberState struct {
+	GUID     string `json:"guid"`
+	Name     string `json:"name"`
+	ObjectID *int64 `json:"objectId,omitempty"`
+	Local    bool   `json:"local"`
+}
+
+type PartyState struct {
+	Members []PartyMemberState `json:"members"`
+}
+
+// MapVisit and WorldState are independent of combat/session counters.
+type MapVisit struct {
+	Name     string `json:"name"`
+	Instance string `json:"instance,omitempty"`
+	Enter    int64  `json:"enter"`
+	Leave    int64  `json:"leave,omitempty"`
+	Seconds  int64  `json:"seconds"`
+}
+
+type WorldState struct {
+	Cluster  string     `json:"cluster,omitempty"`
+	Map      string     `json:"map,omitempty"`
+	Instance string     `json:"instance,omitempty"`
+	History  []MapVisit `json:"history"`
+}
+
+// Combatant is keyed internally by GUID (never by display name). ObjectID is
+// included only as the current-zone diagnostic/reference value.
 type Combatant struct {
+	GUID       string  `json:"guid,omitempty"`
+	ObjectID   *int64  `json:"objectId,omitempty"`
 	Name       string  `json:"name"`
 	Damage     int64   `json:"damage"`
 	Healing    int64   `json:"healing"`
@@ -23,44 +110,56 @@ type Combatant struct {
 	Self       bool    `json:"self"`
 }
 
-// MapVisit es una entrada del historial de mapas.
-type MapVisit struct {
-	Name    string `json:"name"`
-	Enter   int64  `json:"enter"`
-	Leave   int64  `json:"leave,omitempty"`
-	Seconds int64  `json:"seconds"`
-}
-
-// LootEntry es un ítem recogido por algún jugador a la vista.
 type LootEntry struct {
-	TS       int64  `json:"ts"`
-	Player   string `json:"player"`
-	ItemID   string `json:"itemId"`
-	Quantity int    `json:"quantity"`
-	Quality  int    `json:"quality"`
-	Source   string `json:"source"`
+	TS         int64  `json:"ts"`
+	Player     string `json:"player"`
+	PlayerGUID string `json:"playerGuid,omitempty"`
+	ItemID     string `json:"itemId"`
+	Quantity   int    `json:"quantity"`
+	Quality    int    `json:"quality"`
+	Source     string `json:"source"`
 }
 
-// Snapshot es la foto completa que consume el frontend en el primer render.
+// MetricsSnapshot keeps the identity prerequisite explicit in the API.
+type MetricsSnapshot struct {
+	Accepted    bool        `json:"accepted"`
+	StartedAt   int64       `json:"startedAt"`
+	Seconds     int64       `json:"seconds"`
+	Fame        int64       `json:"fame"`
+	Silver      int64       `json:"silver"`
+	Respec      int64       `json:"respec"`
+	FamePerHour float64     `json:"famePerHour"`
+	SilverPerH  float64     `json:"silverPerHour"`
+	Combatants  []Combatant `json:"combatants"`
+	Loot        []LootEntry `json:"loot"`
+}
+
+// Snapshot preserves legacy flat fields while exposing the explicit contract.
 type Snapshot struct {
-	Capturing         bool        `json:"capturing"`
-	Simulated         bool        `json:"simulated"`
-	Character         string      `json:"character"`
-	TrackingCharacter string      `json:"trackingCharacter"`
-	Zone              string      `json:"zone"`
-	Party             []string    `json:"party"`
-	StartedAt         int64       `json:"startedAt"`
-	Seconds           int64       `json:"seconds"`
-	Fame              int64       `json:"fame"`
-	Silver            int64       `json:"silver"`
-	Respec            int64       `json:"respec"`
-	FamePerHour       float64     `json:"famePerHour"`
-	SilverPerH        float64     `json:"silverPerHour"`
-	Combatants        []Combatant `json:"combatants"`
-	Maps              []MapVisit  `json:"maps"`
-	Loot              []LootEntry `json:"loot"`
-	Packets           uint64      `json:"packets"`
-	Decoded           uint64      `json:"decoded"`
+	Capture           CaptureState    `json:"capture"`
+	Identity          LocalIdentity   `json:"identity"`
+	Entities          []Entity        `json:"entities"`
+	PartyState        PartyState      `json:"partyState"`
+	World             WorldState      `json:"world"`
+	Metrics           MetricsSnapshot `json:"metrics"`
+	Capturing         bool            `json:"capturing"`
+	Simulated         bool            `json:"simulated"`
+	Character         string          `json:"character"`
+	TrackingCharacter string          `json:"trackingCharacter"`
+	Zone              string          `json:"zone"`
+	Party             []string        `json:"party"`
+	StartedAt         int64           `json:"startedAt"`
+	Seconds           int64           `json:"seconds"`
+	Fame              int64           `json:"fame"`
+	Silver            int64           `json:"silver"`
+	Respec            int64           `json:"respec"`
+	FamePerHour       float64         `json:"famePerHour"`
+	SilverPerH        float64         `json:"silverPerHour"`
+	Combatants        []Combatant     `json:"combatants"`
+	Maps              []MapVisit      `json:"maps"`
+	Loot              []LootEntry     `json:"loot"`
+	Packets           uint64          `json:"packets"`
+	Decoded           uint64          `json:"decoded"`
 }
 
 const (
@@ -68,85 +167,278 @@ const (
 	maxMaps = 200
 )
 
-// State es el estado agregado de la sesión. Todos los métodos son seguros
-// para uso concurrente: la fuente de captura escribe desde su goroutine y los
-// handlers HTTP leen desde las suyas.
+// State owns the five contracts (capture, identity, entity projection, party,
+// world) and the metrics consumer. Every mutation shares one lock so snapshots
+// cannot expose a half-applied JoinResponse.
 type State struct {
 	mu                sync.RWMutex
-	capturing         bool
-	simulated         bool
-	character         string
+	capture           CaptureState
+	identity          LocalIdentity
+	entities          []Entity
+	party             PartyState
+	world             WorldState
 	trackingCharacter string
-	zone              string
-	party             []string
+	demo              bool
 	startedAt         time.Time
 	fame              int64
 	silver            int64
 	respec            int64
-	players           map[string]*Combatant
-	maps              []MapVisit
+	players           map[string]*Combatant // GUID -> metrics
 	loot              []LootEntry
-	packets           uint64
-	decoded           uint64
 }
 
-// NewState crea el estado de una sesión nueva.
 func NewState() *State {
 	return &State{
+		capture:   CaptureState{Phase: CaptureOff},
+		identity:  LocalIdentity{Detection: "waiting", FilterMatched: true},
 		startedAt: time.Now(),
 		players:   make(map[string]*Combatant),
 	}
 }
 
-func (s *State) player(name string) *Combatant {
-	c, ok := s.players[name]
-	if !ok {
-		c = &Combatant{Name: name}
-		s.players[name] = c
-	}
-	return c
+func normalizeFilter(value string) string { return strings.TrimSpace(value) }
+func sameCharacter(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
-// SetCapturing marca si el motor está leyendo tráfico y si la fuente es
-// simulada (modo demo, sin juego abierto).
+func validIdentity(identity LocalIdentity) bool {
+	guid := strings.TrimSpace(identity.GUID)
+	return identity.ObjectID != 0 && guid != "" && guid != "00000000-0000-0000-0000-000000000000" && strings.TrimSpace(identity.Name) != ""
+}
+
+func (s *State) recomputePhaseLocked() {
+	if s.demo {
+		s.capture.Phase = CaptureDemo
+		return
+	}
+	if !s.capture.RealCapture {
+		if s.capture.Phase != CapturePreparing {
+			s.capture.Phase = CaptureOff
+		}
+		return
+	}
+	if s.identity.Valid && s.capture.ServerConfirmed {
+		s.capture.Phase = CaptureCharacter
+	} else if s.capture.ServerConfirmed {
+		s.capture.Phase = CaptureWaitingJoin
+	} else if s.capture.PhotonPackets > 0 {
+		s.capture.Phase = CapturePhoton
+	} else {
+		s.capture.Phase = CaptureNetwork
+	}
+}
+
+func (s *State) PrepareCapture(provider string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.demo = false
+	s.capture = CaptureState{Phase: CapturePreparing, Provider: provider, StartedAt: time.Now().UnixMilli()}
+}
+
+func (s *State) CaptureOpened(provider string, openSources int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.demo = false
+	s.capture.Provider = provider
+	s.capture.OpenSources = openSources
+	s.capture.RealCapture = openSources > 0
+	s.capture.Error = ""
+	s.recomputePhaseLocked()
+}
+
+func (s *State) CaptureRecovering(provider, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capture.Provider = provider
+	s.capture.Adapter = ""
+	s.capture.OpenSources = 0
+	s.capture.RealCapture = false
+	s.capture.Error = message
+	s.capture.Phase = CapturePreparing
+}
+
+func (s *State) CaptureFailed(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capture.Error = message
+	s.capture.RealCapture = false
+	s.demo = false
+	s.capture.Phase = CaptureOff
+}
+
+func (s *State) StopCapture() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capture.RealCapture = false
+	s.capture.OpenSources = 0
+	s.demo = false
+	s.capture.Phase = CaptureOff
+}
+
+func (s *State) SetDemoCapture(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.demo = on
+	if on {
+		s.capture = CaptureState{Phase: CaptureDemo, Provider: "demo", StartedAt: time.Now().UnixMilli(), OpenSources: 1}
+	} else {
+		s.capture = CaptureState{Phase: CaptureOff}
+	}
+}
+
+// SetCapturing is retained for old call sites; real sources should use the
+// explicit PrepareCapture/CaptureOpened methods.
 func (s *State) SetCapturing(on, simulated bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.capturing = on
-	s.simulated = simulated
-}
-
-// SetCharacter fija el personaje propio y lo marca como tal en la tabla.
-func (s *State) SetCharacter(name string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Solo puede haber una fila propia. Esto también cubre un cambio de
-	// personaje sin reiniciar la aplicación.
-	for _, player := range s.players {
-		player.Self = false
+	if simulated {
+		s.SetDemoCapture(on)
+		return
 	}
-	s.character = name
-	if name != "" {
-		s.player(name).Self = true
+	if on {
+		s.CaptureOpened("capture", 1)
+	} else {
+		s.StopCapture()
 	}
 }
 
-// ClearCharacter descarta la detección y el roster actual sin tocar los
-// contadores de la sesión. La captura volverá a completarla únicamente al
-// recibir el próximo Join del juego al entrar con un personaje; ChangeCluster
-// no contiene identidad.
+func (s *State) SetCaptureAdapter(adapter string) {
+	s.mu.Lock()
+	s.capture.Adapter = adapter
+	s.mu.Unlock()
+}
+
+func (s *State) MarkPacket() {
+	s.mu.Lock()
+	s.capture.PacketsReceived++
+	s.capture.LastPacketAt = time.Now().UnixMilli()
+	s.mu.Unlock()
+}
+
+func (s *State) MarkPhoton(adapter string, encrypted bool) {
+	s.mu.Lock()
+	s.capture.PhotonPackets++
+	s.capture.LastPhotonAt = time.Now().UnixMilli()
+	if adapter != "" {
+		s.capture.Adapter = adapter
+	}
+	if encrypted {
+		s.capture.EncryptedDropped++
+	}
+	s.recomputePhaseLocked()
+	s.mu.Unlock()
+}
+
+func (s *State) MarkMalformed() {
+	s.mu.Lock()
+	s.capture.MalformedDropped++
+	s.mu.Unlock()
+}
+
+func (s *State) MarkDecoded() {
+	s.mu.Lock()
+	s.capture.DecodedMessages++
+	s.mu.Unlock()
+}
+
+func (s *State) ConfirmServer(name string) {
+	if name == "" {
+		return
+	}
+	s.mu.Lock()
+	s.capture.ServerConfirmed = true
+	s.capture.Server = name
+	s.recomputePhaseLocked()
+	s.mu.Unlock()
+}
+
+func normalizeIdentity(identity LocalIdentity) LocalIdentity {
+	identity.Name = strings.TrimSpace(identity.Name)
+	identity.GUID = strings.ToLower(strings.TrimSpace(identity.GUID))
+	identity.Guild = strings.TrimSpace(identity.Guild)
+	identity.Alliance = strings.TrimSpace(identity.Alliance)
+	return identity
+}
+
+func (s *State) applyJoinIdentityLocked(identity LocalIdentity) {
+	changedCharacter := s.identity.Valid && s.identity.GUID != identity.GUID
+	identity.Valid = true
+	identity.DetectedAt = time.Now().UnixMilli()
+	identity.Revision = s.identity.Revision + 1
+	identity.FilterMatched = s.trackingCharacter == "" || sameCharacter(s.trackingCharacter, identity.Name)
+	identity.Detection = "detected"
+	if !identity.FilterMatched {
+		identity.Detection = "filtered"
+	}
+	s.identity = identity
+	if changedCharacter {
+		s.resetMetricsLocked()
+	}
+	s.recomputePhaseLocked()
+}
+
+// ApplyJoinIdentity atomically replaces local identity and, when the GUID
+// changes, starts a fresh statistics session so two characters never mix.
+func (s *State) ApplyJoinIdentity(identity LocalIdentity) bool {
+	identity = normalizeIdentity(identity)
+	if !validIdentity(identity) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.applyJoinIdentityLocked(identity)
+	return true
+}
+
+// ApplyJoinIdentityAndRegistry is the single JoinResponse transaction exposed
+// to the live handler: identity, world, registry and party become visible in
+// one state lock, so a concurrent snapshot can never observe a half-Join.
+func (s *State) ApplyJoinIdentityAndRegistry(identity LocalIdentity, zone string, entities, members []Entity) bool {
+	identity = normalizeIdentity(identity)
+	if !validIdentity(identity) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.applyJoinIdentityLocked(identity)
+	s.enterZoneLocked(zone)
+	s.syncRegistryLocked(entities, members)
+	return true
+}
+
 func (s *State) ClearCharacter() {
-	s.SetCharacter("")
-	s.SetParty(nil)
+	s.mu.Lock()
+	revision := s.identity.Revision + 1
+	s.identity = LocalIdentity{Detection: "waiting", FilterMatched: s.trackingCharacter == "", Revision: revision}
+	s.entities = nil
+	s.party = PartyState{}
+	s.recomputePhaseLocked()
+	s.mu.Unlock()
 }
 
-// SetTrackingCharacter stores the optional SAT-style main-character filter.
-// The handler still detects the local identity from Join; this value only
-// decides whether current-session statistics are accepted after identification.
 func (s *State) SetTrackingCharacter(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.trackingCharacter = name
+	next := normalizeFilter(name)
+	changed := !sameCharacter(s.trackingCharacter, next)
+	s.trackingCharacter = next
+	if s.identity.Valid {
+		s.identity.FilterMatched = s.trackingCharacter == "" || sameCharacter(s.trackingCharacter, s.identity.Name)
+		s.identity.Detection = "detected"
+		if !s.identity.FilterMatched {
+			s.identity.Detection = "filtered"
+		}
+	} else {
+		s.identity.FilterMatched = s.trackingCharacter == ""
+	}
+	if changed {
+		s.resetMetricsLocked()
+		if s.identity.Valid && s.identity.FilterMatched {
+			for _, entity := range s.entities {
+				if entity.InParty {
+					s.ensureCombatantLocked(entity)
+				}
+			}
+		}
+	}
 }
 
 func (s *State) TrackingCharacter() string {
@@ -155,168 +447,323 @@ func (s *State) TrackingCharacter() string {
 	return s.trackingCharacter
 }
 
-// SetParty reemplaza la lista de miembros de la party.
-func (s *State) SetParty(members []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.party = append([]string(nil), members...)
-	for _, m := range members {
-		s.player(m)
-	}
-}
-
-// AddPartyMember suma un integrante sin repetir.
-func (s *State) AddPartyMember(name string) {
-	if name == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, m := range s.party {
-		if m == name {
-			return
-		}
-	}
-	s.party = append(s.party, name)
-	s.player(name)
-}
-
-// RemovePartyMember deja de aceptar estadísticas nuevas de quien salió de la
-// party. Su fila histórica se conserva en la sesión, igual que en un medidor
-// de grupo convencional.
-func (s *State) RemovePartyMember(name string) {
-	if name == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := s.party[:0]
-	for _, member := range s.party {
-		if member != name {
-			out = append(out, member)
-		}
-	}
-	s.party = out
-}
-
-// IsTrackedPlayer limita el análisis al personaje propio y su party. Aunque
-// el protocolo anuncie otros personajes visibles, nunca se agregan enemigos o
-// jugadores ajenos al medidor ni al registro de botín.
-func (s *State) IsTrackedPlayer(name string) bool {
-	if name == "" {
-		return false
-	}
+func (s *State) Identity() LocalIdentity {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	// SAT's main-character setting is a statistics filter, not an alternate
-	// identity source. Until Join identifies a local player it allows packets;
-	// afterwards a different local name disables aggregation for this session.
-	if s.trackingCharacter != "" && s.character != "" && s.character != s.trackingCharacter {
-		return false
-	}
-	if name == s.character {
-		return true
-	}
-	for _, member := range s.party {
-		if member == name {
-			return true
-		}
-	}
-	return false
+	return s.identity
 }
 
-// Character devuelve el personaje detectado, o vacío si todavía no se sabe.
-// Existe para no armar un Snapshot completo (que ordena y copia todo) cada vez
-// que llega un evento.
+func (s *State) HasValidIdentity() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.identity.Valid
+}
+
+func (s *State) MetricsAllowed() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.metricsAllowedLocked()
+}
+
+func (s *State) metricsAllowedLocked() bool {
+	return s.identity.Valid && s.identity.FilterMatched
+}
+
+// SyncRegistry projects the GUID registry into the public EntityRegistry and
+// PartyState contracts. It never changes LocalIdentity; only JoinResponse may.
+func (s *State) syncRegistryLocked(entities []Entity, members []Entity) {
+	if !s.identity.Valid && !s.demo {
+		return
+	}
+	s.entities = append([]Entity(nil), entities...)
+	s.party.Members = make([]PartyMemberState, 0, len(members))
+	for _, entity := range members {
+		if entity.GUID == "" || entity.Name == "" {
+			continue
+		}
+		member := PartyMemberState{GUID: entity.GUID, Name: entity.Name, Local: entity.Local}
+		if entity.HasObjectID {
+			id := entity.ObjectID
+			member.ObjectID = &id
+		}
+		s.party.Members = append(s.party.Members, member)
+		s.ensureCombatantLocked(entity)
+	}
+}
+
+func (s *State) SyncRegistry(entities []Entity, members []Entity) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.syncRegistryLocked(entities, members)
+}
+
+func (s *State) ensureCombatantLocked(entity Entity) *Combatant {
+	if entity.GUID == "" {
+		return nil
+	}
+	combatant := s.players[entity.GUID]
+	if combatant == nil {
+		combatant = &Combatant{GUID: entity.GUID}
+		s.players[entity.GUID] = combatant
+	}
+	combatant.Name = entity.Name
+	combatant.Self = entity.Local
+	if entity.HasObjectID {
+		id := entity.ObjectID
+		combatant.ObjectID = &id
+	} else {
+		combatant.ObjectID = nil
+	}
+	return combatant
+}
+
 func (s *State) Character() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.character
+	if !s.identity.Valid {
+		return ""
+	}
+	return s.identity.Name
 }
 
-// Zone devuelve el mapa actual, o vacío si todavía no se detectó.
 func (s *State) Zone() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.zone
+	return s.world.Map
 }
 
-// EnterZone cierra la visita anterior y abre una nueva.
+func (s *State) IsCurrentZone(raw string) bool {
+	cluster, instance := splitZone(raw)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cluster != "" && s.world.Map == cluster && s.world.Instance == instance
+}
+
+func splitZone(name string) (cluster, instance string) {
+	parts := strings.Split(name, "@")
+	cluster = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		instance = strings.Join(parts[1:], "@")
+	}
+	return cluster, instance
+}
+
+func (s *State) enterZoneLocked(name string) {
+	if !s.identity.Valid && !s.demo {
+		return
+	}
+	cluster, instance := splitZone(name)
+	if cluster == "" || s.world.Map == cluster && s.world.Instance == instance {
+		return
+	}
+	now := time.Now().UnixMilli()
+	if n := len(s.world.History); n > 0 && s.world.History[n-1].Leave == 0 {
+		s.world.History[n-1].Leave = now
+		s.world.History[n-1].Seconds = (now - s.world.History[n-1].Enter) / 1000
+	}
+	s.world.Cluster, s.world.Map, s.world.Instance = cluster, cluster, instance
+	s.world.History = append(s.world.History, MapVisit{Name: cluster, Instance: instance, Enter: now})
+	if len(s.world.History) > maxMaps {
+		s.world.History = s.world.History[len(s.world.History)-maxMaps:]
+	}
+}
+
 func (s *State) EnterZone(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now().UnixMilli()
-	if n := len(s.maps); n > 0 && s.maps[n-1].Leave == 0 {
-		s.maps[n-1].Leave = now
-		s.maps[n-1].Seconds = (now - s.maps[n-1].Enter) / 1000
-	}
-	s.zone = name
-	s.maps = append(s.maps, MapVisit{Name: name, Enter: now})
-	if len(s.maps) > maxMaps {
-		s.maps = s.maps[len(s.maps)-maxMaps:]
-	}
+	s.enterZoneLocked(name)
 }
 
-// AddDamage suma daño hecho por source sobre target.
-func (s *State) AddDamage(source, target string, amount int64) {
-	if amount <= 0 {
-		return
+func (s *State) AddDamageEntity(source, target Entity, amount int64) bool {
+	if amount <= 0 || source.GUID == "" {
+		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c := s.player(source)
+	if !s.metricsAllowedLocked() || !source.InParty {
+		return false
+	}
+	c := s.ensureCombatantLocked(source)
+	if c == nil {
+		return false
+	}
 	c.Damage += amount
 	if amount > c.BiggestHit {
 		c.BiggestHit = amount
 	}
-	// El daño recibido solo se acumula para jugadores conocidos (vos o tu
-	// party). Si no, cada mob golpeado aparecería como una fila más en el
-	// medidor, que es exactamente lo que no queremos ver ahí.
-	if target != "" {
-		if victim, known := s.players[target]; known {
+	if target.GUID != "" {
+		if victim := s.players[target.GUID]; victim != nil {
 			victim.Taken += amount
 		}
 	}
+	return true
 }
 
-// AddHealing suma curación efectiva y sobrecuración.
-func (s *State) AddHealing(source string, effective, overheal int64) {
+func (s *State) AddHealingEntity(source Entity, effective, overheal int64) bool {
+	if source.GUID == "" {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c := s.player(source)
+	if !s.metricsAllowedLocked() || !source.InParty {
+		return false
+	}
+	c := s.ensureCombatantLocked(source)
+	if c == nil {
+		return false
+	}
 	if effective > 0 {
 		c.Healing += effective
 	}
 	if overheal > 0 {
 		c.Overheal += overheal
 	}
+	return effective > 0 || overheal > 0
 }
 
-// AddKill registra una muerte y, si se conoce, quién la causó.
+// Legacy name-based methods remain for explicit demo data only. Real packet
+// handlers use GUID/ObjectID methods above.
+func (s *State) IsTrackedPlayer(name string) bool {
+	if name == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.metricsAllowedLocked() {
+		return false
+	}
+	for _, member := range s.party.Members {
+		if sameCharacter(member.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *State) AddDamage(source, target string, amount int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.demo || !s.metricsAllowedLocked() || amount <= 0 {
+		return
+	}
+	var sourceEntity, targetEntity Entity
+	for _, member := range s.entities {
+		if sameCharacter(member.Name, source) {
+			sourceEntity = member
+		}
+		if sameCharacter(member.Name, target) {
+			targetEntity = member
+		}
+	}
+	if sourceEntity.GUID == "" || !sourceEntity.InParty {
+		return
+	}
+	c := s.ensureCombatantLocked(sourceEntity)
+	c.Damage += amount
+	if amount > c.BiggestHit {
+		c.BiggestHit = amount
+	}
+	if targetEntity.GUID != "" && s.players[targetEntity.GUID] != nil {
+		s.players[targetEntity.GUID].Taken += amount
+	}
+}
+
+func (s *State) AddHealing(source string, effective, overheal int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.demo || !s.metricsAllowedLocked() {
+		return
+	}
+	for _, entity := range s.entities {
+		if sameCharacter(entity.Name, source) && entity.InParty {
+			c := s.ensureCombatantLocked(entity)
+			if effective > 0 {
+				c.Healing += effective
+			}
+			if overheal > 0 {
+				c.Overheal += overheal
+			}
+			return
+		}
+	}
+}
+
 func (s *State) AddKill(killer, victim string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if killer != "" {
-		s.player(killer).Kills++
+	if !s.demo || !s.metricsAllowedLocked() {
+		return
 	}
-	if victim != "" {
-		s.player(victim).Deaths++
+	for _, entity := range s.entities {
+		if killer != "" && sameCharacter(entity.Name, killer) {
+			if c := s.ensureCombatantLocked(entity); c != nil {
+				c.Kills++
+			}
+		}
+		if victim != "" && sameCharacter(entity.Name, victim) {
+			if c := s.ensureCombatantLocked(entity); c != nil {
+				c.Deaths++
+			}
+		}
 	}
 }
 
-// AddFame, AddSilver y AddRespec acumulan las ganancias de la sesión.
-func (s *State) MarkPacket()       { s.mu.Lock(); s.packets++; s.mu.Unlock() }
-// MarkDecoded cuenta mensajes Photon interpretados, no solo datagramas UDP.
-// Así la interfaz puede distinguir tráfico del juego de datos realmente útiles.
-func (s *State) MarkDecoded()       { s.mu.Lock(); s.decoded++; s.mu.Unlock() }
-func (s *State) AddFame(v int64)   { s.mu.Lock(); s.fame += v; s.mu.Unlock() }
-func (s *State) AddSilver(v int64) { s.mu.Lock(); s.silver += v; s.mu.Unlock() }
-func (s *State) AddRespec(v int64) { s.mu.Lock(); s.respec += v; s.mu.Unlock() }
-
-// AddLoot guarda un ítem recogido, recortando el historial al tope.
-func (s *State) AddLoot(entry LootEntry) {
+func (s *State) AddFame(v int64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() {
+		return false
+	}
+	s.fame += v
+	return true
+}
+func (s *State) AddSilver(v int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() {
+		return false
+	}
+	s.silver += v
+	return true
+}
+func (s *State) AddRespec(v int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() {
+		return false
+	}
+	s.respec += v
+	return true
+}
+
+func (s *State) AddLoot(entry LootEntry) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() {
+		return false
+	}
+	if entry.PlayerGUID == "" {
+		for _, member := range s.party.Members {
+			if sameCharacter(member.Name, entry.Player) {
+				entry.PlayerGUID = member.GUID
+				break
+			}
+		}
+	}
+	if entry.PlayerGUID == "" {
+		return false
+	}
+	allowed := false
+	for _, member := range s.party.Members {
+		if member.GUID == entry.PlayerGUID {
+			allowed = true
+			entry.Player = member.Name
+			break
+		}
+	}
+	if !allowed {
+		return false
+	}
 	if entry.TS == 0 {
 		entry.TS = time.Now().UnixMilli()
 	}
@@ -324,44 +771,39 @@ func (s *State) AddLoot(entry LootEntry) {
 	if len(s.loot) > maxLoot {
 		s.loot = s.loot[len(s.loot)-maxLoot:]
 	}
+	return true
 }
 
-// Reset vacía los contadores y arranca una sesión nueva, conservando
-// personaje, zona y party (no cambian porque el usuario apriete «reiniciar»).
+func (s *State) resetMetricsLocked() {
+	s.startedAt = time.Now()
+	s.fame, s.silver, s.respec = 0, 0, 0
+	s.players = make(map[string]*Combatant)
+	s.loot = nil
+}
+
 func (s *State) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.startedAt = time.Now()
-	s.fame, s.silver, s.respec = 0, 0, 0
-	s.packets = 0
-	s.players = make(map[string]*Combatant)
-	s.loot = nil
-	s.maps = nil
-	if s.character != "" {
-		s.player(s.character).Self = true
-	}
-	for _, m := range s.party {
-		s.player(m)
+	s.resetMetricsLocked()
+	for _, entity := range s.entities {
+		if entity.InParty {
+			s.ensureCombatantLocked(entity)
+		}
 	}
 }
 
-// Snapshot arma la foto ordenada por daño, con tasas y porcentajes ya
-// calculados para que el frontend solo dibuje.
 func (s *State) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	elapsed := time.Since(s.startedAt).Seconds()
 	if elapsed < 1 {
 		elapsed = 1
 	}
-
 	var totalDmg, totalHeal int64
 	for _, c := range s.players {
 		totalDmg += c.Damage
 		totalHeal += c.Healing
 	}
-
 	list := make([]Combatant, 0, len(s.players))
 	for _, c := range s.players {
 		row := *c
@@ -384,43 +826,37 @@ func (s *State) Snapshot() Snapshot {
 		}
 		return list[i].Name < list[j].Name
 	})
-
 	hours := elapsed / 3600
-
-	maps := append([]MapVisit(nil), s.maps...)
+	maps := append([]MapVisit(nil), s.world.History...)
+	now := time.Now().UnixMilli()
 	for i := range maps {
 		if maps[i].Leave == 0 {
-			maps[i].Seconds = (time.Now().UnixMilli() - maps[i].Enter) / 1000
+			maps[i].Seconds = (now - maps[i].Enter) / 1000
 		}
 	}
-	// El historial se muestra del más nuevo al más viejo, como en SAT.
 	for i, j := 0, len(maps)-1; i < j; i, j = i+1, j-1 {
 		maps[i], maps[j] = maps[j], maps[i]
 	}
-
 	loot := append([]LootEntry(nil), s.loot...)
 	for i, j := 0, len(loot)-1; i < j; i, j = i+1, j-1 {
 		loot[i], loot[j] = loot[j], loot[i]
 	}
-
+	partyNames := make([]string, 0, len(s.party.Members))
+	for _, m := range s.party.Members {
+		partyNames = append(partyNames, m.Name)
+	}
+	capturing := s.capture.RealCapture || s.demo || s.capture.Phase == CapturePreparing
+	character := ""
+	if s.identity.Valid {
+		character = s.identity.Name
+	}
+	metrics := MetricsSnapshot{Accepted: s.metricsAllowedLocked(), StartedAt: s.startedAt.UnixMilli(), Seconds: int64(elapsed), Fame: s.fame, Silver: s.silver, Respec: s.respec, FamePerHour: float64(s.fame) / hours, SilverPerH: float64(s.silver) / hours, Combatants: list, Loot: loot}
+	world := s.world
+	world.History = maps
 	return Snapshot{
-		Capturing:         s.capturing,
-		Simulated:         s.simulated,
-		Character:         s.character,
-		TrackingCharacter: s.trackingCharacter,
-		Zone:              s.zone,
-		Party:             append([]string(nil), s.party...),
-		StartedAt:         s.startedAt.UnixMilli(),
-		Seconds:           int64(elapsed),
-		Fame:              s.fame,
-		Silver:            s.silver,
-		Respec:            s.respec,
-		FamePerHour:       float64(s.fame) / hours,
-		SilverPerH:        float64(s.silver) / hours,
-		Combatants:        list,
-		Maps:              maps,
-		Loot:              loot,
-		Packets:           s.packets,
-		Decoded:           s.decoded,
+		Capture: s.capture, Identity: s.identity, Entities: append([]Entity(nil), s.entities...), PartyState: PartyState{Members: append([]PartyMemberState(nil), s.party.Members...)}, World: world, Metrics: metrics,
+		Capturing: capturing, Simulated: s.demo, Character: character, TrackingCharacter: s.trackingCharacter, Zone: s.world.Map, Party: partyNames,
+		StartedAt: metrics.StartedAt, Seconds: metrics.Seconds, Fame: s.fame, Silver: s.silver, Respec: s.respec, FamePerHour: metrics.FamePerHour, SilverPerH: metrics.SilverPerH, Combatants: list, Maps: maps, Loot: loot,
+		Packets: s.capture.PacketsReceived, Decoded: s.capture.DecodedMessages,
 	}
 }

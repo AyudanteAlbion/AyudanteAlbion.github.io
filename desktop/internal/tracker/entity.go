@@ -10,8 +10,10 @@ package tracker
 
 import (
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"ayudante-albion-desktop/internal/tracker/photon"
@@ -21,14 +23,14 @@ import (
 // events. Albion can replace an ObjectId after a zone transition; the player
 // GUID is the stable key used to join that new ObjectId to the same player.
 type Entity struct {
-	GUID        string
-	ObjectID    int64
-	HasObjectID bool
-	Name        string
-	Guild       string
-	Alliance    string
-	Local       bool
-	InParty     bool
+	GUID        string `json:"guid,omitempty"`
+	ObjectID    int64  `json:"objectId,omitempty"`
+	HasObjectID bool   `json:"hasObjectId"`
+	Name        string `json:"name,omitempty"`
+	Guild       string `json:"guild,omitempty"`
+	Alliance    string `json:"alliance,omitempty"`
+	Local       bool   `json:"local"`
+	InParty     bool   `json:"inParty"`
 }
 
 type entityUpdate struct {
@@ -138,25 +140,39 @@ func (s *EntityStore) upsertLocked(update entityUpdate) Entity {
 }
 
 // SetLocal records the only source of automatic local-player identity: a
-// successful Join response. The local character is always part of the tracked
-// party, including after PartyDisbanded, matching SAT's entity lifecycle.
-func (s *EntityStore) SetLocal(update entityUpdate) Entity {
+// successful Join response. ObjectID, GUID and name are all mandatory. A new
+// GUID is a character switch, so the old zone registry and party are replaced
+// instead of leaking into the new character's session.
+func (s *EntityStore) SetLocal(update entityUpdate) (Entity, error) {
+	update.GUID = strings.ToLower(strings.TrimSpace(update.GUID))
+	update.Name = strings.TrimSpace(update.Name)
+	if !update.HasObjectID || update.ObjectID == 0 || update.GUID == "" || update.GUID == "00000000-0000-0000-0000-000000000000" || update.Name == "" {
+		return Entity{}, errors.New("JoinResponse incompleto: se requieren ObjectID, GUID y nombre")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if current := s.byKey[s.localKey]; current != nil && current.GUID != update.GUID {
+		s.byKey = make(map[string]*Entity)
+		s.keyByObjectID = make(map[int64]string)
+		s.localKey = ""
+	}
 
 	entity := s.upsertLocked(update)
 	key := s.keyForLocked(entity)
-	if s.localKey != "" && s.localKey != key {
-		if old := s.byKey[s.localKey]; old != nil {
-			old.Local = false
-			old.InParty = false
+	if key == "" || s.byKey[key] == nil {
+		return Entity{}, errors.New("no se pudo indexar la identidad local")
+	}
+	for _, known := range s.byKey {
+		if known != nil {
+			known.Local = false
 		}
 	}
 	stored := s.byKey[key]
 	stored.Local = true
 	stored.InParty = true
 	s.localKey = key
-	return *stored
+	return *stored, nil
 }
 
 func (s *EntityStore) keyForLocked(entity Entity) string {
@@ -181,13 +197,38 @@ func (s *EntityStore) keyForLocked(entity Entity) string {
 }
 
 func (s *EntityStore) NameOfObjectID(objectID int64) string {
+	entity, ok := s.ByObjectID(objectID)
+	if !ok {
+		return ""
+	}
+	return entity.Name
+}
+
+func (s *EntityStore) ByObjectID(objectID int64) (Entity, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	key, ok := s.keyByObjectID[objectID]
-	if !ok || s.byKey[key] == nil {
-		return ""
+	entity := s.byKey[key]
+	if !ok || entity == nil || !entity.HasObjectID {
+		return Entity{}, false
 	}
-	return s.byKey[key].Name
+	return *entity, true
+}
+
+func (s *EntityStore) IsPartyObjectID(objectID int64) bool {
+	entity, ok := s.ByObjectID(objectID)
+	return ok && entity.InParty
+}
+
+func (s *EntityStore) PartyByName(name string) (Entity, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, entity := range s.byKey {
+		if entity != nil && entity.InParty && strings.EqualFold(entity.Name, strings.TrimSpace(name)) {
+			return *entity, true
+		}
+	}
+	return Entity{}, false
 }
 
 func (s *EntityStore) IsLocalObjectID(objectID int64) bool {
@@ -306,27 +347,56 @@ func (s *EntityStore) Local() (Entity, bool) {
 	return *entity, true
 }
 
-func (s *EntityStore) PartyNames() []string {
+func (s *EntityStore) PartyEntities() []Entity {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	seen := make(map[string]bool)
-	out := make([]string, 0)
-	appendName := func(entity *Entity) {
-		if entity == nil || !entity.InParty || entity.Name == "" || seen[entity.Name] {
-			return
-		}
-		seen[entity.Name] = true
-		out = append(out, entity.Name)
+	out := make([]Entity, 0)
+	if local := s.byKey[s.localKey]; local != nil && local.InParty && local.GUID != "" {
+		out = append(out, *local)
 	}
-	appendName(s.byKey[s.localKey])
+	others := make([]Entity, 0)
 	for key, entity := range s.byKey {
-		if key != s.localKey {
-			appendName(entity)
+		if key != s.localKey && entity != nil && entity.InParty && entity.GUID != "" {
+			others = append(others, *entity)
 		}
 	}
-	if len(out) > 1 {
-		sort.Strings(out[1:])
+	sort.Slice(others, func(i, j int) bool {
+		if others[i].Name != others[j].Name {
+			return others[i].Name < others[j].Name
+		}
+		return others[i].GUID < others[j].GUID
+	})
+	return append(out, others...)
+}
+
+func (s *EntityStore) Snapshot() []Entity {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Entity, 0, len(s.byKey))
+	for _, entity := range s.byKey {
+		if entity != nil && entity.GUID != "" {
+			out = append(out, *entity)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Local != out[j].Local {
+			return out[i].Local
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].GUID < out[j].GUID
+	})
+	return out
+}
+
+func (s *EntityStore) PartyNames() []string {
+	entities := s.PartyEntities()
+	out := make([]string, 0, len(entities))
+	for _, entity := range entities {
+		if entity.Name != "" {
+			out = append(out, entity.Name)
+		}
 	}
 	return out
 }

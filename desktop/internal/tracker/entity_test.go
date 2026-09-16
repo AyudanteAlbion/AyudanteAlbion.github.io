@@ -67,16 +67,19 @@ func TestEntityStorePartyLifecycleKeepsLocalPlayer(t *testing.T) {
 	}
 }
 
-func TestMainCharacterFilterDoesNotGuessIdentity(t *testing.T) {
+func TestMainCharacterFilterRequiresIdentityAndFiltersMetrics(t *testing.T) {
 	state := NewState()
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
 	state.SetTrackingCharacter("PersonajeElegido")
-	if !handler.trackingAllowed() {
-		t.Fatal("filter must remain permissive before Join identifies a character")
+	if handler.trackingAllowed() {
+		t.Fatal("no metric may be accepted before Join identifies a character")
 	}
 
-	state.SetCharacter("OtroPersonaje")
-	state.SetParty([]string{"OtroPersonaje", "Aliada"})
+	state.ApplyJoinIdentity(LocalIdentity{ObjectID: 1, GUID: "00000000-0000-0000-0000-000000000001", Name: "OtroPersonaje"})
+	state.SyncRegistry([]Entity{
+		{GUID: "00000000-0000-0000-0000-000000000001", ObjectID: 1, HasObjectID: true, Name: "OtroPersonaje", Local: true, InParty: true},
+		{GUID: "00000000-0000-0000-0000-000000000002", ObjectID: 2, HasObjectID: true, Name: "Aliada", InParty: true},
+	}, nil)
 	if handler.trackingAllowed() {
 		t.Fatal("a different confirmed local character must block session statistics")
 	}
@@ -84,8 +87,10 @@ func TestMainCharacterFilterDoesNotGuessIdentity(t *testing.T) {
 		t.Fatal("a rejected character must not admit its own party")
 	}
 
-	state.SetCharacter("PersonajeElegido")
-	if !handler.trackingAllowed() || !state.IsTrackedPlayer("PersonajeElegido") || !state.IsTrackedPlayer("Aliada") {
-		t.Fatal("the configured local character and its party must be tracked")
+	state.ApplyJoinIdentity(LocalIdentity{ObjectID: 3, GUID: "00000000-0000-0000-0000-000000000003", Name: "PersonajeElegido"})
+	members := []Entity{{GUID: "00000000-0000-0000-0000-000000000003", ObjectID: 3, HasObjectID: true, Name: "PersonajeElegido", Local: true, InParty: true}}
+	state.SyncRegistry(members, members)
+	if !handler.trackingAllowed() || !state.IsTrackedPlayer("PersonajeElegido") {
+		t.Fatal("the configured local character must be tracked after a valid Join")
 	}
 }
