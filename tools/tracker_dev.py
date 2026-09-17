@@ -386,13 +386,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             HUB.publish('status', STATE.snapshot())
             return self._json({'ok': True, 'capturing': True})
         if self.path.startswith('/api/tracker/character/refresh'):
+            # Espeja el contrato de Go: «Detectar de nuevo» no corta la captura.
+            # Con personaje ya detectado solo se reemite el snapshot; sin él, se
+            # limpia la identidad y se espera el próximo JoinResponse.
             with STATE._lock:
-                STATE.character = ''
-                STATE.party = []
+                detected = bool(STATE.character)
+                started = not STATE.capturing
+                if not detected:
+                    STATE.party = []
                 STATE.capturing = True
             snap = STATE.snapshot()
             HUB.publish('status', snap)
-            return self._json({'ok': True, 'capturing': True, 'snapshot': snap})
+            return self._json({'ok': True, 'capturing': True, 'started': started,
+                               'detected': detected, 'snapshot': snap})
         if self.path.startswith('/api/tracker/start'):
             STATE.capturing = True
             HUB.publish('status', STATE.snapshot())

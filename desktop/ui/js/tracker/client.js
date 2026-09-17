@@ -189,9 +189,11 @@
     return post('/api/tracker/reset');
   }
 
-  /* Descarta la identidad actual y espera una nueva respuesta Join del
-     servidor. Cambiar de zona solo entrega ChangeCluster (zona); para obtener
-     otra identidad hay que volver al selector de personaje y entrar de nuevo. */
+  /* Vuelve a pedir la identidad del personaje sin cortar la captura de red.
+     Si ya hay un personaje detectado, el backend solo reemite el snapshot. Si
+     no lo hay, queda esperando el próximo JoinResponse: cambiar de zona solo
+     entrega ChangeCluster, así que hay que volver al selector de personaje y
+     entrar de nuevo. */
   async function refreshCharacter() {
     var data = await post('/api/tracker/character/refresh');
     if (data && data.ok) {

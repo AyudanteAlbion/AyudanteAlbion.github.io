@@ -84,6 +84,19 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   de personaje e ingresar otra vez.
 - Si `Source.Run` termina inesperadamente, el motor deja de mostrarse como
   activo y expone el error de captura en vez de dejar `capturing:true` colgado.
+- **«Detectar de nuevo» rompía la conexión que ya funcionaba.** El botón
+  llamaba a `/api/tracker/character/refresh`, que hacía `Stop()` + `Start()`:
+  eso tiraba abajo la captura viva y obligaba a rehacer todo el pipeline
+  (Photon detectado, servidor confirmado), además de borrar el personaje que
+  ya estaba fijado. Ahora la ruta no toca una captura en curso: si hay
+  identidad válida, solo reemite el snapshot para repintar el personaje; si no
+  la hay, limpia la identidad —nunca las métricas— y espera el próximo
+  JoinResponse. La captura únicamente se arranca si estaba detenida. Los
+  textos de ambos botones aclaran qué hace cada uno: «Detectar de nuevo»
+  vuelve a leer el personaje y «Reiniciar sesión» pone en cero los contadores.
+- Los menús **Crafteo** y **Flipping** de la barra lateral se abren solo al
+  hacer clic en su botón. Antes se desplegaban al pasar el cursor por encima,
+  lo que tapaba el resto de la navegación sin que el usuario lo pidiera.
 - El despliegue de la web (`web.yml`) ahora copia `albion-app/css/` al sitio y
   lo incluye en los disparadores: el `index.html` enlaza hojas de ese directorio
   que en producción devolvían **404** y dejaban módulos sin estilos (quedaba
