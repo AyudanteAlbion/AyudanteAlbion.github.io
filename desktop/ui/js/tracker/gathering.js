@@ -49,7 +49,15 @@
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function num(v) { return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(Number(v) || 0)); }
   function money(v) { return num(v) + ' plata'; }
-  function uid() { return 'gat_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9); }
+  // Identificador local de fila (clave de deduplicado en localStorage, no es
+  // un token). Se usa crypto porque Math.random se marca como generador
+  // inseguro en el análisis estático y acá no cuesta nada evitarlo.
+  function uid() {
+    var rnd = new Uint32Array(2);
+    crypto.getRandomValues(rnd);
+    return 'gat_' + Date.now().toString(36) + '_' +
+      rnd[0].toString(36) + rnd[1].toString(36);
+  }
   function read(key, fallback) { try { var v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch (e) { return fallback; } }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state.rows.slice(-10000))); localStorage.setItem(SESSION_KEY, JSON.stringify(state.sessions.slice(-250))); } catch (e) {} }
 
