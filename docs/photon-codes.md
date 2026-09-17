@@ -109,8 +109,17 @@ Si una pestaña se queda vacía pero el medidor de daño funciona, casi siempre 
 | Pestaña | Eventos que la alimentan |
 |---|---|
 | Sesión (medidor) | `HealthUpdate`, `HealthUpdates`, `UpdateFame`, `TakeSilver`, `UpdateCurrency` |
-| Recolección | `HarvestFinished` (con sus `eventParameters`: `id`, `itemId`, `quantity`, `collectorBonus`, `premiumBonus`) |
-| Mazmorras | No tiene evento propio: las partidas se abren y cierran con la operación `ChangeCluster`, leyendo el tramo de instancia del cluster (`guid@RANDOMDUNGEON@SOLO`) |
+| Recolección | `HarvestFinished` (con sus `eventParameters`: `id`, `itemId`, `quantity`, `collectorBonus`, `premiumBonus`) y, para la pesca, las operaciones `FishingStart`/`FishingCatch`/`FishingFinish`/`FishingCancel` con `NewSimpleItem` y `RewardGranted` |
+| Mazmorras | Las partidas se abren y cierran con la operación `ChangeCluster` y el `JoinResponse` (parámetro 8). `NewRandomDungeonExit` afina tipo y tier de las aleatorias; `MightAndFavorReceived` suma poder/favor; `Died` cuenta muertes; `UseLootChest` cuenta cofres |
+
+El **formato real de zona** (documentado con capturas en `WorldData` de SAT) tiene dos formas:
+índice del mundo a secas (`3003` = Caerleon, `DNG-KPR-02-MAIN-021` = estática, `TNL-151` =
+Camino de Avalon) o instancia con token (`@RANDOMDUNGEON@<guid>`, `@MISTS@<guid>`,
+`@HIDEOUT@<índice>@<guid>`). El tier y el nivel Q de los clusters fijos salen de
+[`desktop/internal/tracker/cluster_kinds.json`](../desktop/internal/tracker/cluster_kinds.json),
+generado con `python3 scripts/build_cluster_kinds.py` desde `cluster/world.xml` de
+[ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps) — el mismo dato que SAT carga como
+`world.json`.
 
 El `itemId` de `HarvestFinished` es un **índice numérico**, no un nombre: `1000` en vez de `T4_ORE`.
 Es la posición del ítem en `items.xml` del cliente, la misma clave que usa SAT en

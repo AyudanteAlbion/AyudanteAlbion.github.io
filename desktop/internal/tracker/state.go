@@ -606,13 +606,38 @@ func (s *State) IsCurrentZone(raw string) bool {
 	return cluster != "" && s.world.Map == cluster && s.world.Instance == instance
 }
 
+// splitZone separa el identificador de zona que manda Albion en cluster e
+// instancia. Hay dos formatos reales, documentados en WorldData de la app de
+// referencia (SAT):
+//
+//   - Clusters del mundo, sin "@": el índice tal cual ("3003" para Caerleon,
+//     "DNG-KPR-02-MAIN-010" para una estática, "TNL-151" para un Camino de
+//     Avalon). No tienen instancia.
+//   - Instancias, con "@" inicial y token de tipo: "@RANDOMDUNGEON@<guid>",
+//     "@MISTS@<guid>", "@HIDEOUT@<clusterIndex>@<guid>". El primer tramo no
+//     vacío es el TOKEN ("RANDOMDUNGEON"), que identifica la clase de mapa,
+//     y el resto es la instancia (su guid).
+//
+// El formato histórico "cluster@tipo@extra" (primer tramo no vacío) también
+// se acepta: es el que usan las pruebas y las capturas viejas.
 func splitZone(name string) (cluster, instance string) {
-	parts := strings.Split(name, "@")
-	cluster = strings.TrimSpace(parts[0])
-	if len(parts) > 1 {
-		instance = strings.Join(parts[1:], "@")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ""
 	}
-	return cluster, instance
+	parts := strings.Split(name, "@")
+	if len(parts) == 1 {
+		return name, ""
+	}
+	if first := strings.TrimSpace(parts[0]); first == "" {
+		// "@TOKEN@resto": el token de instancia es el cluster lógico.
+		token := strings.TrimSpace(parts[1])
+		if token == "" {
+			return "", strings.Join(parts[1:], "@")
+		}
+		return token, strings.Join(parts[2:], "@")
+	}
+	return strings.TrimSpace(parts[0]), strings.Join(parts[1:], "@")
 }
 
 func (s *State) enterZoneLocked(name string) {

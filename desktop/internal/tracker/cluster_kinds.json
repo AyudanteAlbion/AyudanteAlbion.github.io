@@ -1,0 +1,3167 @@
+{
+ "_comment": [
+  "Índice id de cluster -> tipo de contenido, generado desde",
+  "cluster/world.xml de ao-data/ao-bin-dumps (el mismo dato que SAT",
+  "carga como world.json). Regenerar con",
+  "scripts/build_cluster_kinds.py tras cada patch del juego.",
+  "",
+  "Claves de cada entrada: k = tipo (static, hellgate, hce, avalon,",
+  "arena, island, hideout), t = tier, q = nivel Q1..Q6 de estáticas.",
+  "Las zonas abiertas no tienen entrada: no son mazmorra."
+ ],
+ "source": "ao-data/ao-bin-dumps · cluster/world.xml",
+ "generatedAt": "2026-09-17",
+ "clusters": {
+  "ARENA-01": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-01#1": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-1v1-01": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-City": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-FarmLand": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-HomeTerritory": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-Resources": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-Resources1": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-Resources2": {
+   "k": "arena",
+   "t": 7
+  },
+  "ARENA-STANDARD": {
+   "k": "arena",
+   "t": 7
+  },
+  "CrystalRealm": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm-CrystalLeague-NonLethal": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm-Nonlethal": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm02": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm02-CrystalLeague-NonLethal": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm02-Nonlethal": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm03": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm20v20": {
+   "k": "arena",
+   "t": 4
+  },
+  "CrystalRealm20v20-02": {
+   "k": "arena",
+   "t": 4
+  },
+  "DNG-HER-01-MAIN-01": {
+   "k": "static",
+   "t": 3
+  },
+  "DNG-HER-01-MAIN-02": {
+   "k": "static",
+   "t": 3
+  },
+  "DNG-HER-01-MAIN-03": {
+   "k": "static",
+   "t": 3
+  },
+  "DNG-HER-01-MAIN-04": {
+   "k": "static",
+   "t": 3
+  },
+  "DNG-HER-01-MAIN-05": {
+   "k": "static",
+   "t": 3
+  },
+  "DNG-KPR-01-MAIN-01": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-01-MAIN-02": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-01-MAIN-03": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-01": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-010": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-011": {
+   "k": "static",
+   "t": 5,
+   "q": 2
+  },
+  "DNG-KPR-02-MAIN-012": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-013": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-014": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-015": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-016": {
+   "k": "static",
+   "t": 5,
+   "q": 2
+  },
+  "DNG-KPR-02-MAIN-017": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-018": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-019": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-020": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-021": {
+   "k": "static",
+   "t": 5,
+   "q": 3
+  },
+  "DNG-KPR-02-MAIN-022": {
+   "k": "static",
+   "t": 5,
+   "q": 4
+  },
+  "DNG-KPR-02-MAIN-023": {
+   "k": "static",
+   "t": 5,
+   "q": 2
+  },
+  "DNG-KPR-02-MAIN-024": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-025": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-026": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-027": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-028": {
+   "k": "static",
+   "t": 5,
+   "q": 3
+  },
+  "DNG-KPR-02-MAIN-029": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-030": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-031": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-032": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-033": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-04": {
+   "k": "static",
+   "t": 5
+  },
+  "DNG-KPR-02-MAIN-08": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-KPR-02-MAIN-09": {
+   "k": "static",
+   "t": 5,
+   "q": 1
+  },
+  "DNG-MOR-01-MAIN-001": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-002": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-003": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-01": {
+   "k": "static",
+   "t": 8,
+   "q": 3
+  },
+  "DNG-MOR-01-MAIN-010": {
+   "k": "static",
+   "t": 8,
+   "q": 5
+  },
+  "DNG-MOR-01-MAIN-011": {
+   "k": "static",
+   "t": 8,
+   "q": 4
+  },
+  "DNG-MOR-01-MAIN-012": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-MAIN-017": {
+   "k": "static",
+   "t": 6,
+   "q": 1
+  },
+  "DNG-MOR-01-MAIN-018": {
+   "k": "static",
+   "t": 6,
+   "q": 3
+  },
+  "DNG-MOR-01-MAIN-019": {
+   "k": "static",
+   "t": 6,
+   "q": 1
+  },
+  "DNG-MOR-01-MAIN-02": {
+   "k": "static",
+   "t": 8,
+   "q": 2
+  },
+  "DNG-MOR-01-MAIN-020": {
+   "k": "static",
+   "t": 6,
+   "q": 4
+  },
+  "DNG-MOR-01-MAIN-021": {
+   "k": "static",
+   "t": 6,
+   "q": 2
+  },
+  "DNG-MOR-01-MAIN-022": {
+   "k": "static",
+   "t": 6,
+   "q": 4
+  },
+  "DNG-MOR-01-MAIN-023": {
+   "k": "static",
+   "t": 6,
+   "q": 2
+  },
+  "DNG-MOR-01-MAIN-024": {
+   "k": "static",
+   "t": 6,
+   "q": 3
+  },
+  "DNG-MOR-01-MAIN-025": {
+   "k": "static",
+   "t": 6,
+   "q": 2
+  },
+  "DNG-MOR-01-MAIN-027": {
+   "k": "static",
+   "t": 6,
+   "q": 5
+  },
+  "DNG-MOR-01-MAIN-028": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-029": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-03": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-MAIN-030": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-031": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-MAIN-04": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-MAIN-05": {
+   "k": "static",
+   "t": 8,
+   "q": 2
+  },
+  "DNG-MOR-01-MAIN-06": {
+   "k": "static",
+   "t": 8,
+   "q": 2
+  },
+  "DNG-MOR-01-MAIN-07": {
+   "k": "static",
+   "t": 8,
+   "q": 3
+  },
+  "DNG-MOR-01-MAIN-08": {
+   "k": "static",
+   "t": 8,
+   "q": 5
+  },
+  "DNG-MOR-01-MAIN-09": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-SUB-001": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-002": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-003": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-01": {
+   "k": "static",
+   "t": 8,
+   "q": 3
+  },
+  "DNG-MOR-01-SUB-010": {
+   "k": "static",
+   "t": 8,
+   "q": 5
+  },
+  "DNG-MOR-01-SUB-011": {
+   "k": "static",
+   "t": 8,
+   "q": 4
+  },
+  "DNG-MOR-01-SUB-012": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-SUB-017": {
+   "k": "static",
+   "t": 6,
+   "q": 1
+  },
+  "DNG-MOR-01-SUB-018": {
+   "k": "static",
+   "t": 6,
+   "q": 3
+  },
+  "DNG-MOR-01-SUB-019": {
+   "k": "static",
+   "t": 6,
+   "q": 1
+  },
+  "DNG-MOR-01-SUB-02": {
+   "k": "static",
+   "t": 8,
+   "q": 2
+  },
+  "DNG-MOR-01-SUB-020": {
+   "k": "static",
+   "t": 6,
+   "q": 4
+  },
+  "DNG-MOR-01-SUB-021": {
+   "k": "static",
+   "t": 6,
+   "q": 2
+  },
+  "DNG-MOR-01-SUB-022": {
+   "k": "static",
+   "t": 6,
+   "q": 4
+  },
+  "DNG-MOR-01-SUB-023": {
+   "k": "static",
+   "t": 6,
+   "q": 2
+  },
+  "DNG-MOR-01-SUB-024": {
+   "k": "static",
+   "t": 6,
+   "q": 3
+  },
+  "DNG-MOR-01-SUB-025": {
+   "k": "static",
+   "t": 6,
+   "q": 2
+  },
+  "DNG-MOR-01-SUB-027": {
+   "k": "static",
+   "t": 6,
+   "q": 5
+  },
+  "DNG-MOR-01-SUB-028": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-029": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-03": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-SUB-030": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-031": {
+   "k": "static",
+   "t": 6
+  },
+  "DNG-MOR-01-SUB-04": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-MOR-01-SUB-05": {
+   "k": "static",
+   "t": 8,
+   "q": 2
+  },
+  "DNG-MOR-01-SUB-06": {
+   "k": "static",
+   "t": 8,
+   "q": 2
+  },
+  "DNG-MOR-01-SUB-07": {
+   "k": "static",
+   "t": 8,
+   "q": 3
+  },
+  "DNG-MOR-01-SUB-08": {
+   "k": "static",
+   "t": 8,
+   "q": 5
+  },
+  "DNG-MOR-01-SUB-09": {
+   "k": "static",
+   "t": 8,
+   "q": 6
+  },
+  "DNG-UND-01-MAIN-002": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-MAIN-003": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-MAIN-004": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-MAIN-007": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-MAIN-01": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-MAIN-010": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-011": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-012": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-013": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-MAIN-014": {
+   "k": "static",
+   "t": 7,
+   "q": 4
+  },
+  "DNG-UND-01-MAIN-015": {
+   "k": "static",
+   "t": 7,
+   "q": 5
+  },
+  "DNG-UND-01-MAIN-016": {
+   "k": "static",
+   "t": 7,
+   "q": 4
+  },
+  "DNG-UND-01-MAIN-017": {
+   "k": "static",
+   "t": 7,
+   "q": 4
+  },
+  "DNG-UND-01-MAIN-018": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-019": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-MAIN-02": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-MAIN-020": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-021": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-MAIN-022": {
+   "k": "static",
+   "t": 7,
+   "q": 6
+  },
+  "DNG-UND-01-MAIN-023": {
+   "k": "static",
+   "t": 7,
+   "q": 5
+  },
+  "DNG-UND-01-MAIN-024": {
+   "k": "static",
+   "t": 7,
+   "q": 5
+  },
+  "DNG-UND-01-MAIN-025": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-026": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-MAIN-027": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-MAIN-03": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-MAIN-05": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-MAIN-07": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-MAIN-08": {
+   "k": "static",
+   "t": 7,
+   "q": 1
+  },
+  "DNG-UND-01-MAIN-09": {
+   "k": "static",
+   "t": 7,
+   "q": 1
+  },
+  "DNG-UND-01-SUB-002": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-SUB-003": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-SUB-004": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-SUB-007": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-01-SUB-01": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-SUB-010": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-011": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-012": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-013": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-SUB-014": {
+   "k": "static",
+   "t": 7,
+   "q": 4
+  },
+  "DNG-UND-01-SUB-015": {
+   "k": "static",
+   "t": 7,
+   "q": 5
+  },
+  "DNG-UND-01-SUB-016": {
+   "k": "static",
+   "t": 7,
+   "q": 4
+  },
+  "DNG-UND-01-SUB-017": {
+   "k": "static",
+   "t": 7,
+   "q": 4
+  },
+  "DNG-UND-01-SUB-018": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-019": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-SUB-02": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-SUB-020": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-021": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-SUB-022": {
+   "k": "static",
+   "t": 7,
+   "q": 6
+  },
+  "DNG-UND-01-SUB-023": {
+   "k": "static",
+   "t": 7,
+   "q": 5
+  },
+  "DNG-UND-01-SUB-024": {
+   "k": "static",
+   "t": 7,
+   "q": 5
+  },
+  "DNG-UND-01-SUB-025": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-026": {
+   "k": "static",
+   "t": 7,
+   "q": 2
+  },
+  "DNG-UND-01-SUB-027": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-SUB-03": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-SUB-05": {
+   "k": "static",
+   "t": 7
+  },
+  "DNG-UND-01-SUB-07": {
+   "k": "static",
+   "t": 7,
+   "q": 3
+  },
+  "DNG-UND-01-SUB-08": {
+   "k": "static",
+   "t": 7,
+   "q": 1
+  },
+  "DNG-UND-01-SUB-09": {
+   "k": "static",
+   "t": 7,
+   "q": 1
+  },
+  "DNG-UND-02-MAIN-01": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-02-MAIN-02": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-02-MAIN-03": {
+   "k": "static",
+   "t": 4
+  },
+  "DNG-UND-02-MAIN-04": {
+   "k": "static",
+   "t": 4
+  },
+  "EternalBattle-GROUP": {
+   "k": "hce",
+   "t": 6
+  },
+  "EternalBattle-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "FishyBusiness-GROUP": {
+   "k": "hce",
+   "t": 4
+  },
+  "FishyBusiness-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "FishyBusiness-SOLO": {
+   "k": "hce",
+   "t": 4
+  },
+  "FistfulOfSilver-GROUP": {
+   "k": "hce",
+   "t": 6
+  },
+  "FistfulOfSilver-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "HELLGATE-01-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-01-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-01-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-01-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-01-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-01-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-02-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-02-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-02-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-02-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-02-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-02-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-03-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-03-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-03-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-03-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-03-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-03-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-04-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-04-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-04-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-04-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-04-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-04-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-05-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-05-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-05-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-05-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-05-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-05-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-06-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-06-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-06-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-06-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-06-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-06-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-07-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-07-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-07-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-07-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-07-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-07-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-08-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-08-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-08-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-08-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-08-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-08-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-09-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-09-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-09-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-09-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-09-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-09-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HELLGATE-10-10v10-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-10-10v10-01-HRD": {
+   "k": "hellgate",
+   "t": 8
+  },
+  "HELLGATE-10-2v2-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-10-2v2-01-HRD": {
+   "k": "hellgate",
+   "t": 6
+  },
+  "HELLGATE-10-5v5-01": {
+   "k": "hellgate",
+   "t": 5
+  },
+  "HELLGATE-10-5v5-01-HRD": {
+   "k": "hellgate",
+   "t": 7
+  },
+  "HIDEOUT-0001a": {
+   "k": "hideout",
+   "t": 1
+  },
+  "HIDEOUT-0001b": {
+   "k": "hideout",
+   "t": 1
+  },
+  "HIDEOUT-0001c": {
+   "k": "hideout",
+   "t": 1
+  },
+  "ISLAND-GUILD-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-CAERLEON-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-CAERLEON-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-CAERLEON-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-CAERLEON-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-CAERLEON-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-CAERLEON-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-FOREST-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-FOREST-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-FOREST-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-FOREST-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-FOREST-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-FOREST-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-HIGHLAND-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-HIGHLAND-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-HIGHLAND-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-HIGHLAND-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-HIGHLAND-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-HIGHLAND-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-MOUNTAIN-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-MOUNTAIN-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-MOUNTAIN-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-MOUNTAIN-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-MOUNTAIN-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-MOUNTAIN-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-STEPPE-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-STEPPE-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-STEPPE-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-STEPPE-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-STEPPE-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-STEPPE-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-SWAMP-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-SWAMP-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-SWAMP-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-SWAMP-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-SWAMP-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-GUILD-SWAMP-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-CAERLEON-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-CAERLEON-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-CAERLEON-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-CAERLEON-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-CAERLEON-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-CAERLEON-0001e-SHOWROOM": {
+   "k": "island",
+   "t": 3
+  },
+  "ISLAND-PLAYER-CAERLEON-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-FOREST-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-FOREST-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-FOREST-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-FOREST-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-FOREST-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-FOREST-0001e-SHOWROOM": {
+   "k": "island",
+   "t": 3
+  },
+  "ISLAND-PLAYER-FOREST-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001e-SHOWROOM": {
+   "k": "island",
+   "t": 3
+  },
+  "ISLAND-PLAYER-HIGHLAND-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MISTS-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MISTS-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MISTS-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MISTS-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MISTS-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MISTS-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001e-SHOWROOM": {
+   "k": "island",
+   "t": 3
+  },
+  "ISLAND-PLAYER-MOUNTAIN-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-STEPPE-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-STEPPE-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-STEPPE-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-STEPPE-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-STEPPE-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-STEPPE-0001e-SHOWROOM": {
+   "k": "island",
+   "t": 3
+  },
+  "ISLAND-PLAYER-STEPPE-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-SWAMP-0001a": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-SWAMP-0001b": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-SWAMP-0001c": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-SWAMP-0001d": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-SWAMP-0001e": {
+   "k": "island",
+   "t": 1
+  },
+  "ISLAND-PLAYER-SWAMP-0001e-SHOWROOM": {
+   "k": "island",
+   "t": 3
+  },
+  "ISLAND-PLAYER-SWAMP-0001f": {
+   "k": "island",
+   "t": 1
+  },
+  "LumberCamp-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "LumberCampGROUP": {
+   "k": "hce",
+   "t": 5
+  },
+  "LumberCampSOLO": {
+   "k": "hce",
+   "t": 5
+  },
+  "Mine-SOLO": {
+   "k": "hce",
+   "t": 3
+  },
+  "MushroomCave-GROUP": {
+   "k": "hce",
+   "t": 6
+  },
+  "MushroomCave-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "MushroomCave-SOLO": {
+   "k": "hce",
+   "t": 6
+  },
+  "RecruitmentOfTheDead-GROUP": {
+   "k": "hce",
+   "t": 4
+  },
+  "RecruitmentOfTheDead-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "RecruitmentOfTheDead-SOLO": {
+   "k": "hce",
+   "t": 4
+  },
+  "SewersMaintenance-GROUP": {
+   "k": "hce",
+   "t": 5
+  },
+  "SewersMaintenance-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "SewersMaintenance-SOLO": {
+   "k": "hce",
+   "t": 5
+  },
+  "StoneWars-GROUP": {
+   "k": "hce",
+   "t": 5
+  },
+  "StoneWars-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "StoneWars-SOLO": {
+   "k": "hce",
+   "t": 5
+  },
+  "TNL-001": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-002": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-003": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-004": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-005": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-006": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-007": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-008": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-009": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-010": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-011": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-012": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-013": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-014": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-015": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-016": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-017": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-018": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-019": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-020": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-021": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-022": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-023": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-024": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-025": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-026": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-027": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-028": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-029": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-030": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-031": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-032": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-033": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-034": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-035": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-036": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-037": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-038": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-039": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-040": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-041": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-042": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-043": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-044": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-045": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-046": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-047": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-048": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-049": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-050": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-051": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-052": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-053": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-054": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-055": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-056": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-057": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-058": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-059": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-060": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-061": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-062": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-063": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-064": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-065": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-066": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-067": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-068": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-069": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-070": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-071": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-072": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-073": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-074": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-075": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-076": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-077": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-078": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-079": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-080": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-081": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-082": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-083": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-084": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-085": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-086": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-087": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-088": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-089": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-090": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-091": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-092": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-093": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-094": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-095": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-096": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-097": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-098": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-099": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-100": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-101": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-102": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-103": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-104": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-105": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-106": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-107": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-108": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-109": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-110": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-111": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-112": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-113": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-114": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-115": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-116": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-117": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-118": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-119": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-120": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-121": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-122": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-123": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-124": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-125": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-126": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-127": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-128": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-129": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-130": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-131": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-132": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-133": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-134": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-135": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-136": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-137": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-138": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-139": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-140": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-141": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-142": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-143": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-144": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-145": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-146": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-147": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-148": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-149": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-150": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-151": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-152": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-153": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-154": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-155": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-156": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-157": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-158": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-159": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-160": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-161": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-162": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-163": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-164": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-165": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-166": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-167": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-168": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-169": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-170": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-171": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-172": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-173": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-174": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-175": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-176": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-177": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-178": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-179": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-180": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-181": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-182": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-183": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-184": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-185": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-186": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-187": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-188": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-189": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-190": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-191": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-192": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-193": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-194": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-195": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-196": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-197": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-198": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-199": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-200": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-201": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-202": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-203": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-204": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-205": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-206": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-207": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-208": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-209": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-210": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-211": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-212": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-213": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-214": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-215": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-216": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-217": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-218": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-219": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-220": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-221": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-222": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-223": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-224": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-225": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-226": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-227": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-228": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-229": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-230": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-231": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-232": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-233": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-234": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-235": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-236": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-237": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-238": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-239": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-240": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-241": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-242": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-243": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-244": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-245": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-246": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-247": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-248": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-249": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-250": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-251": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-252": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-253": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-254": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-255": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-256": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-257": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-258": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-259": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-260": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-261": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-262": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-263": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-264": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-265": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-266": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-267": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-268": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-269": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-270": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-271": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-272": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-273": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-274": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-275": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-276": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-277": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-278": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-279": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-280": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-281": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-282": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-283": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-284": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-285": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-286": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-287": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-288": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-289": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-290": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-291": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-292": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-293": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-294": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-295": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-296": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-297": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-298": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-299": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-300": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-301": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-302": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-303": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-304": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-305": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-306": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-307": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-308": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-309": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-310": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-311": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-312": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-313": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-314": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-315": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-316": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-317": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-318": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-319": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-320": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-321": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-322": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-323": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-324": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-325": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-326": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-327": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-328": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-329": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-330": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-331": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-332": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-333": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-334": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-335": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-336": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-337": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-338": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-339": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-340": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-341": {
+   "k": "avalon",
+   "t": 4
+  },
+  "TNL-342": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-343": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-344": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-345": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-346": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-347": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-348": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-349": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-350": {
+   "k": "avalon",
+   "t": 8
+  },
+  "TNL-351": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-352": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-353": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-354": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-355": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-356": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-357": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-358": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-359": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-360": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-361": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-362": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-363": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-364": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-365": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-366": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-367": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-368": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-369": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-370": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-371": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-372": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-373": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-374": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-375": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-376": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-377": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-378": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-379": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-380": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-381": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-382": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-383": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-384": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-385": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-386": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-387": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-388": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-389": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-390": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-391": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-392": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-393": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-394": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-395": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-396": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-397": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-398": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-399": {
+   "k": "avalon",
+   "t": 6
+  },
+  "TNL-400": {
+   "k": "avalon",
+   "t": 6
+  },
+  "ThreeSisters-GROUP": {
+   "k": "hce",
+   "t": 6
+  },
+  "ThreeSisters-HRD": {
+   "k": "hce",
+   "t": 6
+  },
+  "Torturer-GROUP": {
+   "k": "hce",
+   "t": 6
+  },
+  "Torturer-HRD": {
+   "k": "hce",
+   "t": 6
+  }
+ }
+}

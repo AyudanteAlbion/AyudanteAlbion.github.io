@@ -48,7 +48,9 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	party := []string{"SheniaLiam", "GrailHealer", "SpetsnazTank", "MistRunner"}
-	zones := []string{"Martlock", "Mase Knoll", "Blackthorn Quarry", "Caerleon", "Thetford"}
+	// Zonas con el formato real del protocolo: índices del mundo ("3004") y
+	// tokens de instancia ("@RANDOMDUNGEON@<guid>"), como en la captura viva.
+	zones := []string{"3004", "3210", "3007", "3003", "@MISTS@9283d553-ab71-4c14-bb34-64567137419a"}
 	items := []string{"T6_BAG", "T5_MAIN_CURSEDSTAFF", "T4_2H_BOW", "T6_ARMOR_LEATHER_SET2", "T5_HEAD_PLATE_SET1"}
 	resources := []struct {
 		id, name, kind string
@@ -62,7 +64,20 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 		{"T5_ROCK", "Granito", "stone", 5, 430},
 		{"T6_FISH_FRESHWATER_ALL_COMMON", "Pez de agua dulce", "fishing", 6, 980},
 	}
-	dungeonTypes := []string{"solo", "standard", "static", "avalonian", "corrupted", "hellgate", "hce", "mists", "knightfall", "abyssal", "ancient"}
+	// Pares tipo/cluster verosímiles: el mapa de una instancia es su token.
+	dungeonTypes := []struct{ kind, cluster, zone string }{
+		{"solo", "RANDOMDUNGEON", "@RANDOMDUNGEON@fe968505-9771-4653-8ade-29a1bd6ddb56"},
+		{"standard", "RANDOMDUNGEON", "@RANDOMDUNGEON@0d5b7de9-4f0a-4a2d-9c28-55d0a3e2f1aa"},
+		{"static", "DNG-KPR-02-MAIN-021", "DNG-KPR-02-MAIN-021"},
+		{"avalonian", "RANDOMDUNGEON", "@RANDOMDUNGEON@c4b7a1c3-2b1e-4f6d-8a90-7d3c5e9b1f02"},
+		{"corrupted", "CORRUPTEDDUNGEON", "@CORRUPTEDDUNGEON@b7e64a12-9d3c-4f8a-b1e2-6c9d0a4f7e31"},
+		{"hellgate", "HELLCLUSTER", "@HELLCLUSTER@e2f8c4d6-1a3b-4e7f-9c2d-8b5a6f0e4c19"},
+		{"hce", "FishyBusiness-HRD", "FishyBusiness-HRD"},
+		{"mists", "MISTS", "@MISTS@9283d553-ab71-4c14-bb34-64567137419a"},
+		{"knightfall", "KNIGHTFALLABBEY", "@KNIGHTFALLABBEY@f1e2d3c4-b5a6-4788-9c0d-1e2f3a4b5c6d"},
+		{"abyssal", "HELLDUNGEON", "@HELLDUNGEON@a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"},
+		{"ancient", "DRAGONAREA", "@DRAGONAREA@d4c3b2a1-f0e9-4d8c-7b6a-595847464544"},
+	}
 	abilities := []string{"Bola de fuego", "Tajo", "Flecha perforante", "Maldición", "Golpe heroico"}
 
 	st.SetDemoCapture(true)
@@ -162,13 +177,16 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 				"value":    int64(quantity) * resource.value,
 				"map":      zones[rng.Intn(len(zones))],
 			}))
+			dungeon := dungeonTypes[rng.Intn(len(dungeonTypes))]
 			hub.Publish(NewEvent("dungeonRun", map[string]any{
 				"uid":         fmt.Sprintf("sim-dng-%d", time.Now().UnixNano()),
 				"ts":          time.Now().UnixMilli(),
-				"type":        dungeonTypes[rng.Intn(len(dungeonTypes))],
+				"type":        dungeon.kind,
 				"tier":        4 + rng.Intn(5),
-				"enchantment": rng.Intn(5),
-				"map":         zones[rng.Intn(len(zones))],
+				"level":       rng.Intn(5),
+				"enchantment": 0,
+				"map":         dungeon.cluster,
+				"zone":        dungeon.zone,
 				"duration":    420 + rng.Intn(1800),
 				"fame":        12000 + rng.Intn(180000),
 				"respec":      rng.Intn(18000),

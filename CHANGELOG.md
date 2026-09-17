@@ -24,6 +24,16 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   correlacionados por GUID.
 - Pruebas de la representación de GUID de Photon, rebinding tras cambio de
   zona, ciclo completo de party y final inesperado de una fuente de captura.
+- **Tracking de pesca** en la pestaña Recolección, con la misma máquina de
+  estados que `GatheringController` de SAT: las operaciones
+  `FishingStart`/`FishingCatch`/`FishingFinish`/`FishingCancel` del cliente
+  más los ítems descubiertos (`NewSimpleItem`) y el `RewardGranted` que
+  confirma la captura. Pescar no emite `HarvestFinished`.
+- Índice embebido `cluster_kinds.json` (761 clusters generados del
+  `cluster/world.xml` oficial de ao-bin-dumps) y tabla de códigos ampliada
+  con `RewardGranted`, `NewRandomDungeonExit`, `MightAndFavorReceived`,
+  `Died` y las operaciones de pesca y cofres, con sus parámetros verificados
+  contra las clases de la referencia.
 
 ### Cambiado
 
@@ -73,6 +83,21 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   explícita. Además, un byte de relleno al final ya no invalida un mensaje bien
   decodificado, y los `flags` de cabecera desconocidos se enmarcan como un
   paquete normal en vez de tirarlo.
+- **Mazmorras no registraba ninguna partida con el juego real.** Las zonas de
+  instancia viajan como `@RANDOMDUNGEON@<guid>` (token primero); el código
+  tomaba el primer tramo como cluster y quedaba vacío, así que ninguna
+  mazmorra instanciada abría partida. Ahora la clasificación replica
+  `WorldData.GetMapType` de SAT: tokens de instancia para aleatorias,
+  corruptas, hellgates, nieblas, HCE y abisales; índice del mundo para las
+  estáticas (con tier y nivel Q). Las partidas también se abren desde el
+  `JoinResponse` si la respuesta de `ChangeCluster` se pierde, los pasillos
+  de una aleatoria continúan la misma partida, y `NewRandomDungeonExit`
+  afina solo/grupo/avaloniana y el tier. Poder, favor, muertes y cofres por
+  partida se registran con `MightAndFavorReceived`, `Died` y `UseLootChest`.
+- La ubicación mostrada («3003», «@MISTS@…») se resuelve a nombre legible
+  también en Recolección y Mazmorras: los tokens de instancia muestran su
+  tipo de contenido (Nieblas, Mazmorra corrupta…) y los índices del mundo su
+  nombre del mapa, igual que `ComposingMapInfoString` de la referencia.
 - **Tracking con VPN, ExitLag o proxies:** un datagrama de Albion en un puerto
   remapeado se reconoce por su envelope Photon (`0xF1`/`0xF2`/`0xFE`) y ya no
   se descarta por no venir en 5055/5056/5058. El tráfico ajeno en puertos

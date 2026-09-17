@@ -278,7 +278,7 @@ POST /api/tracker/diagnostic?on=1|0   enciende o apaga el conteo
 ```
 
 Tipos de evento: `snapshot`, `status`, `damage`, `heal`, `loot`, `map`,
-`gathering`, `dungeon`, `warning`.
+`gathering`, `dungeonRun`, `died`, `warning`.
 
 Todo responde `Cache-Control: no-store`. Al ser interno a la ventana, ya no
 aplica el guardián de `Host` anti DNS-rebinding del ejecutable clásico —era
@@ -293,9 +293,21 @@ protección del puerto local que ahora no existe— y tampoco hay heartbeat de
 desktop/ui/js/tracker/
   client.js     stream SSE con reintento exponencial, API REST del tracker
   ui.js         pestaña Sesión: KPIs, medidor, mapas, botín, diagnóstico
+  maps.js       resolución de zonas a nombre legible (índice del mundo o
+                token de instancia "@RANDOMDUNGEON@<guid>")
   gathering.js  pestaña Recolección (eventos `gathering`)
-  dungeons.js   pestaña Mazmorras (eventos `dungeon`)
+  dungeons.js   pestaña Mazmorras (eventos `dungeonRun`)
 ```
+
+Las partidas de mazmorras abre y cierra el motor Go con los cambios de zona
+(operación `ChangeCluster` y `JoinResponse`), clasificando cada zona con el
+mismo criterio que `WorldData.GetMapType` de SAT: token de instancia para
+aleatorias, corruptas, hellgates, nieblas, HCE y abisales, e índice embebido
+(`cluster_kinds.json`, generado del `world.xml` oficial) para las estáticas
+con su tier y nivel Q. La pesca usa la misma máquina de estados que
+`GatheringController` de la referencia: las operaciones `FishingStart`/
+`FishingCatch`/`FishingFinish`/`FishingCancel` más los ítems descubiertos y
+`RewardGranted`.
 
 Sigue las reglas de [`frontend-modules.md`](frontend-modules.md): módulos
 nuevos en `js/`, **nada se agrega a `app.js`** salvo el punto que los inicia.
