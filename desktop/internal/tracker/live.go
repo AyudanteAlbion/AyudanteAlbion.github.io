@@ -365,7 +365,12 @@ func newHandlersWithDiagnostics(diagnostics *protocolDiagnostics, st *State, hub
 func realCode(params map[byte]any, key byte, envelope byte) (int32, bool) {
 	v, ok := params[key]
 	if !ok {
-		return 0, false
+		// Protocol16/18 do not always duplicate the logical operation/event
+		// code in parameters 253/252. For codes that fit in the Photon envelope
+		// byte, the envelope is the authoritative fallback (the same behaviour
+		// used by SAT's packet-handler registration). High codes still require
+		// parameter 252 because the envelope necessarily truncates them.
+		return int32(envelope), true
 	}
 	var n int64
 	switch value := v.(type) {
@@ -475,7 +480,10 @@ func (h *handlers) request(op *photon.OperationRequest) {
 		return
 	}
 	h.recordOperation(code)
-	h.operation(code, op.Parameters)
+	// ChangeCluster request parameter 0 is the gate/target ObjectId, not the
+	// destination map. Only the server response contains the new cluster.
+	// Treating requests as responses made the UI briefly (or permanently, when
+	// the response was lost) report zones such as "2" or "-57".
 }
 
 // response procesa las respuestas del servidor. La aplicación de referencia
