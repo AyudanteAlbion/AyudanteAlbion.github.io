@@ -803,6 +803,24 @@ func (s *State) AddRespec(v int64) bool {
 	return true
 }
 
+func (s *State) Fame() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fame
+}
+
+func (s *State) Silver() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.silver
+}
+
+func (s *State) Respec() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.respec
+}
+
 func (s *State) AddLoot(entry LootEntry) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

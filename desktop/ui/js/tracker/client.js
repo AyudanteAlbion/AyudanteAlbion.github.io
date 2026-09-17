@@ -31,7 +31,7 @@
   var stream = null;
   var retryDelay = 1000;
 
-  var METRIC_EVENTS = { damage:1, heal:1, loot:1, gathering:1, dungeon:1, dungeonRun:1, trade:1, vault:1 };
+  var METRIC_EVENTS = { fame:1, silver:1, respec:1, damage:1, heal:1, loot:1, gathering:1, dungeon:1, dungeonRun:1, trade:1, vault:1 };
   function metricsAccepted() {
     return state.capture && state.capture.phase === 'demo' || (state.identityValid && state.filterMatched);
   }

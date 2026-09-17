@@ -138,7 +138,7 @@ def main() -> int:
         if classified is None:
             continue
         kind, tier, enchantment = classified
-        entry = {"n": localized.get(unique) or english or unique, "t": kind}
+        entry = {"n": localized.get(unique) or english or unique, "t": kind, "u": unique}
         if tier:
             entry["r"] = tier
         if enchantment:

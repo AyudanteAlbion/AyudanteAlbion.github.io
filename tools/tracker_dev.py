@@ -306,12 +306,18 @@ def simulate() -> None:
             HUB.publish('heal', {'source': actor, 'amount': eff, 'overheal': over})
         else:
             dmg = random.randint(200, 1600)
+            fame_gain = random.randint(40, 200)
+            silver_gain = random.randint(90, 490)
             STATE.add_damage(actor, 'Mob heretico', dmg)
             with STATE._lock:
-                STATE.fame += random.randint(40, 200)
-                STATE.silver += random.randint(90, 490)
+                STATE.fame += fame_gain
+                STATE.silver += silver_gain
+                total_fame = STATE.fame
+                total_silver = STATE.silver
             HUB.publish('damage', {'source': actor, 'target': 'Mob heretico',
                                    'amount': dmg, 'ability': random.choice(ABILITIES)})
+            HUB.publish('fame', {'amount': fame_gain, 'total': total_fame})
+            HUB.publish('silver', {'amount': silver_gain, 'total': total_silver, 'source': 'ground'})
         if tick % 13 == 0:
             STATE.add_loot({'player': random.choice(PARTY), 'itemId': random.choice(ITEMS),
                             'quantity': random.randint(1, 3), 'quality': random.randint(1, 3),

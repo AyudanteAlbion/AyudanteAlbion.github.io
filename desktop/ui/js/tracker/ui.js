@@ -674,10 +674,45 @@
         dirty = true;
         if (payload && payload.character) detectingCharacter = false;
         paintControls();
+      } else if (type === 'fame' || type === 'silver' || type === 'respec') {
+        if (latest) {
+          if (type === 'fame' && payload && payload.total != null) latest.fame = payload.total;
+          if (type === 'silver' && payload && payload.total != null) latest.silver = payload.total;
+          if (type === 'respec' && payload && payload.total != null) latest.respec = payload.total;
+          var elapsed = Math.max(1, (Date.now() - (latest.startedAt || Date.now())) / 1000);
+          var hours = elapsed / 3600;
+          latest.famePerHour = hours > 0 ? (latest.fame || 0) / hours : 0;
+          latest.silverPerHour = hours > 0 ? (latest.silver || 0) / hours : 0;
+          dirty = true;
+        }
+      } else if (type === 'damage' || type === 'heal') {
+        dirty = true;
+      } else if (type === 'loot' && payload) {
+        if (latest) {
+          latest.loot = [payload].concat(latest.loot || []).slice(0, 500);
+          dirty = true;
+        }
+      } else if (type === 'map' && payload && payload.zone) {
+        if (latest) {
+          latest.zone = payload.zone;
+          dirty = true;
+        }
       } else if (type === 'warning' && payload && payload.message) {
         setStatus(String(payload.message));
       }
     });
+
+    function liveTick() {
+      if (!latest || !latest.capturing) return;
+      var start = latest.startedAt || Date.now();
+      var elapsed = Math.max(1, (Date.now() - start) / 1000);
+      latest.seconds = elapsed;
+      var hours = elapsed / 3600;
+      latest.famePerHour = hours > 0 ? (latest.fame || 0) / hours : 0;
+      latest.silverPerHour = hours > 0 ? (latest.silver || 0) / hours : 0;
+      dirty = true;
+    }
+    setInterval(liveTick, 1000);
 
     // Un solo repintado por frame: los eventos de daño llegan muy seguidos y
     // redibujar por cada uno trabaría la pestaña.
