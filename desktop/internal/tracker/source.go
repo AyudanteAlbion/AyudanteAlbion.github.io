@@ -114,12 +114,20 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 				continue
 			}
 			dmg := int64(200 + rng.Intn(1400))
+			fameGain := int64(40 + rng.Intn(160))
+			silverGain := int64(90 + rng.Intn(400))
 			st.AddDamage(actor, "Mob heretico", dmg)
-			st.AddFame(int64(40 + rng.Intn(160)))
-			st.AddSilver(int64(90 + rng.Intn(400)))
+			st.AddFame(fameGain)
+			st.AddSilver(silverGain)
 			hub.Publish(NewEvent("damage", map[string]any{
 				"source": actor, "target": "Mob heretico", "amount": dmg,
 				"ability": abilities[rng.Intn(len(abilities))],
+			}))
+			hub.Publish(NewEvent("fame", map[string]any{
+				"amount": fameGain, "total": st.Fame(),
+			}))
+			hub.Publish(NewEvent("silver", map[string]any{
+				"amount": silverGain, "total": st.Silver(), "source": "ground",
 			}))
 
 		case <-slow.C:

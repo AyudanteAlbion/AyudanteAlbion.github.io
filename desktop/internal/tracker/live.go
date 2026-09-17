@@ -690,7 +690,13 @@ func (h *handlers) event(ev *photon.EventData) {
 		}
 		if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
 			// La fama viene multiplicada por 10000 en el protocolo.
-			h.st.AddFame(gained / 10000)
+			amount := gained / 10000
+			if h.st.AddFame(amount) {
+				h.hub.Publish(NewEvent("fame", map[string]any{
+					"amount": amount,
+					"total":  h.st.Fame(),
+				}))
+			}
 		}
 
 	case "UpdateReSpecPoints":
@@ -698,7 +704,13 @@ func (h *handlers) event(ev *photon.EventData) {
 			break
 		}
 		if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
-			h.st.AddRespec(gained / 10000)
+			amount := gained / 10000
+			if h.st.AddRespec(amount) {
+				h.hub.Publish(NewEvent("respec", map[string]any{
+					"amount": amount,
+					"total":  h.st.Respec(),
+				}))
+			}
 		}
 
 	case "TakeSilver":
@@ -711,7 +723,14 @@ func (h *handlers) event(ev *photon.EventData) {
 			break
 		}
 		if gained, ok := h.paramNum(name, p, "amount"); ok && gained > 0 {
-			h.st.AddSilver(gained / 10000)
+			amount := gained / 10000
+			if h.st.AddSilver(amount) {
+				h.hub.Publish(NewEvent("silver", map[string]any{
+					"amount": amount,
+					"total":  h.st.Silver(),
+					"source": "ground",
+				}))
+			}
 		}
 
 	case "UpdateCurrency", "PartySilverGained":
@@ -719,11 +738,20 @@ func (h *handlers) event(ev *photon.EventData) {
 			break
 		}
 		field := "gained"
+		source := "currency"
 		if name == "PartySilverGained" {
 			field = "amount"
+			source = "party"
 		}
 		if gained, ok := h.paramNum(name, p, field); ok && gained > 0 {
-			h.st.AddSilver(gained / 10000)
+			amount := gained / 10000
+			if h.st.AddSilver(amount) {
+				h.hub.Publish(NewEvent("silver", map[string]any{
+					"amount": amount,
+					"total":  h.st.Silver(),
+					"source": source,
+				}))
+			}
 		}
 
 	case "PartyJoined":

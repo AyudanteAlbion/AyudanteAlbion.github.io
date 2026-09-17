@@ -22,6 +22,74 @@
      del ítem en items.xml, la misma clave que usa la app de referencia). El
      archivo lo genera scripts/build_gathering_items.py desde ao-bin-dumps. */
   var ITEMS = Object.create(null);
+  var PRICE_CACHE = Object.create(null);
+  var CITIES = ['Bridgewatch', 'Caerleon', 'Fort Sterling', 'Lymhurst', 'Martlock', 'Thetford'];
+
+  function estimateBasePrice(tier, enchant) {
+    var baseByTier = [0, 5, 15, 45, 130, 400, 1200, 3600, 12000];
+    var multByEnchant = [1, 2, 4, 8, 20];
+    var t = Math.max(1, Math.min(8, tier || 1));
+    var e = Math.max(0, Math.min(4, enchant || 0));
+    return (baseByTier[t] || 50) * (multByEnchant[e] || 1);
+  }
+
+  function resolveItemPrice(uniqueId, tier, enchant) {
+    if (uniqueId && PRICE_CACHE[uniqueId] > 0) return PRICE_CACHE[uniqueId];
+    return estimateBasePrice(tier, enchant);
+  }
+
+  function fetchGatheringPrices() {
+    var uniqueIds = new Set();
+    Object.keys(ITEMS).forEach(function (id) {
+      if (ITEMS[id] && ITEMS[id].u) uniqueIds.add(ITEMS[id].u);
+    });
+    if (!uniqueIds.size) return;
+    var list = Array.from(uniqueIds);
+    var fetcher = (root.AAApi && root.AAApi.fetchPrices) || root.fetchPrices;
+    if (!fetcher) return;
+    try {
+      fetcher(list, CITIES, { api: 'https://west.albion-online-data.com/api/v2/stats' })
+        .then(function (prices) {
+          if (!prices || typeof prices !== 'object') return;
+          var updated = false;
+          Object.keys(prices).forEach(function (uId) {
+            var cityMap = prices[uId];
+            if (!cityMap) return;
+            var validPrices = [];
+            Object.keys(cityMap).forEach(function (city) {
+              var p = cityMap[city];
+              if (p && p.sell > 0) validPrices.push(p.sell);
+              else if (p && p.buy > 0) validPrices.push(p.buy);
+            });
+            if (validPrices.length) {
+              validPrices.sort(function (a, b) { return a - b; });
+              PRICE_CACHE[uId] = validPrices[Math.floor(validPrices.length / 2)];
+              updated = true;
+            }
+          });
+          if (updated) {
+            recalculateValues();
+            render();
+          }
+        })
+        .catch(function () { /* fallback a estimación base */ });
+    } catch (e) {}
+  }
+
+  function recalculateValues() {
+    var changed = false;
+    state.rows.forEach(function (row) {
+      var indexed = lookup(row.itemId);
+      var unitPrice = resolveItemPrice(indexed && indexed.u, row.tier, row.enchant);
+      var newValue = unitPrice * row.qty;
+      if (row.value !== newValue) {
+        row.value = newValue;
+        changed = true;
+      }
+    });
+    if (changed) save();
+  }
+
   fetch('data/tracker_gathering_items.json', { cache: 'force-cache' })
     .then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -35,6 +103,8 @@
       // Las filas guardadas antes de tener el índice (o recolectadas mientras
       // cargaba) se reinterpretan ahora que se puede resolver el número.
       reclassifyRows();
+      recalculateValues();
+      fetchGatheringPrices();
       render();
     })
     .catch(function () { /* sin índice se sigue mostrando «Sin clasificar» */ });
@@ -87,7 +157,10 @@
     var tier = +(raw.tier || (indexed && indexed.r) || ((id.match(/^T([1-8])_/) || [])[1]) || 0);
     var enchant = Math.max(0, +(raw.enchantment != null ? raw.enchantment : (indexed && indexed.e) || 0));
     var qty = Math.max(1, +(raw.quantity || raw.qty || 1));
-    var unitValue = Math.max(0, +(raw.unitValue || raw.price || 0));
+    var unitValue = +(raw.unitValue || raw.price || 0);
+    if (!unitValue) {
+      unitValue = resolveItemPrice(indexed && indexed.u, tier, enchant);
+    }
     var value = Math.max(0, +(raw.value != null ? raw.value : unitValue * qty));
     var name = String(raw.name || raw.itemName || (indexed && indexed.n) || id || TYPES[type].label);
     return { uid: String(raw.uid || uid()), ts: +(raw.ts || Date.now()), itemId: id, name: name, type: type, tier: tier, enchant: enchant, qty: qty, value: value, map: String(raw.map || raw.zone || 'Sin ubicación'), sessionId: String(raw.sessionId || currentSession().id) };
@@ -258,6 +331,11 @@
       AATracker.on(function(type,payload){paintTracking();if(type==='gathering')add(payload);if(type==='loot'&&payload)add(payload);});
       AATracker.detect().then(paintTracking);
     }
+    setInterval(function(){
+      if(state.rows.length&&document.getElementById('gatKpis')){
+        render();
+      }
+    },1000);
   }
   root.AAGathering=Object.freeze({add:add,render:render,rows:function(){return state.rows.slice();}});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
