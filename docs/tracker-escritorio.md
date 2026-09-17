@@ -337,6 +337,30 @@ responde —por eso la web pudo convivir con ellos mientras hizo falta.
 varias veces por segundo, pero el DOM se redibuja como mucho cada 500 ms.
 Redibujar por evento trabaría la pestaña.
 
+### Activación independiente de Recolección y Mazmorras
+
+Los interruptores de las pestañas **Recolección** y **Mazmorras** son controles
+de cada módulo, no una segunda captura de red. La captura Photon global se
+inicia, detiene o reinicia únicamente desde **Sesión**; activar o pausar uno
+de estos módulos no interrumpe la captura, no reinicia la identidad y no
+cambia el otro módulo.
+
+- Cada pestaña puede estar **inactiva**, **activa esperando captura**, **activa
+  esperando detectar el personaje**, **activa registrando** o mostrar que el
+  motor no está disponible.
+- Mientras el interruptor está apagado, el módulo sigue mostrando su histórico
+  pero descarta los eventos nuevos antes de guardarlos. Recolección acepta
+  únicamente eventos `gathering`; los eventos genéricos `loot` no son recursos
+  recolectados.
+- La preferencia se conserva en el `localStorage` de la app (`gatheringTrackingEnabled`
+  y la configuración de `dungeons`), que es el almacenamiento que ya usan estas
+  vistas.
+- Mazmorras publica una partida completa al salir de la instancia. Cada evento
+  lleva `startedAt`; si se activa el módulo con una partida ya iniciada, esa
+  partida se descarta al cerrarse para no presentar un resumen parcial ni
+  atribuirlo a una activación posterior. Las partidas que comienzan después de
+  activar el módulo sí se guardan, incluso si el usuario cambia de pestaña.
+
 Todo lo que viene del motor pasa por `esc()` antes de entrar al DOM. Los
 nombres de jugadores son datos externos.
 

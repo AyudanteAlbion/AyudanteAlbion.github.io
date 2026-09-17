@@ -178,16 +178,19 @@ func (Simulator) Run(ctx context.Context, st *State, hub *Hub) error {
 				"map":      zones[rng.Intn(len(zones))],
 			}))
 			dungeon := dungeonTypes[rng.Intn(len(dungeonTypes))]
+			simDuration := 420 + rng.Intn(1800)
+			simEndedAt := time.Now()
 			hub.Publish(NewEvent("dungeonRun", map[string]any{
 				"uid":         fmt.Sprintf("sim-dng-%d", time.Now().UnixNano()),
-				"ts":          time.Now().UnixMilli(),
+				"ts":          simEndedAt.UnixMilli(),
+				"startedAt":   simEndedAt.UnixMilli(),
 				"type":        dungeon.kind,
 				"tier":        4 + rng.Intn(5),
 				"level":       rng.Intn(5),
 				"enchantment": 0,
 				"map":         dungeon.cluster,
 				"zone":        dungeon.zone,
-				"duration":    420 + rng.Intn(1800),
+				"duration":    simDuration,
 				"fame":        12000 + rng.Intn(180000),
 				"respec":      rng.Intn(18000),
 				"might":       rng.Intn(6000),

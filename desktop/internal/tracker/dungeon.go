@@ -183,6 +183,7 @@ func (h *handlers) finishDungeon() {
 	h.hub.Publish(NewEvent("dungeonRun", map[string]any{
 		"uid":         fmt.Sprintf("dng-%d", run.Start.UnixNano()),
 		"ts":          time.Now().UnixMilli(),
+		"startedAt":   run.Start.UnixMilli(),
 		"type":        run.Type,
 		"tier":        run.Tier,
 		"level":       run.Level,
