@@ -327,9 +327,13 @@
     state.sessions=read(SESSION_KEY,[]).filter(function(s){return s&&s.id;});
     state.rows=read(KEY,[]).map(normalize).filter(Boolean);
     currentSession(); shell();
-    if(root.AATracker){
-      AATracker.on(function(type,payload){paintTracking();if(type==='gathering')add(payload);if(type==='loot'&&payload)add(payload);});
-      AATracker.detect().then(paintTracking);
+    if(root.AATrackerAnalytics){
+      AATrackerAnalytics.subscribe(function(payload,type){
+        paintTracking();
+        if(type==='gathering') add(payload);
+        if(type==='loot' && payload) add(payload);
+      });
+      AATrackerAnalytics.detect().then(paintTracking).catch(paintTracking);
     }
     setInterval(function(){
       if(state.rows.length&&document.getElementById('gatKpis')){
