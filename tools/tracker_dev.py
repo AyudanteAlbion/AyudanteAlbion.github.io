@@ -94,6 +94,9 @@ class State:
         with self._lock:
             self.started = time.time()
             self.fame = self.silver = self.respec = 0
+            self.might = self.favor = 0
+            self.faction_points = self.faction_standing = 0
+            self.paid_silver_for_respec = 0
             self.players: dict[str, dict] = {}
             self.loot: list[dict] = []
             self.maps: list[dict] = []
@@ -205,8 +208,19 @@ class State:
                 'fame': self.fame,
                 'silver': self.silver,
                 'respec': self.respec,
+                'might': self.might,
+                'favor': self.favor,
+                'factionPoints': self.faction_points,
+                'factionStanding': self.faction_standing,
+                'paidSilverForRespec': self.paid_silver_for_respec,
                 'famePerHour': self.fame / hours,
                 'silverPerHour': self.silver / hours,
+                'respecPerHour': self.respec / hours,
+                'mightPerHour': self.might / hours,
+                'favorPerHour': self.favor / hours,
+                'factionPointsPerHour': self.faction_points / hours,
+                'factionStandingPerHour': self.faction_standing / hours,
+                'respecCostPerHour': self.paid_silver_for_respec / hours,
                 'combatants': rows,
                 'maps': maps,
                 'loot': list(reversed(self.loot)),
@@ -312,12 +326,24 @@ def simulate() -> None:
             with STATE._lock:
                 STATE.fame += fame_gain
                 STATE.silver += silver_gain
+                might_gain = random.randint(2, 20)
+                favor_gain = random.randint(1, 8)
+                faction_gain = random.randint(1, 12)
+                standing_gain = random.randint(1, 5)
+                STATE.might += might_gain
+                STATE.favor += favor_gain
+                STATE.faction_points += faction_gain
+                STATE.faction_standing += standing_gain
                 total_fame = STATE.fame
                 total_silver = STATE.silver
             HUB.publish('damage', {'source': actor, 'target': 'Mob heretico',
                                    'amount': dmg, 'ability': random.choice(ABILITIES)})
             HUB.publish('fame', {'amount': fame_gain, 'total': total_fame})
             HUB.publish('silver', {'amount': silver_gain, 'total': total_silver, 'source': 'ground'})
+            HUB.publish('might', {'amount': might_gain, 'total': STATE.might})
+            HUB.publish('favor', {'amount': favor_gain, 'total': STATE.favor})
+            HUB.publish('faction', {'amount': faction_gain, 'total': STATE.faction_points})
+            HUB.publish('factionStanding', {'amount': standing_gain, 'total': STATE.faction_standing})
         if tick % 13 == 0:
             STATE.add_loot({'player': random.choice(PARTY), 'itemId': random.choice(ITEMS),
                             'quantity': random.randint(1, 3), 'quality': random.randint(1, 3),
@@ -338,6 +364,8 @@ def simulate() -> None:
                 'map': random.choice(ZONES), 'duration': random.randint(420, 2200),
                 'fame': random.randint(12000, 190000), 'respec': random.randint(0, 18000),
                 'might': random.randint(0, 6000), 'favor': random.randint(0, 2400),
+                'factionPoints': random.randint(0, 4000), 'factionStanding': random.randint(0, 2000),
+                'paidSilverForRespec': random.randint(0, 12000),
                 'silver': random.randint(5000, 95000),
                 'lootValue': random.randint(15000, 515000),
                 'deaths': random.randint(0, 2), 'chests': random.randint(1, 8),

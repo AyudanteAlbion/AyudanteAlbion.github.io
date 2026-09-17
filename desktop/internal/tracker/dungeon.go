@@ -38,9 +38,12 @@ type dungeonRun struct {
 	Fame     int64
 	Silver   int64
 	Respec   int64
-	Might    int64
-	Favor    int64
-	Deaths   int
+	Might           int64
+	Favor           int64
+	FactionPoints   int64
+	FactionStanding int64
+	PaidRespecSilver int64
+	Deaths          int
 	Chests   int
 }
 
@@ -67,6 +70,9 @@ func (h *handlers) beginDungeon(prevZone, cluster, instance string) {
 	run.Fame = snap.Fame
 	run.Silver = snap.Silver
 	run.Respec = snap.Respec
+	run.FactionPoints = snap.FactionPoints
+	run.FactionStanding = snap.FactionStanding
+	run.PaidRespecSilver = snap.PaidSilverForRespec
 	if isRandomDungeonToken(cluster) {
 		if prevCluster, _ := splitZone(prevZone); prevCluster != "" {
 			if kind, _ := lookupClusterKind(prevCluster); kind.Kind == "avalon" {
@@ -148,6 +154,9 @@ func (h *handlers) finishDungeon() {
 	fame := snap.Fame - run.Fame
 	silver := snap.Silver - run.Silver
 	respec := snap.Respec - run.Respec
+	factionPoints := snap.FactionPoints - run.FactionPoints
+	factionStanding := snap.FactionStanding - run.FactionStanding
+	paidRespecSilver := snap.PaidSilverForRespec - run.PaidRespecSilver
 	// Un reinicio de sesión en mitad de la mazmorra deja los contadores por
 	// debajo del arranque: en ese caso la diferencia no significa nada.
 	if fame < 0 {
@@ -156,10 +165,11 @@ func (h *handlers) finishDungeon() {
 	if silver < 0 {
 		silver = 0
 	}
-	if respec < 0 {
-		respec = 0
-	}
-	if duration < 15 && fame == 0 && silver == 0 {
+	if respec < 0 { respec = 0 }
+	if factionPoints < 0 { factionPoints = 0 }
+	if factionStanding < 0 { factionStanding = 0 }
+	if paidRespecSilver < 0 { paidRespecSilver = 0 }
+	if duration < 15 && fame == 0 && silver == 0 && factionPoints == 0 && factionStanding == 0 {
 		return
 	}
 
@@ -183,6 +193,9 @@ func (h *handlers) finishDungeon() {
 		"fame":        fame,
 		"silver":      silver,
 		"respec":      respec,
+		"paidSilverForRespec": paidRespecSilver,
+		"factionPoints": factionPoints,
+		"factionStanding": factionStanding,
 		"might":       run.Might,
 		"favor":       run.Favor,
 		"deaths":      run.Deaths,

@@ -192,7 +192,15 @@
   }
   function add(raw) {
     var row = normalize(raw); if (!row) return false;
-    if (state.rows.some(function (x) { return x.uid === row.uid; })) return false;
+    // HarvestFinished can be emitted more than once for the same resource
+    // object. SAT updates that row instead of creating duplicates.
+    var existing = state.rows.find(function (x) { return x.uid === row.uid; });
+    if (existing && existing.itemId === row.itemId) {
+      existing.qty += row.qty;
+      existing.ts = row.ts;
+      existing.value = resolveItemPrice((lookup(existing.itemId) || {}).u, existing.tier, existing.enchant) * existing.qty;
+      save(); render(); return true;
+    }
     state.rows.push(row); save(); render(); return true;
   }
 

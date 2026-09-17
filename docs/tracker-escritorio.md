@@ -198,13 +198,30 @@ sobrecuración, daño recibido, golpe máximo, kills y muertes; y por sesión fa
 plata, respec, mapas visitados y botín.
 
 `Snapshot()` calcula DPS, HPS y porcentajes **en el servidor**, para que el
-frontend solo dibuje. El historial de mapas y el botín salen del más nuevo al
-más viejo, y están recortados a 200 y 500 entradas para que una sesión larga no
-coma memoria.
+frontend solo dibuje. También expone fama, plata neta después de impuestos,
+respec, plata pagada por respec, Might, Favor, puntos de facción y reputación de
+facción, junto con sus tasas de la última hora. Los contadores se reinician al
+cambiar de personaje o filtro; la ventana de tasa vive en `State`, no en un
+timer del navegador.
+
+Los parámetros se interpretan como SAT: `UpdateFame` suma premium y satchel,
+`TakeSilver` calcula el rendimiento después de cluster/gremio/alianza y usa las
+tasas del jugador local para estimar la plata de party, mientras que
+`UpdateCurrency` y `UpdateFactionStanding` son métricas de facción y no plata.
+`KilledPlayer` solo deja un candidato y `Died` lo confirma, para no contar
+kills falsos; los derribos no letales tampoco se convierten en muertes.
+
+La pesca replica la máquina de estados de SAT: solo un ítem visto después de la
+picada puede ser confirmado por `RewardGranted`, el reward se consume una sola
+vez y HarvestFinished reutiliza el `ObjectId` del recurso para acumular la
+misma fila en el frontend. El mismo objeto no genera duplicados al recibir
+varios eventos.
 
 Detalle que importa: el daño recibido solo se acumula para jugadores conocidos
-(vos y tu party). Sin eso, cada mob golpeado aparecería como una fila más en el
-medidor.
+(vos y tu party), aunque el atacante sea un mob desconocido. El daño saliente
+requiere una fuente de party y excluye el auto-daño; si el protocolo no trae
+salud máxima, la sobrecuración queda pendiente de esa información en lugar de
+inventar un valor.
 
 ### 3.4 `tracker.Hub` — reparto
 

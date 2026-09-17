@@ -11,6 +11,7 @@ package tracker
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -325,12 +326,26 @@ func (l *LiveSource) setError(msg string) {
 
 // handlers traduce eventos Photon a mutaciones del estado, usando la tabla de
 // códigos cargada desde disco.
+type pendingPlayerKill struct {
+	victimID   int64
+	victimName string
+	killer     Entity
+	at         time.Time
+}
+
+type silverTaxRates struct {
+	cluster, guild, alliance float64
+	valid                    bool
+}
+
 type handlers struct {
 	diag     *protocolDiagnostics
 	st       *State
 	hub      *Hub
 	codes    *Codes
 	entities *EntityStore
+	pendingKills []pendingPlayerKill
+	silverTaxes silverTaxRates
 	// dungeon es la partida de mazmorra en curso, abierta al entrar a una
 	// instancia y cerrada al salir. nil mientras el personaje está afuera.
 	dungeon *dungeonRun
@@ -518,7 +533,7 @@ func (h *handlers) request(op *photon.OperationRequest) {
 	case "FishingStart":
 		h.fishingStart(op.Parameters)
 	case "FishingCatch":
-		h.fishingCatch()
+		h.fishingCatch(op.Parameters)
 	case "FishingFinish":
 		h.fishingFinish(op.Parameters)
 	case "FishingCancel":
@@ -675,6 +690,7 @@ func (h *handlers) applyZoneChange(prevZone, zone string) {
 	}
 
 	h.fishingCancel()
+	h.pendingKills = nil
 
 	h.entities.BeginZone()
 	h.st.EnterZone(zone)
@@ -767,29 +783,41 @@ func (h *handlers) event(ev *photon.EventData) {
 			break
 		}
 		if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
-			// La fama viene multiplicada por 10000 en el protocolo.
-			amount := gained / 10000
+			// SAT records TotalGainedFame, not just FameWithZoneMultiplier:
+			// premium and satchel fame are separate FixPoint parameters.
+			totalInternal := float64(gained)
+			premium := false
+			if value, known := h.paramBool(name, p, "premiumBonus"); known { premium = value }
+			if premium { totalInternal += math.Round(float64(gained) * 0.5) }
+			satchel, _ := h.paramNum(name, p, "satchel")
+			if satchel > 0 { totalInternal += float64(satchel) }
+			amount := int64(math.Round(totalInternal)) / 10000
 			if h.st.AddFame(amount) {
 				h.hub.Publish(NewEvent("fame", map[string]any{
 					"amount": amount,
-					"total":  h.st.Fame(),
+					"total": h.st.Fame(),
+					"premium": premium,
+					"satchel": satchel / 10000,
 				}))
 			}
 		}
 
 	case "UpdateReSpecPoints":
-		if !h.trackingAllowed() {
-			break
-		}
+		if !h.trackingAllowed() { break }
+		payload := map[string]any{"amount": int64(0), "total": h.st.Respec()}
+		changed := false
 		if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
 			amount := gained / 10000
 			if h.st.AddRespec(amount) {
-				h.hub.Publish(NewEvent("respec", map[string]any{
-					"amount": amount,
-					"total":  h.st.Respec(),
-				}))
+				payload["amount"], payload["total"] = amount, h.st.Respec()
+				changed = true
 			}
 		}
+		if paid, paidOK := h.paramNum(name, p, "paidSilver"); paidOK && paid > 0 {
+			cost := paid / 10000
+			if h.st.AddPaidRespecSilver(cost) { payload["paidSilver"], changed = cost, true }
+		}
+		if changed { h.hub.Publish(NewEvent("respec", payload)) }
 
 	case "TakeSilver":
 		if !h.trackingAllowed() {
@@ -797,38 +825,66 @@ func (h *handlers) event(ev *photon.EventData) {
 		}
 		// La plata recogida del mundo solo cuenta si la levantó el personaje
 		// propio: el servidor también reporta la de la party.
-		if id, ok := h.paramNum(name, p, "id"); ok && !h.isSelf(id) {
-			break
+		id, idOK := h.paramNum(name, p, "id")
+		target, _ := h.paramNum(name, p, "target")
+		isLocal := idOK && h.isSelf(id)
+		isParty := idOK && h.entities.IsPartyObjectID(id) && id != target
+		if !isLocal && !isParty { break }
+		preTax, ok := h.paramNum(name, p, "amount")
+		if !ok || preTax <= 0 { break }
+		clusterTax, _ := h.paramNum(name, p, "clusterTax")
+		guildTax, _ := h.paramNum(name, p, "guildTax")
+		alliancePenalty, _ := h.paramNum(name, p, "alliancePenalty")
+		if isLocal && id != target && preTax > 0 {
+			h.silverTaxes = silverTaxRates{
+				cluster: float64(clusterTax) / float64(preTax),
+				guild: float64(guildTax) / float64(preTax),
+				alliance: float64(alliancePenalty) / float64(preTax),
+				valid: true,
+			}
 		}
-		if gained, ok := h.paramNum(name, p, "amount"); ok && gained > 0 {
-			amount := gained / 10000
-			if h.st.AddSilver(amount) {
-				h.hub.Publish(NewEvent("silver", map[string]any{
-					"amount": amount,
-					"total":  h.st.Silver(),
-					"source": "ground",
-				}))
+		// Party TakeSilver packets are estimates: SAT reuses the local
+		// player's last observed tax percentages so the party total is not
+		// inflated by missing per-member tax metadata.
+		if isParty && !isLocal && h.silverTaxes.valid {
+			clusterTax = int64(math.Round(float64(preTax) * h.silverTaxes.cluster))
+			guildTax = int64(math.Round(float64(preTax) * h.silverTaxes.guild))
+			alliancePenalty = int64(math.Round(float64(preTax) * h.silverTaxes.alliance))
+		}
+		net := preTax - clusterTax - guildTax - alliancePenalty
+		if net < 0 { net = 0 }
+		amount := net / 10000
+		if amount > 0 && h.st.AddSilver(amount) {
+			h.hub.Publish(NewEvent("silver", map[string]any{
+				"amount": amount,
+				"total": h.st.Silver(),
+				"source": "ground",
+				"preTax": preTax / 10000,
+				"tax": (clusterTax + guildTax + alliancePenalty) / 10000,
+			}))
+		}
+
+	case "UpdateCurrency":
+		// SAT treats UpdateCurrency as faction points, not silver. Silver from
+		// the world is handled by TakeSilver.
+		if h.trackingAllowed() {
+			if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
+				amount := gained / 10000
+				city, _ := h.paramNum(name, p, "cityFaction")
+				if h.st.AddFactionPoints(amount) {
+					h.hub.Publish(NewEvent("faction", map[string]any{"amount": amount, "total": h.st.FactionPoints(), "cityFaction": city}))
+				}
 			}
 		}
 
-	case "UpdateCurrency", "PartySilverGained":
-		if !h.trackingAllowed() {
-			break
-		}
-		field := "gained"
-		source := "currency"
-		if name == "PartySilverGained" {
-			field = "amount"
-			source = "party"
-		}
-		if gained, ok := h.paramNum(name, p, field); ok && gained > 0 {
-			amount := gained / 10000
-			if h.st.AddSilver(amount) {
-				h.hub.Publish(NewEvent("silver", map[string]any{
-					"amount": amount,
-					"total":  h.st.Silver(),
-					"source": source,
-				}))
+	case "UpdateFactionStanding":
+		if h.trackingAllowed() {
+			if gained, ok := h.paramNum(name, p, "gained"); ok && gained > 0 {
+				amount := gained / 10000
+				city, _ := h.paramNum(name, p, "cityFaction")
+				if h.st.AddFactionStanding(amount) {
+					h.hub.Publish(NewEvent("factionStanding", map[string]any{"amount": amount, "total": h.st.FactionStanding(), "cityFaction": city}))
+				}
 			}
 		}
 
@@ -879,26 +935,53 @@ func (h *handlers) event(ev *photon.EventData) {
 		}
 
 	case "MightAndFavorReceived":
-		if h.trackingAllowed() && h.dungeon != nil {
+		if h.trackingAllowed() {
 			might, _ := h.paramNum(name, p, "might")
 			favor, _ := h.paramNum(name, p, "favor")
-			// Como la fama, viajan multiplicados por 10000 (FixPoint).
-			h.dungeon.Might += might / 10000
-			h.dungeon.Favor += favor / 10000
+			might, favor = might/10000, favor/10000
+			if h.st.AddMight(might) { h.hub.Publish(NewEvent("might", map[string]any{"amount": might, "total": h.st.Might()})) }
+			if h.st.AddFavor(favor) { h.hub.Publish(NewEvent("favor", map[string]any{"amount": favor, "total": h.st.Favor()})) }
+			if h.dungeon != nil { h.dungeon.Might += might; h.dungeon.Favor += favor }
+		}
+	case "KilledPlayer":
+		if h.trackingAllowed() {
+			killerID, killerOK := h.paramNum(name, p, "killer")
+			victimID, victimOK := h.paramNum(name, p, "victimId")
+			victimName, _ := h.paramStr(name, p, "victim")
+			if killerOK && victimOK {
+				if killer, exists := h.entities.ByObjectID(killerID); exists && killer.InParty {
+					h.pendingKills = append(h.pendingKills, pendingPlayerKill{victimID: victimID, victimName: victimName, killer: killer, at: time.Now()})
+				}
+			}
 		}
 
 	case "Died":
 		if h.trackingAllowed() {
-			if victim, ok := h.paramNum(name, p, "victimId"); ok && h.isSelf(victim) {
-				if h.dungeon != nil {
-					h.dungeon.Deaths++
+			victimID, victimOK := h.paramNum(name, p, "victimId")
+			killerID, _ := h.paramNum(name, p, "killerId")
+			isLethal, lethalKnown := h.paramBool(name, p, "isLethal")
+			if !lethalKnown { isLethal = true } // older captures omitted the field
+			if victimOK {
+				if victim, exists := h.entities.ByObjectID(victimID); exists && victim.InParty && isLethal {
+					if h.st.AddDeathEntity(victim) && victim.Local && h.dungeon != nil { h.dungeon.Deaths++ }
+					if victim.Local { h.hub.Publish(NewEvent("died", map[string]any{"victim": victim.Name})) }
 				}
-				h.hub.Publish(NewEvent("died", map[string]any{
-					"victim": h.st.Character(),
-				}))
+				// KilledPlayer is only a candidate in SAT; Died is the confirmation.
+				for i := len(h.pendingKills) - 1; i >= 0; i-- {
+					candidate := h.pendingKills[i]
+					if time.Since(candidate.at) > 10*time.Second {
+						h.pendingKills = append(h.pendingKills[:i], h.pendingKills[i+1:]...)
+						continue
+					}
+					if candidate.victimID != victimID || (killerID != 0 && candidate.killer.HasObjectID && candidate.killer.ObjectID != killerID) { continue }
+					h.pendingKills = append(h.pendingKills[:i], h.pendingKills[i+1:]...)
+					if isLethal && h.st.AddKillEntity(candidate.killer) {
+						h.hub.Publish(NewEvent("kill", map[string]any{"killer": candidate.killer.Name, "victim": candidate.victimName}))
+					}
+					break
+				}
 			}
 		}
-
 	case "OtherGrabbedLoot":
 		h.loot(name, p)
 	}
@@ -922,8 +1005,10 @@ func (h *handlers) harvest(p map[byte]any) {
 	if !data.HasUser {
 		return
 	}
+	uid := fmt.Sprintf("gat-%d-%d", time.Now().UnixNano(), data.ItemID)
+	if data.HasObject { uid = fmt.Sprintf("gat-object-%d", data.ObjectID) }
 	h.hub.Publish(NewEvent("gathering", map[string]any{
-		"uid":      fmt.Sprintf("gat-%d", time.Now().UnixNano()),
+		"uid":      uid,
 		"ts":       time.Now().UnixMilli(),
 		"itemId":   fmt.Sprintf("%d", data.ItemID),
 		"quantity": data.Total(),
@@ -936,44 +1021,36 @@ func (h *handlers) harvest(p map[byte]any) {
 func (h *handlers) health(event string, p map[byte]any) {
 	targetID, ok1 := h.paramNum(event, p, "target")
 	value, ok2 := h.paramNum(event, p, "value")
-	if !ok1 || !ok2 {
-		return
-	}
+	if !ok1 || !ok2 { return }
 	sourceID, _ := h.paramNum(event, p, "source")
-	h.applyHealth(HealthUpdateData{TargetID: targetID, SourceID: sourceID, Value: value})
+	update := HealthUpdateData{TargetID: targetID, SourceID: sourceID, Value: value}
+	if newHealth, ok := h.paramNum(event, p, "newHealth"); ok { update.NewHealth, update.HasNewHealth = newHealth, true }
+	h.applyHealth(update)
 }
 
 func (h *handlers) applyHealth(update HealthUpdateData) {
-	if !h.trackingAllowed() || update.Value == 0 {
-		return
-	}
-	target, _ := h.entities.ByObjectID(update.TargetID)
-	source, _ := h.entities.ByObjectID(update.SourceID)
-
-	// Los valores vienen multiplicados por 10000.
+	if !h.trackingAllowed() || update.Value == 0 { return }
+	target, targetKnown := h.entities.ByObjectID(update.TargetID)
+	source, sourceKnown := h.entities.ByObjectID(update.SourceID)
 	amount := update.Value / 10000
-	if amount == 0 || source.GUID == "" || !source.InParty {
-		return
-	}
+	if amount == 0 { return }
 
 	if amount < 0 {
-		if !h.st.AddDamageEntity(source, target, -amount) {
-			return
+		damage := -amount
+		addedDamage := sourceKnown && source.InParty && h.st.AddDamageEntity(source, target, damage)
+		selfDamage := sourceKnown && targetKnown && source.HasObjectID && target.HasObjectID && source.ObjectID == target.ObjectID
+		addedTaken := targetKnown && target.InParty && !selfDamage && h.st.AddTakenDamageEntity(target, damage)
+		if addedDamage || addedTaken {
+			h.hub.Publish(NewEvent("damage", map[string]any{"source": source.Name, "target": target.Name, "amount": damage}))
 		}
-		h.hub.Publish(NewEvent("damage", map[string]any{
-			"source": source.Name, "target": target.Name, "amount": -amount,
-		}))
 		return
 	}
 
-	if !h.st.AddHealingEntity(source, amount, 0) {
-		return
+	if !sourceKnown || !source.InParty { return }
+	if h.st.AddHealingEntity(source, amount, 0) {
+		h.hub.Publish(NewEvent("heal", map[string]any{"source": source.Name, "target": target.Name, "amount": amount}))
 	}
-	h.hub.Publish(NewEvent("heal", map[string]any{
-		"source": source.Name, "target": target.Name, "amount": amount,
-	}))
 }
-
 func (h *handlers) loot(event string, p map[byte]any) {
 	if !h.trackingAllowed() {
 		return
