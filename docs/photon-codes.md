@@ -101,6 +101,21 @@ Si el archivo tiene un error, la app lo dice y sigue funcionando con la tabla an
 
 Las claves que empiezan con `_` son comentarios y se ignoran.
 
+### Qué evento alimenta cada pestaña
+
+Si una pestaña se queda vacía pero el medidor de daño funciona, casi siempre se movió el código de
+*su* evento, no el de todos:
+
+| Pestaña | Eventos que la alimentan |
+|---|---|
+| Sesión (medidor) | `HealthUpdate`, `HealthUpdates`, `UpdateFame`, `TakeSilver`, `UpdateCurrency` |
+| Recolección | `HarvestFinished` (con sus `eventParameters`: `id`, `itemId`, `quantity`, `collectorBonus`, `premiumBonus`) |
+| Mazmorras | No tiene evento propio: las partidas se abren y cierran con la operación `ChangeCluster`, leyendo el tramo de instancia del cluster (`guid@RANDOMDUNGEON@SOLO`) |
+
+**Recolección y Mazmorras no se activan a mano.** Siguen al tracking de la pestaña Sesión: mientras
+haya captura y un personaje detectado por `JoinResponse`, registran en segundo plano aunque nunca se
+abran.
+
 ### Reglas que se validan
 
 - Los códigos de `events` y `operations` van de **0 a 65535** (viajan como entero de 16 bits en el

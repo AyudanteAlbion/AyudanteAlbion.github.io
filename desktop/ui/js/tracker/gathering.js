@@ -11,7 +11,11 @@
     ore: { label: 'Mineral', color: '#e45c68' },
     hide: { label: 'Piel', color: '#54bd83' },
     stone: { label: 'Piedra', color: '#9988c8' },
-    fishing: { label: 'Pesca', color: '#477cc4' }
+    fishing: { label: 'Pesca', color: '#477cc4' },
+    // Albion identifica el recurso con un número, no con su nombre. Sin el
+    // índice de ítems no se puede saber la rama, pero la recolección igual
+    // ocurrió: se registra acá en vez de perderse.
+    other: { label: 'Sin clasificar', color: '#8c95a8' }
   };
   var RANGES = [[10, '10 Minutos'], [30, '30 Minutos'], [60, '1 Hora'], [180, '3 Horas'], [720, '12 Horas'], [1440, '24 Horas'], [4320, '3 Días'], [10080, '7 Días'], [43200, '30 Días'], [525600, '365 Días']];
   var state = { rows: [], sessions: [], type: 'all', range: 1440, session: 'all', metric: 'quantity', enabledTypes: new Set(Object.keys(TYPES).filter(function (x) { return x !== 'all'; })) };
@@ -33,6 +37,9 @@
     if (/HIDE|LEATHER/.test(id)) return 'hide';
     if (/ROCK|STONE/.test(id)) return 'stone';
     if (/FISH|SEAWEED/.test(id)) return 'fishing';
+    // Un id puramente numérico viene del tracker real: es una recolección
+    // válida cuyo tipo todavía no sabemos resolver.
+    if (/^[0-9]+$/.test(id)) return 'other';
     return '';
   }
   function normalize(raw) {
@@ -85,7 +92,7 @@
     var mount = document.getElementById('gatheringMount'); if (!mount) return;
     mount.innerHTML = '<div class="gat-shell">' +
       '<div class="panel gat-toolbar"><div class="gat-toolbar-title"><span class="gat-eyebrow">ANALYTICS · GATHERING</span><h1>Seguimiento de recolección</h1></div>' +
-      '<label class="gat-track" id="gatTrack"><input type="checkbox" id="gatTracking"><i></i><span id="gatTrackText">El rastreo no está activo</span></label>' +
+      '<span class="gat-track" id="gatTrack" title="El rastreo se activa en la pestaña Sesión. Esta pestaña registra sola mientras haya personaje detectado."><input type="checkbox" id="gatTracking" disabled tabindex="-1" aria-hidden="true"><i></i><span id="gatTrackText">Activá el tracking en la pestaña Sesión</span></span>' +
       '<label class="gat-control"><span>Rango de tiempo</span><select id="gatRange">' + RANGES.map(function (r) { return '<option value="'+r[0]+'" '+(r[0]===state.range?'selected':'')+'>'+r[1]+'</option>'; }).join('') + '</select></label>' +
       '<label class="gat-control"><span>Sesión</span><select id="gatSession"></select></label>' +
       '<button class="btn" id="gatReset">↻ Reiniciar sesión</button></div>' +
@@ -109,13 +116,8 @@
       var active = state.sessions.find(function (s) { return !s.end; }); if (active) active.end = Date.now();
       var next = currentSession(); state.session = next.id; save(); refreshSessions(); render();
     };
-    document.getElementById('gatTracking').onchange = async function (e) {
-      if (!root.AATracker) return;
-      e.target.disabled = true;
-      try { if (e.target.checked) await AATracker.start(); else await AATracker.stop(); }
-      catch (err) { console.warn('gathering tracking', err); }
-      e.target.disabled = false; paintTracking();
-    };
+    // El interruptor quedó como indicador de solo lectura: el rastreo se
+    // enciende una vez en Sesión y esta pestaña lo sigue automáticamente.
     document.getElementById('gatMetric').onchange = function (e) { state.metric=e.target.value; renderTime(filtered()); };
   }
   function refreshSessions() {
@@ -124,9 +126,35 @@
     sel.innerHTML='<option value="all">Todas las sesiones</option>'+state.sessions.slice().reverse().map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.label)+(s.end?'':' · activa')+'</option>';}).join('');
     sel.value=state.sessions.some(function(s){return s.id===state.session;})?state.session:'all';
   }
+  // El registro no se activa a mano: sigue al tracking de la pestaña Sesión.
+  // Mientras haya captura y un personaje detectado, esta pestaña acumula en
+  // segundo plano aunque el usuario nunca la haya abierto.
+  function trackingState() {
+    if (!root.AATracker) return { capturing:false, available:false, detected:false };
+    var st = AATracker.state();
+    var demo = !!(st.capture && st.capture.phase === 'demo');
+    return {
+      capturing: !!st.capturing,
+      available: !!st.available,
+      detected: demo || (!!st.identityValid && st.filterMatched !== false)
+    };
+  }
+  function trackingLabel(st) {
+    if (!st.available) return 'El motor de captura no está disponible';
+    if (!st.capturing) return 'Activá el tracking en la pestaña Sesión';
+    if (!st.detected) return 'Capturando · esperando detectar tu personaje';
+    return 'Registrando automáticamente';
+  }
   function paintTracking() {
-    var on=!!(root.AATracker&&AATracker.state().capturing), box=document.getElementById('gatTrack');
-    if(!box)return; box.classList.toggle('on',on); var toggle=document.getElementById('gatTracking'); toggle.checked=on; toggle.disabled=!!(root.AATracker&&!AATracker.state().available); document.getElementById('gatTrackText').textContent=on?'El rastreo está activo':'El rastreo no está activo';
+    var st = trackingState(), box = document.getElementById('gatTrack');
+    if (!box) return;
+    var on = st.capturing && st.detected;
+    box.classList.toggle('on', on);
+    var toggle = document.getElementById('gatTracking');
+    // El interruptor pasa a ser un indicador: la fuente de verdad es Sesión.
+    toggle.checked = on;
+    toggle.disabled = true;
+    document.getElementById('gatTrackText').textContent = trackingLabel(st);
   }
 
   function render() {

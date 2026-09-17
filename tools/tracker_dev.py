@@ -177,7 +177,20 @@ class State:
                 maps.append(m)
 
             hours = elapsed / 3600
+            # El simulador es una demo explícita: 'capture.phase' = demo es lo
+            # que el frontend usa para aceptar métricas sin JoinResponse real.
+            detected = bool(self.character)
             return {
+                'capture': {
+                    'phase': 'demo' if self.capturing else 'off',
+                    'realCapture': False,
+                },
+                'identity': {
+                    'name': self.character,
+                    'detection': 'detected' if detected else 'waiting',
+                    'valid': detected,
+                    'filterMatched': True,
+                },
                 'capturing': self.capturing,
                 'simulated': True,
                 'character': self.character,

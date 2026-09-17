@@ -53,6 +53,14 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   protege `/desktop/`.
 - `docs/photon-codes.md`, `docs/frontend-modules.md` y `desktop/ui/README.md`
   actualizados a la separación web/escritorio.
+- **Recolección y Mazmorras registran solas, en segundo plano.** El usuario
+  activa el tracking una vez en **Sesión**; en cuanto el JoinResponse detecta
+  el personaje, las dos pestañas empiezan a acumular sin que haya que abrirlas
+  ni encender nada en ellas. Sus interruptores dejan de ser controles (que
+  arrancaban y detenían la captura por su cuenta, pisando lo configurado en
+  Sesión) y pasan a ser indicadores de solo lectura con el estado real:
+  «Activá el tracking en la pestaña Sesión», «Capturando · esperando detectar
+  tu personaje» o «Registrando automáticamente».
 
 ### Corregido
 
@@ -84,6 +92,20 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   de personaje e ingresar otra vez.
 - Si `Source.Run` termina inesperadamente, el motor deja de mostrarse como
   activo y expone el error de captura en vez de dejar `capturing:true` colgado.
+- **Las pestañas Recolección y Mazmorras quedaban siempre vacías con captura
+  real.** Los eventos `gathering` y `dungeonRun` que consumen solo los producía
+  el simulador de demo: el motor de captura nunca los emitía, así que con el
+  juego abierto no se registraba ni una recolección ni una partida. Ahora
+  `HarvestFinished` se traduce en una recolección —sumando cantidad base, bonus
+  de recolector y bonus premium, y descartando la de otros jugadores visibles
+  en la zona— y las partidas de mazmorra se abren y cierran siguiendo los
+  cambios de instancia del cluster (`guid@RANDOMDUNGEON@SOLO` y compañía), con
+  fama, plata y respec calculados como la diferencia de los contadores de
+  sesión entre entrar y salir. Las zonas abiertas, ciudades y refugios no
+  generan partidas.
+- `photon_codes.json` documenta los índices de parámetros de `HarvestFinished`
+  (verificados contra `HarvestFinishedEvent` de SAT): el código del evento ya
+  estaba en la tabla, pero sin índices no se podía leer ningún parámetro.
 - **«Detectar de nuevo» rompía la conexión que ya funcionaba.** El botón
   llamaba a `/api/tracker/character/refresh`, que hacía `Stop()` + `Start()`:
   eso tiraba abajo la captura viva y obligaba a rehacer todo el pipeline
