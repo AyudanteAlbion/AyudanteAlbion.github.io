@@ -103,6 +103,17 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   fama, plata y respec calculados como la diferencia de los contadores de
   sesión entre entrar y salir. Las zonas abiertas, ciudades y refugios no
   generan partidas.
+- **Los recursos recolectados aparecían todos como «Sin clasificar».** Albion
+  no manda el nombre del recurso sino un índice numérico de ítem (`1000` en vez
+  de `T4_ORE`), y la pestaña no tenía con qué resolverlo. Ahora el índice de
+  ítems recolectables `desktop/ui/data/tracker_gathering_items.json` —generado
+  con `scripts/build_gathering_items.py` desde `formatted/items.txt` de
+  ao-bin-dumps, la misma clave que usa `ItemController.GetItemByIndex` de SAT—
+  traduce cada número a nombre en español, tipo, tier y encantamiento, así que
+  las recolecciones caen en su rama real y la tabla muestra «Mineral de hierro
+  · T4.1» en lugar de un número suelto. Las filas ya guardadas se reinterpretan
+  solas al cargar, y un ítem desconocido se sigue registrando sin clasificar en
+  vez de perderse.
 - `photon_codes.json` documenta los índices de parámetros de `HarvestFinished`
   (verificados contra `HarvestFinishedEvent` de SAT): el código del evento ya
   estaba en la tabla, pero sin índices no se podía leer ningún parámetro.

@@ -112,6 +112,16 @@ Si una pestaña se queda vacía pero el medidor de daño funciona, casi siempre 
 | Recolección | `HarvestFinished` (con sus `eventParameters`: `id`, `itemId`, `quantity`, `collectorBonus`, `premiumBonus`) |
 | Mazmorras | No tiene evento propio: las partidas se abren y cierran con la operación `ChangeCluster`, leyendo el tramo de instancia del cluster (`guid@RANDOMDUNGEON@SOLO`) |
 
+El `itemId` de `HarvestFinished` es un **índice numérico**, no un nombre: `1000` en vez de `T4_ORE`.
+Es la posición del ítem en `items.xml` del cliente, la misma clave que usa SAT en
+`ItemController.GetItemByIndex`. La traducción a nombre, tipo, tier y encantamiento sale de
+[`desktop/ui/data/tracker_gathering_items.json`](../desktop/ui/data/tracker_gathering_items.json),
+que se regenera con `python3 scripts/build_gathering_items.py` desde `formatted/items.txt` de
+[ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps). El índice se limita a lo recolectable
+(madera, fibra, mineral, piel, piedra y pesca): 174 filas en vez de las 12.237 del volcado. Un ítem
+que el índice no conozca —un recurso nuevo tras un patch— se sigue registrando como «Sin
+clasificar» en vez de perderse, y basta con volver a correr el script para que aparezca.
+
 **Recolección y Mazmorras no se activan a mano.** Siguen al tracking de la pestaña Sesión: mientras
 haya captura y un personaje detectado por `JoinResponse`, registran en segundo plano aunque nunca se
 abran.
