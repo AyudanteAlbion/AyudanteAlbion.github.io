@@ -31,7 +31,13 @@ func TestAuthoritativeCodesOverrideEnvelopeMetadata(t *testing.T) {
 	before := state.Snapshot().Identity.Revision
 	handler.response(&photon.OperationResponse{Code: 41, ReturnCode: 0, Parameters: map[byte]any{0: int64(99), 1: partyGUIDBytes, 2: "Wrong"}})
 	if state.Snapshot().Identity.Revision != before {
-		t.Fatal("response without authoritative parameter 253 entered typed dispatch")
+		t.Fatal("envelope fallback dispatched the ChangeCluster envelope as Join")
+	}
+	// Sin 253 el byte del envelope es el respaldo: la respuesta se atiende
+	// como ChangeCluster (41) y su parámetro 0 numérico es un cluster válido
+	// (las respuestas reales mandan índices como 4000, no siempre texto).
+	if got := state.Zone(); got != "99" {
+		t.Fatalf("Zone = %q, want the numeric cluster carried by the envelope fallback", got)
 	}
 
 	allGUIDs := append(append([]byte(nil), localGUIDBytes...), partyGUIDBytes...)
@@ -41,8 +47,14 @@ func TestAuthoritativeCodesOverrideEnvelopeMetadata(t *testing.T) {
 	}
 	source.diagnostics.mu.Lock()
 	defer source.diagnostics.mu.Unlock()
-	if source.diagnostics.operationEnvelope[2] == 0 || source.diagnostics.operationEnvelope[41] == 0 || source.diagnostics.eventEnvelope[29] == 0 || source.diagnostics.missing == 0 {
-		t.Fatalf("safe envelope diagnostics not recorded: operations=%v events=%v missing=%d", source.diagnostics.operationEnvelope, source.diagnostics.eventEnvelope, source.diagnostics.missing)
+	if source.diagnostics.operationEnvelope[2] == 0 || source.diagnostics.operationEnvelope[41] == 0 || source.diagnostics.eventEnvelope[29] == 0 {
+		t.Fatalf("safe envelope diagnostics not recorded: operations=%v events=%v", source.diagnostics.operationEnvelope, source.diagnostics.eventEnvelope)
+	}
+	// La ausencia de 252/253 ya no es un faltante: se resuelve con el byte del
+	// envelope. El contador queda para el parámetro presente pero inválido,
+	// que es lo que TestInvalidAuthoritativeCodeIsDiscarded ejercita.
+	if source.diagnostics.missing != 0 {
+		t.Fatalf("missing = %d, want 0: absent codes fall back to the envelope", source.diagnostics.missing)
 	}
 }
 

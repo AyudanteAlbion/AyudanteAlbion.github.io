@@ -441,13 +441,13 @@
       ' · Photon ' + esc(String(capture.photonPackets || 0)) + ' · decodificados ' + esc(String(capture.decodedMessages || 0)) +
       ' · cifrados descartados ' + esc(String(capture.encryptedDropped || 0)) + ' · inválidos ' + esc(String(capture.malformedDropped || 0)) + '.</p>' +
       hint +
-      '<p class="muted small">Los códigos 252/253 son la única autoridad. Los bytes del envelope se muestran abajo solo para diagnóstico. Mensajes sin código autoritativo: ' + esc(String(data.missingAuthoritativeCode || 0)) + '.</p>' +
-      table('Eventos desconocidos (252)', data.unknown, false) +
-      table('Eventos reconocidos (252)', data.known, true) +
-      table('Operaciones desconocidas (253)', operations.unknown, false) +
-      table('Operaciones reconocidas (253)', operations.known, true) +
-      table('Bytes de envelope · eventos (no autoritativos)', envelope.events, false) +
-      table('Bytes de envelope · operaciones (no autoritativos)', envelope.operations, false) +
+      '<p class="muted small">El código se toma del parámetro 252 (eventos) o 253 (operaciones) cuando el mensaje lo trae; si no, del byte del envelope, que solo alcanza para códigos bajos. Mensajes con 252/253 presente pero inválido: ' + esc(String(data.missingAuthoritativeCode || 0)) + '.</p>' +
+      table('Eventos desconocidos', data.unknown, false) +
+      table('Eventos reconocidos', data.known, true) +
+      table('Operaciones desconocidas', operations.unknown, false) +
+      table('Operaciones reconocidas', operations.known, true) +
+      table('Bytes de envelope · eventos (respaldo y diagnóstico)', envelope.events, false) +
+      table('Bytes de envelope · operaciones (respaldo y diagnóstico)', envelope.operations, false) +
       '<p class="muted small">Este diagnóstico nunca expone nombres, GUIDs ni contenido de paquetes.</p>';
   }
 
