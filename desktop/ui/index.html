@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="css/trade-tracking.css?v=1">
 <link rel="stylesheet" href="css/gathering.css?v=1">
 <link rel="stylesheet" href="css/dungeons.css?v=1">
+<link rel="stylesheet" href="css/session-analytics.css?v=1">
 <link rel="icon" href="img/logo-app.png">
 <link rel="apple-touch-icon" href="img/logo-app.png">
 <!-- ícono y texto al compartir en Discord/Twitch/WhatsApp -->
@@ -1303,29 +1304,53 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 </section>
 
 <!-- ============ TAB: SESIÓN (solo edición de escritorio) ============ -->
-<!-- Recolección y Mazmorras pertenecen a la misma sesión de juego. Cada vista
-     conserva su análisis, pero ya no ocupa una pestaña de navegación propia. -->
+<!-- Sistema de Sesión inspirado en Analytics/SAT: las herramientas viven como
+     subvistas internas para no tocar Inicio, Crafteo, Flipping, Perfil, SG ni Fórmulas. -->
 <section id="tab-tracker" class="tab-panel">
   <div class="session-shell">
-    <div class="session-nav" role="tablist" aria-label="Secciones de la sesión">
+    <div class="session-nav analytics-nav" role="tablist" aria-label="Herramientas de la sesión">
       <button class="session-tab active" id="sessionTabTracker" type="button" role="tab" aria-selected="true" aria-controls="sessionViewTracker" data-session-view="tracker">
-        <svg class="tab-ico" aria-hidden="true"><use href="#i-chart"/></svg> Sesión en vivo
-      </button>
-      <button class="session-tab" id="sessionTabGathering" type="button" role="tab" aria-selected="false" aria-controls="sessionViewGathering" tabindex="-1" data-session-view="gathering">
-        <svg class="tab-ico" aria-hidden="true"><use href="#i-sprout"/></svg> Recolección
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-chart"/></svg> Panel general
       </button>
       <button class="session-tab" id="sessionTabDungeons" type="button" role="tab" aria-selected="false" aria-controls="sessionViewDungeons" tabindex="-1" data-session-view="dungeons">
         <svg class="tab-ico" aria-hidden="true"><use href="#i-sword"/></svg> Mazmorras
       </button>
+      <button class="session-tab" id="sessionTabDamage" type="button" role="tab" aria-selected="false" aria-controls="sessionViewDamage" tabindex="-1" data-session-view="damage">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-bolt"/></svg> Medidor de daño
+      </button>
+      <button class="session-tab" id="sessionTabTrade" type="button" role="tab" aria-selected="false" aria-controls="sessionViewTrade" tabindex="-1" data-session-view="trade">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-flip"/></svg> Seguimiento de comercio
+      </button>
+      <button class="session-tab" id="sessionTabGathering" type="button" role="tab" aria-selected="false" aria-controls="sessionViewGathering" tabindex="-1" data-session-view="gathering">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-sprout"/></svg> Recolección
+      </button>
+      <button class="session-tab" id="sessionTabPlayer" type="button" role="tab" aria-selected="false" aria-controls="sessionViewPlayer" tabindex="-1" data-session-view="player">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-user"/></svg> Información del jugador
+      </button>
+      <button class="session-tab" id="sessionTabMaps" type="button" role="tab" aria-selected="false" aria-controls="sessionViewMaps" tabindex="-1" data-session-view="maps">
+        <svg class="tab-ico" aria-hidden="true"><use href="#i-globe"/></svg> Historial de mapas
+      </button>
     </div>
     <section class="session-view active" id="sessionViewTracker" role="tabpanel" aria-labelledby="sessionTabTracker">
-      <div id="trackerMount"><div class="panel loading-cell">Preparando la sesión en vivo…</div></div>
+      <div id="trackerMount"><div class="panel loading-cell">Preparando el panel general de Analytics…</div></div>
+    </section>
+    <section class="session-view" id="sessionViewDungeons" role="tabpanel" aria-labelledby="sessionTabDungeons" hidden>
+      <div id="dungeonsMount"><div class="panel loading-cell">Preparando el seguimiento de mazmorras…</div></div>
+    </section>
+    <section class="session-view" id="sessionViewDamage" role="tabpanel" aria-labelledby="sessionTabDamage" hidden>
+      <div id="damageMount"><div class="panel loading-cell">Preparando el medidor de daño…</div></div>
+    </section>
+    <section class="session-view" id="sessionViewTrade" role="tabpanel" aria-labelledby="sessionTabTrade" hidden>
+      <div id="tradeMount"><div class="panel loading-cell">Preparando el seguimiento de comercio…</div></div>
     </section>
     <section class="session-view" id="sessionViewGathering" role="tabpanel" aria-labelledby="sessionTabGathering" hidden>
       <div id="gatheringMount"><div class="panel loading-cell">Preparando el seguimiento de recolección…</div></div>
     </section>
-    <section class="session-view" id="sessionViewDungeons" role="tabpanel" aria-labelledby="sessionTabDungeons" hidden>
-      <div id="dungeonsMount"><div class="panel loading-cell">Preparando el seguimiento de mazmorras…</div></div>
+    <section class="session-view" id="sessionViewPlayer" role="tabpanel" aria-labelledby="sessionTabPlayer" hidden>
+      <div id="playerInfoMount"><div class="panel loading-cell">Preparando la información del jugador…</div></div>
+    </section>
+    <section class="session-view" id="sessionViewMaps" role="tabpanel" aria-labelledby="sessionTabMaps" hidden>
+      <div id="mapsMount"><div class="panel loading-cell">Preparando el historial de mapas…</div></div>
     </section>
   </div>
 </section>
@@ -1440,7 +1465,7 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/core/storage.js?v=1"></script>
 <script src="js/core/format.js?v=1"></script>
 <script src="js/core/api.js?v=1"></script>
-<script src="js/core/navigation.js?v=2"></script>
+<script src="js/core/navigation.js?v=3"></script>
 <script src="js/core/sidebar.js?v=1"></script>
 <script src="js/market/history.js?v=1"></script>
 <script src="js/market/price-freshness.js?v=1"></script>
@@ -1458,6 +1483,7 @@ foco_real = foco_base × 0,5 ^ (FCE / 10.000)</pre>
 <script src="js/tracker/ui.js?v=4"></script>
 <script src="js/tracker/gathering.js?v=3"></script>
 <script src="js/tracker/dungeons.js?v=3"></script>
+<script src="js/tracker/session-tools.js?v=1"></script>
 <script src="app.js?v=79"></script>
 </body>
 </html>

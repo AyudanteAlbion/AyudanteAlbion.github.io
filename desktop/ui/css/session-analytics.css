@@ -1,0 +1,245 @@
+/* Herramientas de Sesión estilo Analytics/SAT. */
+.analytics-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.analytics-nav .session-tab {
+  min-height: 42px;
+}
+.sat-live-summary {
+  margin-top: 16px;
+}
+.sat-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.sat-hero h2,
+.sat-hero h3 {
+  margin: 0 0 6px;
+}
+.sat-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+.sat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.sat-toolbar .search,
+.sat-toolbar input,
+.sat-toolbar select {
+  min-height: 38px;
+}
+.sat-grid {
+  display: grid;
+  gap: 12px;
+}
+.sat-grid.cols-2 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.sat-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.sat-mini-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.sat-mini-card {
+  background: color-mix(in srgb, var(--panel) 84%, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 84px;
+}
+.sat-mini-card b {
+  display: block;
+  font-size: 1.35rem;
+  margin-top: 4px;
+}
+.sat-mini-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sat-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.sat-tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 6%);
+  color: var(--text);
+  cursor: pointer;
+}
+.sat-tool-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.sat-tool-card strong {
+  font-size: 1rem;
+}
+.sat-tool-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+.sat-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.sat-table th,
+.sat-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 8px;
+  vertical-align: top;
+}
+.sat-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+.sat-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sat-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sat-item-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255,255,255,0.05);
+}
+.sat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: rgba(255,255,255,0.03);
+}
+.sat-pill.pos {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 50%, transparent);
+}
+.sat-pill.neg {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 50%, transparent);
+}
+.sat-meter-list {
+  display: grid;
+  gap: 8px;
+}
+.sat-meter-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(180px, 2fr) 90px 90px;
+  gap: 10px;
+  align-items: center;
+}
+.sat-meter-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.08);
+}
+.sat-meter-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #ffe08a);
+}
+.sat-muted-box {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.02);
+}
+.sat-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.sat-timeline {
+  display: grid;
+  gap: 10px;
+}
+.sat-timeline-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 0 12px 12px 0;
+}
+.sat-player-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px;
+}
+.sat-profile-banner {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), rgba(255,255,255,0.03));
+}
+.sat-profile-banner h3 {
+  margin: 0 0 4px;
+}
+.sat-empty {
+  color: var(--muted);
+  padding: 16px 0;
+}
+@media (max-width: 980px) {
+  .sat-mini-cards,
+  .sat-grid.cols-2,
+  .sat-grid.cols-3,
+  .sat-tool-grid,
+  .sat-player-card {
+    grid-template-columns: 1fr;
+  }
+  .sat-meter-row,
+  .sat-timeline-row {
+    grid-template-columns: 1fr;
+  }
+  .sat-toolbar {
+    justify-content: flex-start;
+  }
+}

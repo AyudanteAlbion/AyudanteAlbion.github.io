@@ -69,7 +69,7 @@
   function renderShell(panel) {
     panel.innerHTML = '' +
       '<div class="trk-dashboard-head">' +
-      '  <div><span class="trk-eyebrow">CAPTURA DE RED · UDP 5055, 5056 Y 5058</span><h1>Seguimiento en tiempo real</h1><p class="muted">Estado del cliente de Albion Online y métricas de la sesión actual.</p></div>' +
+      '  <div><span class="trk-eyebrow">ANALYTICS · CAPTURA DE RED · UDP 5055, 5056 Y 5058</span><h1>Panel general</h1><p class="muted">Sistema de sesión estilo Analytics/SAT: estado del cliente, métricas, actividad reciente y accesos a las herramientas.</p></div>' +
       '  <button class="btn ghost" id="trkOpenSetup" type="button">Guía de configuración</button>' +
       '</div>' +
       '<div class="card trk-card trk-state-card">' +
@@ -89,6 +89,7 @@
       '  <div class="trk-status" id="trkStatus" role="status">Tracking detenido.</div>' +
       '  <p class="trk-note"><b>Detectar de nuevo</b> vuelve a leer el personaje sin cortar la captura. <b>Reiniciar sesión</b> pone en cero los contadores. Si el personaje todavía no aparece, cerrá sesión en Albion y volvé a entrar: el JoinResponse es la única fuente de identidad.</p>' +
       '  <div class="trk-kpis" id="trkKpis"></div>' +
+      '  <div id="satGeneralAnalytics" class="sat-live-summary"></div>' +
       '</div>' +
       '<div class="trk-split trk-config-split">' +
       ' <div class="card trk-card trk-config-card">' +
