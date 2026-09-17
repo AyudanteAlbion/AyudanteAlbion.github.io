@@ -38,13 +38,16 @@ PARTY = ['SheniaLiam', 'GrailHealer', 'SpetsnazTank', 'MistRunner']
 ZONES = ['Martlock', 'Mase Knoll', 'Blackthorn Quarry', 'Caerleon', 'Thetford']
 ITEMS = ['T6_BAG', 'T5_MAIN_CURSEDSTAFF', 'T4_2H_BOW', 'T6_ARMOR_LEATHER_SET2']
 ABILITIES = ['Bola de fuego', 'Tajo', 'Flecha perforante', 'Maldición']
+# Índices de ítem tal como los manda HarvestFinished: el tracker real solo
+# entrega el número, y la pestaña lo resuelve con tracker_gathering_items.json.
+# (índice, valor unitario aproximado para simular la plata)
 RESOURCES = [
-    ('T5_WOOD', 'Troncos de cedro', 'wood', 5, 620),
-    ('T6_ORE', 'Mineral de titanio', 'ore', 6, 1180),
-    ('T5_FIBER', 'Fibra celeste', 'fiber', 5, 710),
-    ('T6_HIDE', 'Piel gruesa', 'hide', 6, 1320),
-    ('T5_ROCK', 'Granito', 'stone', 5, 430),
-    ('T6_FISH_FRESHWATER_ALL_COMMON', 'Pez de agua dulce', 'fishing', 6, 980),
+    (951, 620),    # T5_WOOD  · Troncos de cedro
+    (1002, 1180),  # T6_ORE   · Mineral de titanio
+    (1056, 710),   # T5_FIBER · Lino
+    (1030, 1320),  # T6_HIDE  · Piel fornida
+    (979, 430),    # T5_ROCK  · Granito
+    (1005, 940),   # T4_ORE_LEVEL1@1 · Mineral de hierro poco común
 ]
 
 
@@ -177,7 +180,20 @@ class State:
                 maps.append(m)
 
             hours = elapsed / 3600
+            # El simulador es una demo explícita: 'capture.phase' = demo es lo
+            # que el frontend usa para aceptar métricas sin JoinResponse real.
+            detected = bool(self.character)
             return {
+                'capture': {
+                    'phase': 'demo' if self.capturing else 'off',
+                    'realCapture': False,
+                },
+                'identity': {
+                    'name': self.character,
+                    'detection': 'detected' if detected else 'waiting',
+                    'valid': detected,
+                    'filterMatched': True,
+                },
                 'capturing': self.capturing,
                 'simulated': True,
                 'character': self.character,
@@ -300,13 +316,12 @@ def simulate() -> None:
             STATE.add_loot({'player': random.choice(PARTY), 'itemId': random.choice(ITEMS),
                             'quantity': random.randint(1, 3), 'quality': random.randint(1, 3),
                             'source': 'mob'})
-            rid, name, kind, tier, unit_value = random.choice(RESOURCES)
+            rid, unit_value = random.choice(RESOURCES)
             quantity = random.randint(1, 8)
             HUB.publish('gathering', {
                 'uid': f'dev-gat-{time.time_ns()}', 'ts': int(time.time() * 1000),
-                'itemId': rid, 'name': name, 'type': kind, 'tier': tier,
-                'quantity': quantity, 'value': quantity * unit_value,
-                'map': random.choice(ZONES),
+                'itemId': str(rid), 'quantity': quantity,
+                'value': quantity * unit_value, 'map': random.choice(ZONES),
             })
             HUB.publish('dungeonRun', {
                 'uid': f'dev-dng-{time.time_ns()}', 'ts': int(time.time() * 1000),
@@ -340,9 +355,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         base = self.directory
         self.directory = ASSETS if head in shared else base
         try:
-            return super().translate_path(path)
+            resolved = super().translate_path(path)
         finally:
             self.directory = base
+        # sync_frontend.sh vuelca ui/data y albion-app/data en la misma
+        # carpeta, así que los datos propios del escritorio (índice de mapas,
+        # índice de recolección) conviven con los compartidos. Acá se sirven
+        # desde dos raíces: si no está en los assets, se busca en ui/.
+        if head in shared and not os.path.exists(resolved):
+            self.directory = base
+            try:
+                return super().translate_path(path)
+            finally:
+                self.directory = base
+        return resolved
 
     def _json(self, body, code: int = 200) -> None:
         raw = json.dumps(body).encode()
@@ -386,13 +412,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             HUB.publish('status', STATE.snapshot())
             return self._json({'ok': True, 'capturing': True})
         if self.path.startswith('/api/tracker/character/refresh'):
+            # Espeja el contrato de Go: «Detectar de nuevo» no corta la captura.
+            # Con personaje ya detectado solo se reemite el snapshot; sin él, se
+            # limpia la identidad y se espera el próximo JoinResponse.
             with STATE._lock:
-                STATE.character = ''
-                STATE.party = []
+                detected = bool(STATE.character)
+                started = not STATE.capturing
+                if not detected:
+                    STATE.party = []
                 STATE.capturing = True
             snap = STATE.snapshot()
             HUB.publish('status', snap)
-            return self._json({'ok': True, 'capturing': True, 'snapshot': snap})
+            return self._json({'ok': True, 'capturing': True, 'started': started,
+                               'detected': detected, 'snapshot': snap})
         if self.path.startswith('/api/tracker/start'):
             STATE.capturing = True
             HUB.publish('status', STATE.snapshot())

@@ -198,10 +198,8 @@ document.getElementById('mainTabs').addEventListener('click', e => {
   gotoTab(btn.dataset.tab);
 });
 
-/* ---- dropdowns: hover en escritorio, clic/tap como respaldo ---- */
-const ddTimers = new Map();
+/* ---- dropdowns de la barra lateral: se abren solo con clic ---- */
 function openDd(dd) {
-  clearTimeout(ddTimers.get(dd));
   closeAllDd(dd); // solo un menú abierto a la vez
   dd.classList.add('open');
   document.getElementById('mainTabs').classList.add('dd-open');
@@ -220,16 +218,9 @@ function closeAllDd(except) {
 function toggleDd(dd) {
   dd.classList.contains('open') ? closeDd(dd) : openDd(dd);
 }
-// Hover solo cuando hay puntero fino (mouse); en táctil se usa el clic
-if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-  document.querySelectorAll('.tab-dd').forEach(dd => {
-    dd.addEventListener('mouseenter', () => openDd(dd));
-    dd.addEventListener('mouseleave', () => {
-      // pequeño retraso para tolerar salidas accidentales del puntero
-      ddTimers.set(dd, setTimeout(() => closeDd(dd), 120));
-    });
-  });
-}
+// Los menús de la barra lateral (Crafteo y Flipping) se abren y cierran SOLO
+// con clic en su botón. No hay apertura por hover: pasar el cursor por encima
+// desplegaba el submenú sin intención del usuario y tapaba el resto del menú.
 document.addEventListener('click', e => {
   if (!e.target.closest('.tab-dd')) closeAllDd();
 });

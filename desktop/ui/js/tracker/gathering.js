@@ -11,40 +11,105 @@
     ore: { label: 'Mineral', color: '#e45c68' },
     hide: { label: 'Piel', color: '#54bd83' },
     stone: { label: 'Piedra', color: '#9988c8' },
-    fishing: { label: 'Pesca', color: '#477cc4' }
+    fishing: { label: 'Pesca', color: '#477cc4' },
+    // Red de seguridad: un ítem que el índice todavía no conoce (un recurso
+    // nuevo tras un patch) se registra igual en vez de perderse.
+    other: { label: 'Sin clasificar', color: '#8c95a8' }
   };
+
+  /* Índice de ítems recolectables: índice numérico de Albion -> recurso.
+     HarvestFinished no manda el nombre del recurso sino su índice (la posición
+     del ítem en items.xml, la misma clave que usa la app de referencia). El
+     archivo lo genera scripts/build_gathering_items.py desde ao-bin-dumps. */
+  var ITEMS = Object.create(null);
+  fetch('data/tracker_gathering_items.json', { cache: 'force-cache' })
+    .then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    })
+    .then(function (data) {
+      var source = data && data.items;
+      if (source && typeof source === 'object') {
+        Object.keys(source).forEach(function (id) { ITEMS[id] = source[id]; });
+      }
+      // Las filas guardadas antes de tener el índice (o recolectadas mientras
+      // cargaba) se reinterpretan ahora que se puede resolver el número.
+      reclassifyRows();
+      render();
+    })
+    .catch(function () { /* sin índice se sigue mostrando «Sin clasificar» */ });
+
+  function lookup(itemId) {
+    var id = String(itemId == null ? '' : itemId).trim();
+    return id && Object.prototype.hasOwnProperty.call(ITEMS, id) ? ITEMS[id] : null;
+  }
   var RANGES = [[10, '10 Minutos'], [30, '30 Minutos'], [60, '1 Hora'], [180, '3 Horas'], [720, '12 Horas'], [1440, '24 Horas'], [4320, '3 Días'], [10080, '7 Días'], [43200, '30 Días'], [525600, '365 Días']];
   var state = { rows: [], sessions: [], type: 'all', range: 1440, session: 'all', metric: 'quantity', enabledTypes: new Set(Object.keys(TYPES).filter(function (x) { return x !== 'all'; })) };
 
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function num(v) { return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(Number(v) || 0)); }
   function money(v) { return num(v) + ' plata'; }
-  function uid() { return 'gat_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9); }
+  // Identificador local de fila (clave de deduplicado en localStorage, no es
+  // un token). Se usa crypto porque Math.random se marca como generador
+  // inseguro en el análisis estático y acá no cuesta nada evitarlo.
+  function uid() {
+    var rnd = new Uint32Array(2);
+    crypto.getRandomValues(rnd);
+    return 'gat_' + Date.now().toString(36) + '_' +
+      rnd[0].toString(36) + rnd[1].toString(36);
+  }
   function read(key, fallback) { try { var v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch (e) { return fallback; } }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state.rows.slice(-10000))); localStorage.setItem(SESSION_KEY, JSON.stringify(state.sessions.slice(-250))); } catch (e) {} }
 
-  function normalizeType(value, itemId) {
+  function normalizeType(value, itemId, indexed) {
     var raw = String(value || '').toLowerCase();
     var id = String(itemId || '').toUpperCase();
     if (TYPES[raw] && raw !== 'all') return raw;
+    // El índice manda: resuelve el número que entrega HarvestFinished.
+    if (indexed && TYPES[indexed.t]) return indexed.t;
     if (/WOOD|LOG/.test(id)) return 'wood';
     if (/FIBER|CLOTH/.test(id)) return 'fiber';
     if (/ORE|METAL/.test(id)) return 'ore';
     if (/HIDE|LEATHER/.test(id)) return 'hide';
     if (/ROCK|STONE/.test(id)) return 'stone';
     if (/FISH|SEAWEED/.test(id)) return 'fishing';
+    // Un id numérico que el índice no conoce sigue siendo una recolección
+    // real: se guarda sin clasificar en vez de descartarla.
+    if (/^[0-9]+$/.test(id)) return 'other';
     return '';
   }
   function normalize(raw) {
     if (!raw || typeof raw !== 'object') return null;
     var id = String(raw.itemId || raw.id || '');
-    var type = normalizeType(raw.type || raw.resourceType, id);
+    var indexed = lookup(id);
+    var type = normalizeType(raw.type || raw.resourceType, id, indexed);
     if (!type) return null;
-    var tier = +(raw.tier || ((id.match(/^T([1-8])_/) || [])[1]) || 0);
+    var tier = +(raw.tier || (indexed && indexed.r) || ((id.match(/^T([1-8])_/) || [])[1]) || 0);
+    var enchant = Math.max(0, +(raw.enchantment != null ? raw.enchantment : (indexed && indexed.e) || 0));
     var qty = Math.max(1, +(raw.quantity || raw.qty || 1));
     var unitValue = Math.max(0, +(raw.unitValue || raw.price || 0));
     var value = Math.max(0, +(raw.value != null ? raw.value : unitValue * qty));
-    return { uid: String(raw.uid || uid()), ts: +(raw.ts || Date.now()), itemId: id, name: String(raw.name || raw.itemName || id || TYPES[type].label), type: type, tier: tier, qty: qty, value: value, map: String(raw.map || raw.zone || 'Sin ubicación'), sessionId: String(raw.sessionId || currentSession().id) };
+    var name = String(raw.name || raw.itemName || (indexed && indexed.n) || id || TYPES[type].label);
+    return { uid: String(raw.uid || uid()), ts: +(raw.ts || Date.now()), itemId: id, name: name, type: type, tier: tier, enchant: enchant, qty: qty, value: value, map: String(raw.map || raw.zone || 'Sin ubicación'), sessionId: String(raw.sessionId || currentSession().id) };
+  }
+
+  /* Reinterpreta las filas ya guardadas cuando llega el índice: las que se
+     registraron como «Sin clasificar» pasan a su recurso real, con nombre,
+     tipo, tier y encantamiento. */
+  function reclassifyRows() {
+    var changed = false;
+    state.rows.forEach(function (row) {
+      var indexed = lookup(row.itemId);
+      if (!indexed) return;
+      if (row.type !== indexed.t) { row.type = indexed.t; changed = true; }
+      // El nombre guardado era el número crudo: ahora se puede mostrar bien.
+      if (indexed.n && row.name !== indexed.n && /^[0-9]+$/.test(String(row.name))) {
+        row.name = indexed.n; changed = true;
+      }
+      if (indexed.r && row.tier !== indexed.r) { row.tier = indexed.r; changed = true; }
+      if (indexed.e && row.enchant !== indexed.e) { row.enchant = indexed.e; changed = true; }
+    });
+    if (changed) save();
   }
   function currentSession() {
     var active = state.sessions.find(function (s) { return !s.end; });
@@ -85,7 +150,7 @@
     var mount = document.getElementById('gatheringMount'); if (!mount) return;
     mount.innerHTML = '<div class="gat-shell">' +
       '<div class="panel gat-toolbar"><div class="gat-toolbar-title"><span class="gat-eyebrow">ANALYTICS · GATHERING</span><h1>Seguimiento de recolección</h1></div>' +
-      '<label class="gat-track" id="gatTrack"><input type="checkbox" id="gatTracking"><i></i><span id="gatTrackText">El rastreo no está activo</span></label>' +
+      '<span class="gat-track" id="gatTrack" title="El rastreo se activa en la pestaña Sesión. Esta pestaña registra sola mientras haya personaje detectado."><input type="checkbox" id="gatTracking" disabled tabindex="-1" aria-hidden="true"><i></i><span id="gatTrackText">Activá el tracking en la pestaña Sesión</span></span>' +
       '<label class="gat-control"><span>Rango de tiempo</span><select id="gatRange">' + RANGES.map(function (r) { return '<option value="'+r[0]+'" '+(r[0]===state.range?'selected':'')+'>'+r[1]+'</option>'; }).join('') + '</select></label>' +
       '<label class="gat-control"><span>Sesión</span><select id="gatSession"></select></label>' +
       '<button class="btn" id="gatReset">↻ Reiniciar sesión</button></div>' +
@@ -109,13 +174,8 @@
       var active = state.sessions.find(function (s) { return !s.end; }); if (active) active.end = Date.now();
       var next = currentSession(); state.session = next.id; save(); refreshSessions(); render();
     };
-    document.getElementById('gatTracking').onchange = async function (e) {
-      if (!root.AATracker) return;
-      e.target.disabled = true;
-      try { if (e.target.checked) await AATracker.start(); else await AATracker.stop(); }
-      catch (err) { console.warn('gathering tracking', err); }
-      e.target.disabled = false; paintTracking();
-    };
+    // El interruptor quedó como indicador de solo lectura: el rastreo se
+    // enciende una vez en Sesión y esta pestaña lo sigue automáticamente.
     document.getElementById('gatMetric').onchange = function (e) { state.metric=e.target.value; renderTime(filtered()); };
   }
   function refreshSessions() {
@@ -124,9 +184,35 @@
     sel.innerHTML='<option value="all">Todas las sesiones</option>'+state.sessions.slice().reverse().map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.label)+(s.end?'':' · activa')+'</option>';}).join('');
     sel.value=state.sessions.some(function(s){return s.id===state.session;})?state.session:'all';
   }
+  // El registro no se activa a mano: sigue al tracking de la pestaña Sesión.
+  // Mientras haya captura y un personaje detectado, esta pestaña acumula en
+  // segundo plano aunque el usuario nunca la haya abierto.
+  function trackingState() {
+    if (!root.AATracker) return { capturing:false, available:false, detected:false };
+    var st = AATracker.state();
+    var demo = !!(st.capture && st.capture.phase === 'demo');
+    return {
+      capturing: !!st.capturing,
+      available: !!st.available,
+      detected: demo || (!!st.identityValid && st.filterMatched !== false)
+    };
+  }
+  function trackingLabel(st) {
+    if (!st.available) return 'El motor de captura no está disponible';
+    if (!st.capturing) return 'Activá el tracking en la pestaña Sesión';
+    if (!st.detected) return 'Capturando · esperando detectar tu personaje';
+    return 'Registrando automáticamente';
+  }
   function paintTracking() {
-    var on=!!(root.AATracker&&AATracker.state().capturing), box=document.getElementById('gatTrack');
-    if(!box)return; box.classList.toggle('on',on); var toggle=document.getElementById('gatTracking'); toggle.checked=on; toggle.disabled=!!(root.AATracker&&!AATracker.state().available); document.getElementById('gatTrackText').textContent=on?'El rastreo está activo':'El rastreo no está activo';
+    var st = trackingState(), box = document.getElementById('gatTrack');
+    if (!box) return;
+    var on = st.capturing && st.detected;
+    box.classList.toggle('on', on);
+    var toggle = document.getElementById('gatTracking');
+    // El interruptor pasa a ser un indicador: la fuente de verdad es Sesión.
+    toggle.checked = on;
+    toggle.disabled = true;
+    document.getElementById('gatTrackText').textContent = trackingLabel(st);
   }
 
   function render() {
@@ -161,7 +247,7 @@
     var rank=group(rows,'name').sort(function(a,b){return b.qty-a.qty;}).slice(0,8);
     document.getElementById('gatRank').innerHTML=rank.length?rank.map(function(g,i){return '<li><b>'+(i+1)+'</b><span>'+esc(g.key)+'</span><b>'+num(g.qty)+' · '+money(g.value)+'</b></li>';}).join(''):'<li class="gat-empty">Sin recursos para clasificar.</li>';
     var recent=rows.slice().sort(function(a,b){return b.ts-a.ts;}).slice(0,50);
-    document.getElementById('gatRecent').innerHTML=recent.length?recent.map(function(r){return '<tr><td><span class="gat-resource" style="--gat-color:'+TYPES[r.type].color+'"><i class="gat-resource-dot"></i>'+esc(r.name)+'</span></td><td><span class="badge">T'+(r.tier||'—')+'</span></td><td class="num">'+num(r.qty)+'</td><td class="num">'+money(r.value)+'</td><td>'+esc(r.map)+'</td><td class="muted">'+new Date(r.ts).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</td></tr>';}).join(''):'<tr><td colspan="6" class="loading-cell">Todavía no se registraron recolecciones.</td></tr>';
+    document.getElementById('gatRecent').innerHTML=recent.length?recent.map(function(r){return '<tr><td><span class="gat-resource" style="--gat-color:'+TYPES[r.type].color+'"><i class="gat-resource-dot"></i>'+esc(r.name)+'</span></td><td><span class="badge">'+(r.tier?'T'+r.tier+(r.enchant?'.'+r.enchant:''):'—')+'</span></td><td class="num">'+num(r.qty)+'</td><td class="num">'+money(r.value)+'</td><td>'+esc(r.map)+'</td><td class="muted">'+new Date(r.ts).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</td></tr>';}).join(''):'<tr><td colspan="6" class="loading-cell">Todavía no se registraron recolecciones.</td></tr>';
   }
 
   function init() {

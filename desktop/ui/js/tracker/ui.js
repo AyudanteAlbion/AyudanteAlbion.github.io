@@ -81,13 +81,13 @@
       '    <div><span class="trk-eyebrow">SESIÓN</span><h2>Sesión en vivo</h2></div>' +
       '    <div class="trk-actions">' +
       '      <button class="btn primary" id="trkToggle" type="button">Activar tracking</button>' +
-      '      <button class="btn ghost" id="trkRefreshCharacter" type="button" title="Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar.">↻ Detectar de nuevo</button>' +
-      '      <button class="btn ghost" id="trkReset" type="button">Reiniciar sesión</button>' +
+      '      <button class="btn ghost" id="trkRefreshCharacter" type="button" title="Vuelve a leer el personaje sin cortar la captura de red. Si todavía no hay personaje, cerrá sesión en Albion y volvé a entrar.">↻ Detectar de nuevo</button>' +
+      '      <button class="btn ghost" id="trkReset" type="button" title="Pone en cero los contadores de la sesión (fama, plata, daño y botín). No toca la captura ni el personaje.">Reiniciar sesión</button>' +
       '      <button class="btn ghost" id="trkCopy" type="button">Copiar ranking</button>' +
       '    </div>' +
       '  </div>' +
       '  <div class="trk-status" id="trkStatus" role="status">Tracking detenido.</div>' +
-      '  <p class="trk-note">Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar.</p>' +
+      '  <p class="trk-note"><b>Detectar de nuevo</b> vuelve a leer el personaje sin cortar la captura. <b>Reiniciar sesión</b> pone en cero los contadores. Si el personaje todavía no aparece, cerrá sesión en Albion y volvé a entrar: el JoinResponse es la única fuente de identidad.</p>' +
       '  <div class="trk-kpis" id="trkKpis"></div>' +
       '</div>' +
       '<div class="trk-split trk-config-split">' +
@@ -473,19 +473,28 @@
     }
   }
 
+  /* «Detectar de nuevo» NO reinicia la captura: pide al backend que vuelva a
+     publicar la identidad. Si ya hay personaje detectado, simplemente se
+     repinta; si no lo hay, queda esperando el próximo JoinResponse. */
   async function onRefreshCharacter() {
     var btn = el('trkRefreshCharacter');
     if (!btn) return;
     btn.disabled = true;
-    detectingCharacter = true;
-    setStatus('Para detectar de nuevo tu personaje, cerrá sesión en Albion y volvé a entrar. La captura quedó esperando JoinResponse.');
     try {
       var data = await AATracker.refreshCharacter();
       if (data && data.snapshot) {
         latest = data.snapshot;
         dirty = true;
       }
-      paintControls();
+      if (data && data.detected) {
+        // La identidad ya estaba fijada: no se descartó nada.
+        detectingCharacter = false;
+        var name = (data.snapshot && data.snapshot.identity && data.snapshot.identity.name) || '';
+        setStatus('Personaje ya detectado' + (name ? ': ' + name : '') + '. La captura sigue activa, no se reinició nada.');
+      } else {
+        detectingCharacter = true;
+        setStatus('Esperando JoinResponse: cerrá sesión en Albion y volvé a entrar. La captura de red sigue activa.');
+      }
     } catch (e) {
       detectingCharacter = false;
       setStatus('No se pudo refrescar el personaje: ' + e.message);

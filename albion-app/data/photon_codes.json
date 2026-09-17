@@ -136,7 +136,15 @@
       "quantity": 5
     },
     "JoinFinished": { "zone": 0 },
-    "ChangeCluster": { "zone": 0, "worldMapDataType": 1, "islandName": 2 }
+    "ChangeCluster": { "zone": 0, "worldMapDataType": 1, "islandName": 2 },
+    "HarvestFinished": {
+      "id": 0,
+      "objectId": 3,
+      "itemId": 4,
+      "quantity": 5,
+      "collectorBonus": 6,
+      "premiumBonus": 7
+    }
   },
 
   "selfOperation": {

@@ -16,6 +16,16 @@ Los avisos de atribución, el alcance de las adaptaciones y cómo obtener el
 código fuente correspondiente están en [`../NOTICE`](../NOTICE). Los archivos
 derivados del tracker llevan además un aviso de procedencia.
 
+## Datos del juego (ao-bin-dumps)
+
+Algunos archivos de datos que viajan con la app se generan desde
+[ao-bin-dumps](https://github.com/ao-data/ao-bin-dumps), el volcado público de
+los datos del cliente de Albion. Se usan para armar el índice de nombres de
+mapas y el índice de recolección (índice numérico de ítem → nombre, tier y
+encantamiento) en `desktop/ui/data/`, que se regeneran con los scripts de
+`scripts/`. Los datos del juego son propiedad de Sandbox Interactive GmbH;
+este proyecto no está afiliado ni respaldado por Sandbox Interactive.
+
 ## Al distribuir un ejecutable
 
 Toda distribución debe incluir `LICENSE`, `NOTICE` y una forma clara de obtener

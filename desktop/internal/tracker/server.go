@@ -285,9 +285,19 @@ func (e *Engine) Register(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "capturing": false})
 	})
 
-	// Fuerza una nueva detección del personaje. Se limpia solo la identidad
-	// (no las estadísticas de la sesión) y se reinicia/activa la captura para
-	// que el próximo Join de Albion vuelva a fijarla.
+	// Fuerza una nueva detección del personaje SIN tocar la captura de red.
+	//
+	// Antes esta ruta hacía Stop() + Start(): eso tiraba abajo la captura ya
+	// establecida (Photon detectado, servidor confirmado) y obligaba a rehacer
+	// todo el pipeline, así que el botón "Detectar de nuevo" rompía la conexión
+	// que el usuario ya tenía funcionando. Ahora:
+	//
+	//   - si ya hay identidad válida, no se borra nada: se vuelve a publicar el
+	//     snapshot para que la interfaz repinte el personaje detectado;
+	//   - si no hay identidad, se limpia el estado de identidad (no las
+	//     métricas) y se queda esperando el próximo JoinResponse;
+	//   - la captura solo se arranca si estaba detenida. Nunca se reinicia una
+	//     captura que ya está corriendo.
 	mux.HandleFunc("/api/tracker/character/refresh", func(w http.ResponseWriter, r *http.Request) {
 		e.touch()
 		if r.Method != http.MethodPost {
@@ -298,19 +308,25 @@ func (e *Engine) Register(mux *http.ServeMux) {
 			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "reason": reason})
 			return
 		}
-		wasRunning := e.running()
-		if wasRunning {
-			e.Stop()
+		alreadyDetected := e.state.HasValidIdentity()
+		if !alreadyDetected {
+			e.state.ClearCharacter()
 		}
-		e.state.ClearCharacter()
-		if err := e.Start(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "reason": err.Error()})
-			return
+		// Solo se arranca si la captura estaba apagada: una captura viva se
+		// deja intacta para no perder Photon ni la confirmación de servidor.
+		started := false
+		if !e.running() {
+			if err := e.Start(); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "reason": err.Error()})
+				return
+			}
+			started = true
 		}
 		snap := e.state.Snapshot()
 		e.hub.Publish(NewEvent("status", snap))
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "capturing": true, "restarted": wasRunning, "snapshot": snap,
+			"ok": true, "capturing": true, "started": started,
+			"detected": alreadyDetected, "snapshot": snap,
 		})
 	})
 

@@ -33,6 +33,25 @@ type PartyPlayerLeftData struct {
 }
 type ChangeClusterData struct{ Zone string }
 type JoinFinishedData struct{ Zone string }
+
+// HarvestFinishedData es una recolección completada. Los índices salen de
+// HarvestFinishedEvent de la app de referencia (SAT): 0 el jugador que
+// recolecta, 4 el id numérico del recurso y 5/6/7 las tres porciones de la
+// cantidad obtenida (base, bonus de recolector y bonus premium).
+type HarvestFinishedData struct {
+	UserObjectID   int64
+	HasUser        bool
+	ItemID         int64
+	Quantity       int64
+	CollectorBonus int64
+	PremiumBonus   int64
+}
+
+// Total es la cantidad que realmente entró al inventario.
+func (h HarvestFinishedData) Total() int64 {
+	return h.Quantity + h.CollectorBonus + h.PremiumBonus
+}
+
 type PartyDisbandedData struct{}
 type HealthUpdateData struct {
 	TargetID int64
@@ -210,6 +229,37 @@ func (h *handlers) decodeJoinFinished(params map[byte]any) (JoinFinishedData, bo
 }
 
 func (h *handlers) decodePartyDisbanded(map[byte]any) PartyDisbandedData { return PartyDisbandedData{} }
+
+// decodeHarvestFinished traduce el evento de recolección. Sin id de recurso o
+// sin cantidad el evento no sirve para registrar nada y se descarta.
+func (h *handlers) decodeHarvestFinished(params map[byte]any) (HarvestFinishedData, bool) {
+	itemIndex, ok := h.codes.Param("HarvestFinished", "itemId")
+	if !ok {
+		return HarvestFinishedData{}, false
+	}
+	itemID, ok := num(params[itemIndex])
+	if !ok {
+		return HarvestFinishedData{}, false
+	}
+	data := HarvestFinishedData{ItemID: itemID}
+	if index, ok := h.codes.Param("HarvestFinished", "id"); ok {
+		if id, ok := num(params[index]); ok {
+			data.UserObjectID, data.HasUser = id, true
+		}
+	}
+	for field, target := range map[string]*int64{
+		"quantity":       &data.Quantity,
+		"collectorBonus": &data.CollectorBonus,
+		"premiumBonus":   &data.PremiumBonus,
+	} {
+		if index, ok := h.codes.Param("HarvestFinished", field); ok {
+			if value, ok := num(params[index]); ok && value > 0 {
+				*target = value
+			}
+		}
+	}
+	return data, data.Total() > 0
+}
 
 func (h *handlers) decodeChangeCluster(params map[byte]any) (ChangeClusterData, bool) {
 	index, ok := h.codes.Param("ChangeCluster", "zone")

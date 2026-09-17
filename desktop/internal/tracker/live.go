@@ -331,6 +331,9 @@ type handlers struct {
 	hub      *Hub
 	codes    *Codes
 	entities *EntityStore
+	// dungeon es la partida de mazmorra en curso, abierta al entrar a una
+	// instancia y cerrada al salir. nil mientras el personaje está afuera.
+	dungeon *dungeonRun
 }
 
 // newHandlers is the isolated constructor used by parser tests and one-off
@@ -584,10 +587,17 @@ func (h *handlers) enterZone(zone string) {
 		return
 	}
 
+	// Salir de una instancia cierra la partida antes de mover el estado: el
+	// resumen se calcula con los contadores de la mazmorra que termina.
+	h.finishDungeon()
+
 	h.entities.BeginZone()
 	h.st.EnterZone(zone)
 	h.hub.Publish(NewEvent("map", map[string]any{"zone": zone}))
 	h.hub.Publish(NewEvent("status", h.st.Snapshot()))
+
+	cluster, instance := splitZone(zone)
+	h.beginDungeon(cluster, instance)
 }
 
 // clusterName normaliza el identificador de zona que manda Albion. Puede ser
@@ -734,9 +744,39 @@ func (h *handlers) event(ev *photon.EventData) {
 		h.syncRoster()
 		h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 
+	case "HarvestFinished":
+		h.harvest(p)
+
 	case "OtherGrabbedLoot":
 		h.loot(name, p)
 	}
+}
+
+// harvest publica una recolección terminada para la pestaña Recolección.
+// Solo cuenta la del personaje propio: el servidor también informa las de
+// otros jugadores visibles en la zona.
+func (h *handlers) harvest(p map[byte]any) {
+	if !h.trackingAllowed() {
+		return
+	}
+	data, ok := h.decodeHarvestFinished(p)
+	if !ok {
+		return
+	}
+	if data.HasUser && !h.isSelf(data.UserObjectID) {
+		return
+	}
+	// Sin identificar al recolector no se puede afirmar que sea propio.
+	if !data.HasUser {
+		return
+	}
+	h.hub.Publish(NewEvent("gathering", map[string]any{
+		"uid":      fmt.Sprintf("gat-%d", time.Now().UnixNano()),
+		"ts":       time.Now().UnixMilli(),
+		"itemId":   fmt.Sprintf("%d", data.ItemID),
+		"quantity": data.Total(),
+		"map":      h.st.Zone(),
+	}))
 }
 
 // health traduce el evento de cambio de vida en daño o curación.
