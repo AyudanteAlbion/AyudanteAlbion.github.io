@@ -17,10 +17,12 @@ GPL-3.0 project:
 
 The adapted tracker portions cover the entity lifecycle and correlation model:
 local-player identity from Join responses; GUID-to-object-ID indexing; entity
-updates from NewCharacter; and party roster join, leave, and disband handling.
-They are implemented for this application's Go/Wails architecture and are
-marked in the relevant source files. No affiliation, endorsement, or approval
-by the SAT authors or Sandbox Interactive is implied.
+updates from NewCharacter; party roster join, leave, and disband handling; and
+player-trade session tracking based on SAT's InvitationPlayerTrade,
+InviteToPlayerTrade, PlayerTradeUpdate, PlayerTradeCancel, and
+PlayerTradeFinished flow. They are implemented for this application's Go/Wails
+architecture and are marked in the relevant source files. No affiliation,
+endorsement, or approval by the SAT authors or Sandbox Interactive is implied.
 
 Game data
 ---------

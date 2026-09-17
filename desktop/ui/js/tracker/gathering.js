@@ -346,7 +346,7 @@
   }
 
   function init() {
-    try { state.enabled = localStorage.getItem(ENABLED_KEY) === '1'; } catch (e) { state.enabled = false; }
+    try { state.enabled = localStorage.getItem(ENABLED_KEY) !== '0'; } catch (e) { state.enabled = true; }
     state.sessions=read(SESSION_KEY,[]).filter(function(s){return s&&s.id;});
     state.rows=read(KEY,[]).map(normalize).filter(Boolean);
     if (state.enabled) currentSession(); shell();

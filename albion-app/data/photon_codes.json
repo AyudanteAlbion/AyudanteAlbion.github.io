@@ -30,19 +30,18 @@
     "MightAndFavorReceived (eventos) y FishingStart/Catch/Finish/Cancel",
     "(operaciones), con sus parametros. Indices tomados de las clases",
     "RewardGrantedEvent, NewRandomDungeonExitEvent, MightAndFavorReceivedEvent",
-    "y Fishing*Request de la misma referencia."
+    "y Fishing*Request de la misma referencia.",
+    "",
+    "2026.09.17: se agregan PlayerTrade* e InviteToPlayerTrade usando Analytics/SAT."
   ],
-
   "version": "2026.09.17",
   "gameVersion": "Albion Online — ordinales de SAT (rama main), verificar tras cada patch",
-
   "parameterKeys": {
     "_comment": "Claves especiales del protocolo, estables entre versiones.",
     "eventCode": 252,
     "operationCode": 253,
     "returnCode": 254
   },
-
   "events": {
     "_comment": [
       "Nombre logico -> codigo numerico. El nombre es lo que usa el codigo Go;",
@@ -84,11 +83,16 @@
     "PartySilverGained": 238,
     "InCombatStateUpdate": 278,
     "OtherGrabbedLoot": 279,
-  "RewardGranted": 267,
-  "NewRandomDungeonExit": 325,
-  "MightAndFavorReceived": 497
+    "RewardGranted": 267,
+    "NewRandomDungeonExit": 325,
+    "MightAndFavorReceived": 497,
+    "InvitationPlayerTrade": 176,
+    "PlayerTradeStart": 177,
+    "PlayerTradeCancel": 178,
+    "PlayerTradeUpdate": 179,
+    "PlayerTradeFinished": 180,
+    "PlayerTradeAcceptChange": 181
   },
-
   "operations": {
     "_comment": [
       "Operaciones cliente -> servidor. OJO: 'ChangeCluster' es una OPERACION,",
@@ -105,12 +109,17 @@
     "AuctionGetRequests": 82,
     "LogoutStart": 128,
     "UseLootChest": 253,
-  "FishingStart": 316,
-  "FishingCatch": 319,
-  "FishingFinish": 322,
-  "FishingCancel": 323
+    "FishingStart": 316,
+    "FishingCatch": 319,
+    "FishingFinish": 322,
+    "FishingCancel": 323,
+    "InviteToPlayerTrade": 161,
+    "PlayerTradeCancel": 162,
+    "PlayerTradeAddItem": 164,
+    "PlayerTradeRemoveItem": 165,
+    "PlayerTradeAcceptTrade": 166,
+    "PlayerTradeSetSilverOrGold": 167
   },
-
   "eventParameters": {
     "_comment": [
       "Indice de parametros dentro de cada evento. Photon entrega un mapa",
@@ -118,9 +127,20 @@
       "Cambian tanto como los codigos de evento, por eso viven aca tambien.",
       "Verificados contra las clases Network/Events/*.cs de la app de referencia."
     ],
-    "NewCharacter": { "id": 0, "name": 1, "guid": 7, "guild": 8, "alliance": 51 },
-    "NewMob": { "id": 0, "typeId": 1 },
-    "Leave": { "id": 0 },
+    "NewCharacter": {
+      "id": 0,
+      "name": 1,
+      "guid": 7,
+      "guild": 8,
+      "alliance": 51
+    },
+    "NewMob": {
+      "id": 0,
+      "typeId": 1
+    },
+    "Leave": {
+      "id": 0
+    },
     "HealthUpdate": {
       "target": 0,
       "timestamp": 1,
@@ -140,11 +160,36 @@
       "sources": 6,
       "causingSpells": 7
     },
-    "UpdateFame": { "total": 1, "gained": 2, "zoneFame": 3, "multiplier": 4, "premiumBonus": 5, "satchel": 10, "bonusFactor": 17 },
-    "UpdateReSpecPoints": { "gained": 2, "paidSilver": 3 },
-    "UpdateCurrency": { "cityFaction": 2, "gained": 3, "rankPoints": 4, "populationBonus": 6, "premiumBonus": 8, "total": 9 },
-    "UpdateFactionStanding": { "cityFaction": 0, "gained": 1, "premiumBonus": 2, "total": 3 },
-    "UpdateMoney": { "total": 1 },
+    "UpdateFame": {
+      "total": 1,
+      "gained": 2,
+      "zoneFame": 3,
+      "multiplier": 4,
+      "premiumBonus": 5,
+      "satchel": 10,
+      "bonusFactor": 17
+    },
+    "UpdateReSpecPoints": {
+      "gained": 2,
+      "paidSilver": 3
+    },
+    "UpdateCurrency": {
+      "cityFaction": 2,
+      "gained": 3,
+      "rankPoints": 4,
+      "populationBonus": 6,
+      "premiumBonus": 8,
+      "total": 9
+    },
+    "UpdateFactionStanding": {
+      "cityFaction": 0,
+      "gained": 1,
+      "premiumBonus": 2,
+      "total": 3
+    },
+    "UpdateMoney": {
+      "total": 1
+    },
     "TakeSilver": {
       "id": 0,
       "timestamp": 1,
@@ -157,13 +202,39 @@
       "isPremiumBonus": 7,
       "multiplier": 8
     },
-    "PartySilverGained": { "target": 1, "amount": 2, "amountPreTax": 3 },
-    "PartyJoined": { "guids": 8, "names": 9 },
-    "PartyPlayerJoined": { "id": 0, "guid": 1, "name": 2 },
-    "PartyPlayerLeft": { "id": 0, "guid": 1 },
+    "PartySilverGained": {
+      "target": 1,
+      "amount": 2,
+      "amountPreTax": 3
+    },
+    "PartyJoined": {
+      "guids": 8,
+      "names": 9
+    },
+    "PartyPlayerJoined": {
+      "id": 0,
+      "guid": 1,
+      "name": 2
+    },
+    "PartyPlayerLeft": {
+      "id": 0,
+      "guid": 1
+    },
     "PartyDisbanded": {},
-    "KilledPlayer": { "killer": 0, "victimId": 1, "victim": 2 },
-    "Died": { "victimId": 1, "victim": 2, "victimGuild": 3, "killerId": 9, "killer": 10, "killerGuild": 11, "isLethal": 17 },
+    "KilledPlayer": {
+      "killer": 0,
+      "victimId": 1,
+      "victim": 2
+    },
+    "Died": {
+      "victimId": 1,
+      "victim": 2,
+      "victimGuild": 3,
+      "killerId": 9,
+      "killer": 10,
+      "killerGuild": 11,
+      "isLethal": 17
+    },
     "OtherGrabbedLoot": {
       "id": 0,
       "lootedFrom": 1,
@@ -172,8 +243,14 @@
       "itemId": 4,
       "quantity": 5
     },
-    "JoinFinished": { "zone": 0 },
-    "ChangeCluster": { "zone": 0, "worldMapDataType": 1, "islandName": 2 },
+    "JoinFinished": {
+      "zone": 0
+    },
+    "ChangeCluster": {
+      "zone": 0,
+      "worldMapDataType": 1,
+      "islandName": 2
+    },
     "HarvestFinished": {
       "id": 0,
       "objectId": 3,
@@ -182,9 +259,20 @@
       "collectorBonus": 6,
       "premiumBonus": 7
     },
-    "NewSimpleItem": { "id": 0, "itemId": 1, "amount": 2 },
-    "NewEquipmentItem": { "id": 0, "itemId": 1, "amount": 2 },
-    "RewardGranted": { "itemId": 1, "quantity": 3 },
+    "NewSimpleItem": {
+      "id": 0,
+      "itemId": 1,
+      "amount": 2
+    },
+    "NewEquipmentItem": {
+      "id": 0,
+      "itemId": 1,
+      "amount": 2
+    },
+    "RewardGranted": {
+      "itemId": 1,
+      "quantity": 3
+    },
     "NewRandomDungeonExit": {
       "id": 0,
       "uniqueName": 3,
@@ -201,12 +289,45 @@
       "favorPremium": 6,
       "favorTotal": 7
     },
-    "FishingStart": { "eventId": 0, "rod": 2 },
-    "FishingCatch": { "actionId": 0 },
-    "FishingFinish": { "succeeded": 1 },
-    "UseLootChest": {}
+    "FishingStart": {
+      "eventId": 0,
+      "rod": 2
+    },
+    "FishingCatch": {
+      "actionId": 0
+    },
+    "FishingFinish": {
+      "succeeded": 1
+    },
+    "UseLootChest": {},
+    "InvitationPlayerTrade": {
+      "partnerObjectId": 0,
+      "partnerName": 1,
+      "partnerGuildName": 2,
+      "tradeId": 6
+    },
+    "PlayerTradeCancel": {
+      "tradeId": 0
+    },
+    "PlayerTradeUpdate": {
+      "tradeId": 0,
+      "revision": 1,
+      "localSilver": 2,
+      "partnerSilver": 4,
+      "localItems": 8,
+      "localQuantities": 15,
+      "partnerItems": 18,
+      "partnerQuantities": 25
+    },
+    "PlayerTradeFinished": {
+      "tradeId": 0
+    },
+    "InviteToPlayerTrade": {
+      "partnerObjectId": 0,
+      "partnerName": 1,
+      "tradeId": 6
+    }
   },
-
   "selfOperation": {
     "_comment": [
       "La RESPUESTA del servidor a la operacion Join trae los datos del",
@@ -215,6 +336,13 @@
       "'zone' (8) es el MapIndex del cluster donde aparecio el personaje."
     ],
     "operation": "Join",
-    "parameters": { "id": 0, "guid": 1, "name": 2, "zone": 8, "guild": 58, "alliance": 79 }
+    "parameters": {
+      "id": 0,
+      "guid": 1,
+      "name": 2,
+      "zone": 8,
+      "guild": 58,
+      "alliance": 79
+    }
   }
 }

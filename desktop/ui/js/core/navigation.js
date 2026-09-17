@@ -17,10 +17,10 @@
     });
   }
 
-  // Recolección y Mazmorras forman parte de la sesión: solo intercambian la
-  // vista interna sin abandonar #tab-tracker ni reiniciar sus datos locales.
+  // Las herramientas de Analytics forman parte de la sesión: solo intercambian
+  // la vista interna sin abandonar #tab-tracker ni reiniciar sus datos locales.
   function activateSessionView(key, focus) {
-    var valid = { tracker: true, gathering: true, dungeons: true };
+    var valid = { tracker: true, dungeons: true, damage: true, trade: true, gathering: true, player: true, maps: true };
     if (!valid[key]) return;
     document.querySelectorAll('[data-session-view]').forEach(function (tab) {
       var active = tab.dataset.sessionView === key;
@@ -40,6 +40,7 @@
     // mientras su vista estaba cerrada.
     if (key === 'gathering' && root.AAGathering) root.AAGathering.render();
     if (key === 'dungeons' && root.AADungeons) root.AADungeons.render();
+    if (root.AASessionTools) root.AASessionTools.render(key);
   }
 
   document.addEventListener('click', function (event) {

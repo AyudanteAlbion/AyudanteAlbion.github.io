@@ -339,13 +339,14 @@ type silverTaxRates struct {
 }
 
 type handlers struct {
-	diag     *protocolDiagnostics
-	st       *State
-	hub      *Hub
-	codes    *Codes
-	entities *EntityStore
+	diag         *protocolDiagnostics
+	st           *State
+	hub          *Hub
+	codes        *Codes
+	entities     *EntityStore
 	pendingKills []pendingPlayerKill
-	silverTaxes silverTaxRates
+	silverTaxes  silverTaxRates
+	playerTrades map[int64]*playerTradeSession
 	// dungeon es la partida de mazmorra en curso, abierta al entrar a una
 	// instancia y cerrada al salir. nil mientras el personaje está afuera.
 	dungeon *dungeonRun
@@ -372,7 +373,7 @@ func newHandlersWithDiagnostics(diagnostics *protocolDiagnostics, st *State, hub
 	if entities == nil {
 		entities = NewEntityStore()
 	}
-	return &handlers{diag: diagnostics, st: st, hub: hub, codes: codes, entities: entities}
+	return &handlers{diag: diagnostics, st: st, hub: hub, codes: codes, entities: entities, playerTrades: make(map[int64]*playerTradeSession)}
 }
 
 // realCode resolves the dispatch code from Photon parameter 252 (events) or
@@ -645,12 +646,15 @@ func (h *handlers) operation(code int32, params map[byte]any) {
 	if !ok {
 		return
 	}
-	if name == "ChangeCluster" {
+	switch name {
+	case "ChangeCluster":
 		change, valid := h.decodeChangeCluster(params)
 		if !valid {
 			return
 		}
 		h.enterZone(change.Zone)
+	case "InviteToPlayerTrade":
+		h.registerPlayerTradeFromParams(name, params)
 	}
 }
 
@@ -769,6 +773,18 @@ func (h *handlers) event(ev *photon.EventData) {
 		if joined, ok := h.decodeJoinFinished(p); ok {
 			h.enterZone(joined.Zone)
 		}
+
+	case "InvitationPlayerTrade":
+		h.registerPlayerTradeFromParams(name, p)
+
+	case "PlayerTradeUpdate":
+		h.updatePlayerTradeFromParams(p)
+
+	case "PlayerTradeCancel":
+		h.removePlayerTradeSession(h.paramInt64(name, "tradeId", p))
+
+	case "PlayerTradeFinished":
+		h.finishPlayerTrade(h.paramInt64(name, "tradeId", p))
 
 	case "HealthUpdate":
 		h.health(name, p)

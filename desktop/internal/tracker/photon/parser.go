@@ -38,10 +38,13 @@ const (
 	// se resuelven por el reintento de `message`.
 	protocol16Signature = 0xf3
 
-	fragmentTTL      = 30 * time.Second
-	maxFragmentSets  = 64
-	maxPayloadLength = 1 << 20 // 1 MB: tope defensivo contra longitudes absurdas
-	maxFragmentCount = 4096
+	// Analytics/SAT accepts large fragmented Photon messages (Join and player
+	// context can be split across many UDP fragments). Match those operational
+	// limits instead of the old 1 MB cap that could drop valid Join/Trade flows.
+	fragmentTTL      = 15 * time.Second
+	maxFragmentSets  = 256
+	maxPayloadLength = 16 << 20
+	maxFragmentCount = 16 * 1024
 )
 
 // Handler recibe los mensajes ya decodificados.
