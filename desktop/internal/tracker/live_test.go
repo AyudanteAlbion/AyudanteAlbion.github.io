@@ -327,20 +327,23 @@ func TestChangeClusterOperationUpdatesZone(t *testing.T) {
 	}
 }
 
-// El pedido de ChangeCluster actualiza el mundo solo después de identificar al
-// personaje; si la captura empezó tarde no puede fabricar una sesión anónima.
-func TestChangeClusterRequestUpdatesZone(t *testing.T) {
+// El pedido de ChangeCluster no actualiza el mundo aunque traiga el código
+// autoritativo 253: su parámetro 0 es el ObjectId del portal de salida, no el
+// mapa destino (la app de referencia lo lee como TargetObjectId). Solo la
+// respuesta del servidor confirma el cluster nuevo, y mientras no llegue la
+// ubicación sigue siendo la del JoinResponse.
+func TestAuthoritativeChangeClusterRequestDoesNotUpdateZone(t *testing.T) {
 	state := NewState()
 	handler := newHandlers(nil, state, NewHub(), testCodes(t))
-	handler.response(&photon.OperationResponse{ReturnCode: 0, Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Anon", 253: int64(2)}})
+	handler.response(&photon.OperationResponse{ReturnCode: 0, Parameters: map[byte]any{0: int64(42), 1: localGUIDBytes, 2: "Anon", 8: "Martlock", 253: int64(2)}})
 
 	handler.request(&photon.OperationRequest{
 		Code:       41,
 		Parameters: map[byte]any{0: "Lymhurst", 253: int64(41)},
 	})
 
-	if got := state.Snapshot().Zone; got != "Lymhurst" {
-		t.Fatalf("Zone = %q, want the cluster from the ChangeCluster request", got)
+	if got := state.Snapshot().Zone; got != "Martlock" {
+		t.Fatalf("Zone = %q, want the JoinResponse zone: a request must not change it", got)
 	}
 }
 

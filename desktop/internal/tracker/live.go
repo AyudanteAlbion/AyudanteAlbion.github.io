@@ -358,18 +358,20 @@ func newHandlersWithDiagnostics(diagnostics *protocolDiagnostics, st *State, hub
 	return &handlers{diag: diagnostics, st: st, hub: hub, codes: codes, entities: entities}
 }
 
-// realCode obtains the authoritative code exclusively from Photon parameter
-// 252 (events) or 253 (operations), matching SAT's AlbionParser. The envelope
-// byte is intentionally ignored for dispatch because it truncates high codes;
-// callers may record that byte separately for diagnostics.
+// realCode resolves the dispatch code from Photon parameter 252 (events) or
+// 253 (operations): the parameter is the authority because it carries the full
+// 16-bit code, while the envelope byte truncates high codes. When the message
+// does not duplicate the code in the parameter, the envelope byte is the
+// fallback so low-code packets keep routing; callers record that byte
+// separately for diagnostics.
 func realCode(params map[byte]any, key byte, envelope byte) (int32, bool) {
 	v, ok := params[key]
 	if !ok {
 		// Protocol16/18 do not always duplicate the logical operation/event
-		// code in parameters 253/252. For codes that fit in the Photon envelope
-		// byte, the envelope is the authoritative fallback (the same behaviour
-		// used by SAT's packet-handler registration). High codes still require
-		// parameter 252 because the envelope necessarily truncates them.
+		// code in parameters 253/252. For codes that fit in the Photon
+		// envelope byte, the envelope keeps the message routing; high codes
+		// still require parameter 252 because the envelope necessarily
+		// truncates them.
 		return int32(envelope), true
 	}
 	var n int64

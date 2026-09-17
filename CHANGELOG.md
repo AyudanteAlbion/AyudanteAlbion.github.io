@@ -134,6 +134,16 @@ en [`docs/releases/`](docs/releases/). Las descargas (`.exe` y `.zip`) están en
   lo incluye en los disparadores: el `index.html` enlaza hojas de ese directorio
   que en producción devolvían **404** y dejaban módulos sin estilos (quedaba
   `css/trade-tracking.css`, del Registro de operaciones).
+- **El workflow Escritorio vuelve a verde.** Los dos cambios del despacho —el
+  código 252/253 con respaldo en el byte del envelope para códigos bajos, y el
+  pedido de `ChangeCluster` dejando de mutar el mundo— quedaron con dos pruebas
+  viejas que exigían el comportamiento anterior (`TestAuthoritativeCodesOverrideEnvelopeMetadata`
+  y `TestChangeClusterRequestUpdatesZone`), así que cada corrida de CI fallaba
+  aunque el código estuviera bien. Las pruebas se actualizan al diseño vigente
+  (la primera ahora fija además que la ausencia de 252/253 no cuenta como
+  «faltante»: se resuelve con el envelope), y el comentario y el panel de
+  diagnóstico que aún decían que 252/253 eran «la única autoridad» pasan a
+  describir el respaldo.
 
 ### Eliminado
 
