@@ -1,9 +1,15 @@
-/* Ayudante Albion — resolución local de IDs de cluster a nombres de mapa.
+/* Ayudante Albion — resolución de zonas a nombres legibles.
  *
- * Photon comunica el ID interno del cluster (por ejemplo, "0006") en vez del
- * texto que aparece en el mapa. El índice se genera del world.xml oficial y
- * se mantiene dentro de la app para que la pantalla de sesión no dependa de
- * una API ni exponga el identificador técnico como si fuera una ubicación.
+ * Photon comunica zonas de dos formas:
+ *  - Índice del mundo ("3003" = Caerleon) o id de cluster ("DNG-KPR-02-MAIN-010"):
+ *    se resuelven con el índice generado del world.xml oficial.
+ *  - Instancias ("@RANDOMDUNGEON@<guid>", "@MISTS@<guid>"): el primer tramo no
+ *    vacío es el TOKEN de la instancia, no un mapa que exista en el índice.
+ *    Todas las copias comparten el token, así que el nombre legible es el del
+ *    tipo de contenido.
+ *
+ * El índice vive dentro de la app para que la pantalla de sesión no dependa de
+ * una API ni exponga identificadores técnicos como si fueran ubicaciones.
  */
 (function (root) {
   'use strict';
@@ -11,15 +17,40 @@
   var names = Object.create(null);
   var loaded = false;
 
+  // Tokens de instancia del protocolo → nombre del tipo de contenido. Son los
+  // mismos nombres que usa la pestaña Mazmorras (localización es-ES de la app
+  // de referencia).
+  var INSTANCE_NAMES = {
+    RANDOMDUNGEON: 'Mazmorra aleatoria',
+    MISTS: 'Nieblas',
+    MISTSDUNGEON: 'Abadía de Knightfall',
+    CORRUPTEDDUNGEON: 'Mazmorra corrupta',
+    HELLDUNGEON: 'Abyssal Depths',
+    HELLCLUSTER: 'Hellgate',
+    HELLGATE: 'Hellgate',
+    ABYSSAL: 'Abyssal Depths',
+    EXPEDITION: 'Expedición',
+    DRAGONAREA: 'Ancient Lands',
+    ANCIENT: 'Ancient Lands',
+    KNIGHTFALLABBEY: 'Abadía de Knightfall',
+    ARENA: 'Arena',
+    ISLAND: 'Isla',
+    HIDEOUT: 'Escondite'
+  };
+
   function clusterID(value) {
-    // Las instancias vienen como "cluster@tipo@extra". El primer tramo es el
-    // cluster real; #n solo diferencia copias de una misma instancia.
-    return String(value == null ? '' : value).trim().split('@')[0].split('#')[0].trim();
+    // "@TOKEN@guid" (formato del protocolo) → TOKEN; "cluster@instancia"
+    // (formato interno viejo) → primer tramo; "3003" → tal cual.
+    var s = String(value == null ? '' : value).trim();
+    if (s.charAt(0) === '@') s = s.slice(1);
+    return s.split('@')[0].split('#')[0].trim();
   }
 
   function display(value) {
     var id = clusterID(value);
     if (!id) return 'Ubicación no detectada';
+    var token = INSTANCE_NAMES[id.toUpperCase()];
+    if (token) return token;
     var name = names[id] || names[id.toUpperCase()] || names[id.toLowerCase()];
     if (name) return name;
     // No mostramos un ID numérico como si fuera el nombre de un mapa mientras

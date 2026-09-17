@@ -334,6 +334,8 @@ type handlers struct {
 	// dungeon es la partida de mazmorra en curso, abierta al entrar a una
 	// instancia y cerrada al salir. nil mientras el personaje está afuera.
 	dungeon *dungeonRun
+	// fishing es la pesca en curso; nil mientras no se está pescando.
+	fishing *fishingState
 }
 
 // newHandlers is the isolated constructor used by parser tests and one-off
@@ -443,6 +445,28 @@ func (h *handlers) paramStr(event string, params map[byte]any, field string) (st
 	return str(v)
 }
 
+// paramBool acepta el booleano del protocolo en cualquiera de sus formas
+// (bool puro o entero distinto de cero), igual que ObjectToBool de SAT.
+func (h *handlers) paramBool(event string, params map[byte]any, field string) (bool, bool) {
+	v, ok := h.param(event, params, field)
+	if !ok {
+		return false, false
+	}
+	switch value := v.(type) {
+	case bool:
+		return value, true
+	case byte:
+		return value != 0, true
+	case int16:
+		return value != 0, true
+	case int32:
+		return value != 0, true
+	case int64:
+		return value != 0, true
+	}
+	return false, false
+}
+
 // nameOf resuelve el nombre actual de una entidad; vacío si su ObjectId no
 // pertenece a la zona o sesión visible.
 func (h *handlers) nameOf(id int64) string {
@@ -486,6 +510,24 @@ func (h *handlers) request(op *photon.OperationRequest) {
 	// destination map. Only the server response contains the new cluster.
 	// Treating requests as responses made the UI briefly (or permanently, when
 	// the response was lost) report zones such as "2" or "-57".
+	//
+	// Las operaciones que SÍ importan del lado cliente son las de pesca (la
+	// captura entera viaja en requests) y la apertura de cofres.
+	name, _ := h.codes.OperationName(code)
+	switch name {
+	case "FishingStart":
+		h.fishingStart(op.Parameters)
+	case "FishingCatch":
+		h.fishingCatch()
+	case "FishingFinish":
+		h.fishingFinish(op.Parameters)
+	case "FishingCancel":
+		h.fishingCancel()
+	case "UseLootChest":
+		if h.dungeon != nil && h.trackingAllowed() {
+			h.dungeon.Chests++
+		}
+	}
 }
 
 // response procesa las respuestas del servidor. La aplicación de referencia
@@ -558,11 +600,20 @@ func (h *handlers) identifyJoinResponse(code int32, params map[byte]any) {
 	if err != nil {
 		return
 	}
+	// El JoinResponse también es una señal de cambio de mapa (parámetro 8):
+	// la app de referencia abre las partidas de mazmorra exactamente ahí. La
+	// comparación contra la zona vigente hay que hacerla ANTES de que el
+	// estado aplique la zona nueva del propio Join.
+	prevZone := h.st.Zone()
+	zoneWasCurrent := h.st.IsCurrentZone(join.Zone)
 	if !h.st.ApplyJoinIdentityAndRegistry(LocalIdentity{
 		ObjectID: local.ObjectID, GUID: local.GUID, Name: local.Name,
 		Guild: local.Guild, Alliance: local.Alliance,
 	}, join.Zone, h.entities.Snapshot(), h.entities.PartyEntities()) {
 		return
+	}
+	if join.Zone != "" && !zoneWasCurrent {
+		h.applyZoneChange(prevZone, join.Zone)
 	}
 
 	// ChangeCluster can update world state later, but it cannot bootstrap
@@ -576,19 +627,22 @@ func (h *handlers) identifyJoinResponse(code int32, params map[byte]any) {
 // zona, y su respuesta trae el cluster nuevo en el parámetro 0.
 func (h *handlers) operation(code int32, params map[byte]any) {
 	name, ok := h.codes.OperationName(code)
-	if !ok || name != "ChangeCluster" {
+	if !ok {
 		return
 	}
-	change, valid := h.decodeChangeCluster(params)
-	if !valid {
-		return
+	if name == "ChangeCluster" {
+		change, valid := h.decodeChangeCluster(params)
+		if !valid {
+			return
+		}
+		h.enterZone(change.Zone)
 	}
-	h.enterZone(change.Zone)
 }
 
-// enterZone records the new map and invalidates transient ObjectIds for other
-// visible entities. Their GUID/name/party entries remain, so NewCharacter can
-// rebind them without confusing an old zone's ObjectId for a new one.
+// enterZone aplica un cambio de zona con deduplicación: para una misma
+// transición llegan hasta TRES señales (respuesta de ChangeCluster,
+// JoinResponse y evento JoinFinished) y todas deben converger en un solo
+// cambio de estado.
 func (h *handlers) enterZone(zone string) {
 	if zone == "" || !h.st.HasValidIdentity() {
 		return
@@ -596,18 +650,42 @@ func (h *handlers) enterZone(zone string) {
 	if h.st.IsCurrentZone(zone) {
 		return
 	}
+	h.applyZoneChange(h.st.Zone(), zone)
+}
+
+// applyZoneChange ejecuta el cambio de zona: cierra (o continúa) la partida
+// de mazmorra, invalida los ObjectId de la zona anterior y abre la partida
+// nueva si corresponde.
+func (h *handlers) applyZoneChange(prevZone, zone string) {
+	cluster, instance := splitZone(zone)
+	if cluster == "" {
+		return
+	}
 
 	// Salir de una instancia cierra la partida antes de mover el estado: el
-	// resumen se calcula con los contadores de la mazmorra que termina.
-	h.finishDungeon()
+	// resumen se calcula con los contadores de la mazmorra que termina. Los
+	// pasillos encadenados de una aleatoria continúan la MISMA partida (con
+	// su foto de contadores original: la fama se acumula entre pasillos).
+	if h.continueDungeon(cluster) {
+		if h.dungeon != nil {
+			h.dungeon.Cluster, h.dungeon.Instance = cluster, instance
+		}
+	} else {
+		h.finishDungeon()
+	}
+
+	h.fishingCancel()
 
 	h.entities.BeginZone()
 	h.st.EnterZone(zone)
 	h.hub.Publish(NewEvent("map", map[string]any{"zone": zone}))
 	h.hub.Publish(NewEvent("status", h.st.Snapshot()))
 
-	cluster, instance := splitZone(zone)
-	h.beginDungeon(cluster, instance)
+	// Solo se abre una partida nueva si no hubo continuación: beginDungeon
+	// re-fotografía los contadores y pisaría la partida en curso.
+	if h.dungeon == nil {
+		h.beginDungeon(prevZone, cluster, instance)
+	}
 }
 
 // clusterName normaliza el identificador de zona que manda Albion. Puede ser
@@ -784,6 +862,42 @@ func (h *handlers) event(ev *photon.EventData) {
 
 	case "HarvestFinished":
 		h.harvest(p)
+
+	case "NewSimpleItem", "NewEquipmentItem":
+		h.fishingDiscover(name, p)
+
+	case "RewardGranted":
+		h.fishingReward(p)
+
+	case "NewRandomDungeonExit":
+		if h.trackingAllowed() {
+			dungeonType, _ := h.paramStr(name, p, "dungeonType")
+			uniqueName, _ := h.paramStr(name, p, "uniqueName")
+			level, _ := h.paramNum(name, p, "level")
+			alreadyEntered, _ := h.paramBool(name, p, "alreadyEntered")
+			h.refineDungeonRun(dungeonType, uniqueName, level, alreadyEntered)
+		}
+
+	case "MightAndFavorReceived":
+		if h.trackingAllowed() && h.dungeon != nil {
+			might, _ := h.paramNum(name, p, "might")
+			favor, _ := h.paramNum(name, p, "favor")
+			// Como la fama, viajan multiplicados por 10000 (FixPoint).
+			h.dungeon.Might += might / 10000
+			h.dungeon.Favor += favor / 10000
+		}
+
+	case "Died":
+		if h.trackingAllowed() {
+			if victim, ok := h.paramNum(name, p, "victimId"); ok && h.isSelf(victim) {
+				if h.dungeon != nil {
+					h.dungeon.Deaths++
+				}
+				h.hub.Publish(NewEvent("died", map[string]any{
+					"victim": h.st.Character(),
+				}))
+			}
+		}
 
 	case "OtherGrabbedLoot":
 		h.loot(name, p)

@@ -24,10 +24,16 @@
     "valor explicito vale la posicion en la lista, asi que el ordinal ES el",
     "codigo que viaja en el parametro 252/253. La tabla anterior tenia valores",
     "desfasados (NewCharacter 24 en vez de 29, UpdateFame 89 en vez de 82,",
-    "ChangeCluster 38 en vez de 41), por eso el tracker no reconocia nada."
+    "ChangeCluster 38 en vez de 41), por eso el tracker no reconocia nada.",
+    "",
+    "2026.09.17: se agregan RewardGranted, NewRandomDungeonExit y",
+    "MightAndFavorReceived (eventos) y FishingStart/Catch/Finish/Cancel",
+    "(operaciones), con sus parametros. Indices tomados de las clases",
+    "RewardGrantedEvent, NewRandomDungeonExitEvent, MightAndFavorReceivedEvent",
+    "y Fishing*Request de la misma referencia."
   ],
 
-  "version": "2026.09.15",
+  "version": "2026.09.17",
   "gameVersion": "Albion Online — ordinales de SAT (rama main), verificar tras cada patch",
 
   "parameterKeys": {
@@ -77,7 +83,10 @@
     "PartyPlayerLeft": 235,
     "PartySilverGained": 238,
     "InCombatStateUpdate": 278,
-    "OtherGrabbedLoot": 279
+    "OtherGrabbedLoot": 279,
+  "RewardGranted": 267,
+  "NewRandomDungeonExit": 325,
+  "MightAndFavorReceived": 497
   },
 
   "operations": {
@@ -95,7 +104,11 @@
     "AuctionGetOffers": 81,
     "AuctionGetRequests": 82,
     "LogoutStart": 128,
-    "UseLootChest": 253
+    "UseLootChest": 253,
+  "FishingStart": 316,
+  "FishingCatch": 319,
+  "FishingFinish": 322,
+  "FishingCancel": 323
   },
 
   "eventParameters": {
@@ -144,7 +157,30 @@
       "quantity": 5,
       "collectorBonus": 6,
       "premiumBonus": 7
-    }
+    },
+    "NewSimpleItem": { "id": 0, "itemId": 1, "amount": 2 },
+    "NewEquipmentItem": { "id": 0, "itemId": 1, "amount": 2 },
+    "RewardGranted": { "itemId": 1, "quantity": 3 },
+    "NewRandomDungeonExit": {
+      "id": 0,
+      "uniqueName": 3,
+      "dungeonType": 4,
+      "level": 9,
+      "alreadyEntered": 10
+    },
+    "MightAndFavorReceived": {
+      "might": 1,
+      "mightBonus": 2,
+      "mightPremium": 3,
+      "favor": 4,
+      "favorBonus": 5,
+      "favorPremium": 6,
+      "favorTotal": 7
+    },
+    "FishingStart": { "eventId": 0, "rod": 2 },
+    "FishingCatch": { "actionId": 0 },
+    "FishingFinish": { "succeeded": 1 },
+    "UseLootChest": {}
   },
 
   "selfOperation": {
