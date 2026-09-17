@@ -198,13 +198,30 @@ sobrecuración, daño recibido, golpe máximo, kills y muertes; y por sesión fa
 plata, respec, mapas visitados y botín.
 
 `Snapshot()` calcula DPS, HPS y porcentajes **en el servidor**, para que el
-frontend solo dibuje. El historial de mapas y el botín salen del más nuevo al
-más viejo, y están recortados a 200 y 500 entradas para que una sesión larga no
-coma memoria.
+frontend solo dibuje. También expone fama, plata neta después de impuestos,
+respec, plata pagada por respec, Might, Favor, puntos de facción y reputación de
+facción, junto con sus tasas de la última hora. Los contadores se reinician al
+cambiar de personaje o filtro; la ventana de tasa vive en `State`, no en un
+timer del navegador.
+
+Los parámetros se interpretan como SAT: `UpdateFame` suma premium y satchel,
+`TakeSilver` calcula el rendimiento después de cluster/gremio/alianza y usa las
+tasas del jugador local para estimar la plata de party, mientras que
+`UpdateCurrency` y `UpdateFactionStanding` son métricas de facción y no plata.
+`KilledPlayer` solo deja un candidato y `Died` lo confirma, para no contar
+kills falsos; los derribos no letales tampoco se convierten en muertes.
+
+La pesca replica la máquina de estados de SAT: solo un ítem visto después de la
+picada puede ser confirmado por `RewardGranted`, el reward se consume una sola
+vez y HarvestFinished reutiliza el `ObjectId` del recurso para acumular la
+misma fila en el frontend. El mismo objeto no genera duplicados al recibir
+varios eventos.
 
 Detalle que importa: el daño recibido solo se acumula para jugadores conocidos
-(vos y tu party). Sin eso, cada mob golpeado aparecería como una fila más en el
-medidor.
+(vos y tu party), aunque el atacante sea un mob desconocido. El daño saliente
+requiere una fuente de party y excluye el auto-daño; si el protocolo no trae
+salud máxima, la sobrecuración queda pendiente de esa información en lugar de
+inventar un valor.
 
 ### 3.4 `tracker.Hub` — reparto
 
@@ -319,6 +336,30 @@ responde —por eso la web pudo convivir con ellos mientras hizo falta.
 `ui.js` **desacopla los eventos del repintado**: los eventos de daño llegan
 varias veces por segundo, pero el DOM se redibuja como mucho cada 500 ms.
 Redibujar por evento trabaría la pestaña.
+
+### Activación independiente de Recolección y Mazmorras
+
+Los interruptores de las pestañas **Recolección** y **Mazmorras** son controles
+de cada módulo, no una segunda captura de red. La captura Photon global se
+inicia, detiene o reinicia únicamente desde **Sesión**; activar o pausar uno
+de estos módulos no interrumpe la captura, no reinicia la identidad y no
+cambia el otro módulo.
+
+- Cada pestaña puede estar **inactiva**, **activa esperando captura**, **activa
+  esperando detectar el personaje**, **activa registrando** o mostrar que el
+  motor no está disponible.
+- Mientras el interruptor está apagado, el módulo sigue mostrando su histórico
+  pero descarta los eventos nuevos antes de guardarlos. Recolección acepta
+  únicamente eventos `gathering`; los eventos genéricos `loot` no son recursos
+  recolectados.
+- La preferencia se conserva en el `localStorage` de la app (`gatheringTrackingEnabled`
+  y la configuración de `dungeons`), que es el almacenamiento que ya usan estas
+  vistas.
+- Mazmorras publica una partida completa al salir de la instancia. Cada evento
+  lleva `startedAt`; si se activa el módulo con una partida ya iniciada, esa
+  partida se descarta al cerrarse para no presentar un resumen parcial ni
+  atribuirlo a una activación posterior. Las partidas que comienzan después de
+  activar el módulo sí se guardan, incluso si el usuario cambia de pestaña.
 
 Todo lo que viene del motor pasa por `esc()` antes de entrar al DOM. Los
 nombres de jugadores son datos externos.

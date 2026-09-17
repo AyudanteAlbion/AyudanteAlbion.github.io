@@ -4,6 +4,7 @@
 
   var KEY = 'gatheringLog';
   var SESSION_KEY = 'gatheringSessions';
+  var ENABLED_KEY = 'gatheringTrackingEnabled';
   var TYPES = {
     all: { label: 'En general', color: '#5b9cff' },
     wood: { label: 'Madera', color: '#e59b45' },
@@ -114,7 +115,7 @@
     return id && Object.prototype.hasOwnProperty.call(ITEMS, id) ? ITEMS[id] : null;
   }
   var RANGES = [[10, '10 Minutos'], [30, '30 Minutos'], [60, '1 Hora'], [180, '3 Horas'], [720, '12 Horas'], [1440, '24 Horas'], [4320, '3 Días'], [10080, '7 Días'], [43200, '30 Días'], [525600, '365 Días']];
-  var state = { rows: [], sessions: [], type: 'all', range: 1440, session: 'all', metric: 'quantity', enabledTypes: new Set(Object.keys(TYPES).filter(function (x) { return x !== 'all'; })) };
+  var state = { enabled: false, rows: [], sessions: [], type: 'all', range: 1440, session: 'all', metric: 'quantity', enabledTypes: new Set(Object.keys(TYPES).filter(function (x) { return x !== 'all'; })) };
 
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function num(v) { return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(Number(v) || 0)); }
@@ -163,7 +164,7 @@
     }
     var value = Math.max(0, +(raw.value != null ? raw.value : unitValue * qty));
     var name = String(raw.name || raw.itemName || (indexed && indexed.n) || id || TYPES[type].label);
-    return { uid: String(raw.uid || uid()), ts: +(raw.ts || Date.now()), itemId: id, name: name, type: type, tier: tier, enchant: enchant, qty: qty, value: value, map: String(raw.map || raw.zone || 'Sin ubicación'), sessionId: String(raw.sessionId || currentSession().id) };
+    return { uid: String(raw.uid || uid()), ts: +(raw.ts || Date.now()), itemId: id, name: name, type: type, tier: tier, enchant: enchant, qty: qty, value: value, map: String(raw.map || raw.zone || 'Sin ubicación'), sessionId: String(raw.sessionId || (state.enabled ? currentSession().id : 'untracked')) };
   }
 
   /* Reinterpreta las filas ya guardadas cuando llega el índice: las que se
@@ -191,8 +192,17 @@
     state.sessions.push(active); save(); return active;
   }
   function add(raw) {
+    if (!state.enabled) return false;
     var row = normalize(raw); if (!row) return false;
-    if (state.rows.some(function (x) { return x.uid === row.uid; })) return false;
+    // HarvestFinished can be emitted more than once for the same resource
+    // object. SAT updates that row instead of creating duplicates.
+    var existing = state.rows.find(function (x) { return x.uid === row.uid; });
+    if (existing && existing.itemId === row.itemId) {
+      existing.qty += row.qty;
+      existing.ts = row.ts;
+      existing.value = resolveItemPrice((lookup(existing.itemId) || {}).u, existing.tier, existing.enchant) * existing.qty;
+      save(); render(); return true;
+    }
     state.rows.push(row); save(); render(); return true;
   }
 
@@ -223,7 +233,7 @@
     var mount = document.getElementById('gatheringMount'); if (!mount) return;
     mount.innerHTML = '<div class="gat-shell">' +
       '<div class="panel gat-toolbar"><div class="gat-toolbar-title"><span class="gat-eyebrow">ANALYTICS · GATHERING</span><h1>Seguimiento de recolección</h1></div>' +
-      '<span class="gat-track" id="gatTrack" title="El rastreo se activa en la pestaña Sesión. Esta pestaña registra sola mientras haya personaje detectado."><input type="checkbox" id="gatTracking" disabled tabindex="-1" aria-hidden="true"><i></i><span id="gatTrackText">Activá el tracking en la pestaña Sesión</span></span>' +
+      '<label class="gat-track" id="gatTrack" for="gatTracking" title="Activá o pausá únicamente el registro de recolección. El tracking de red se controla en Sesión."><input type="checkbox" id="gatTracking" aria-label="Activar seguimiento de recolección"><i></i><span id="gatTrackText">Activar seguimiento de recolección</span></label>' +
       '<label class="gat-control"><span>Rango de tiempo</span><select id="gatRange">' + RANGES.map(function (r) { return '<option value="'+r[0]+'" '+(r[0]===state.range?'selected':'')+'>'+r[1]+'</option>'; }).join('') + '</select></label>' +
       '<label class="gat-control"><span>Sesión</span><select id="gatSession"></select></label>' +
       '<button class="btn" id="gatReset">↻ Reiniciar sesión</button></div>' +
@@ -240,26 +250,37 @@
   }
 
   function wire() {
+    document.getElementById('gatTracking').onchange = function (e) {
+      state.enabled = !!e.target.checked;
+      if (state.enabled) {
+        currentSession();
+      } else {
+        var active = state.sessions.find(function (s) { return !s.end; });
+        if (active) active.end = Date.now();
+        save();
+      }
+      try { localStorage.setItem(ENABLED_KEY, state.enabled ? '1' : '0'); } catch (err) {}
+      refreshSessions();
+      paintTracking();
+    };
     document.getElementById('gatRange').onchange = function (e) { state.range = +e.target.value; render(); };
     document.getElementById('gatSession').onchange = function (e) { state.session = e.target.value; render(); };
     document.getElementById('gatTabs').onclick = function (e) { var b=e.target.closest('[data-type]'); if(!b)return; state.type=b.dataset.type; document.querySelectorAll('.gat-tab').forEach(function(x){x.classList.toggle('active',x===b);}); render(); };
     document.getElementById('gatReset').onclick = function () {
       var active = state.sessions.find(function (s) { return !s.end; }); if (active) active.end = Date.now();
-      var next = currentSession(); state.session = next.id; save(); refreshSessions(); render();
+      var next = state.enabled ? currentSession() : null; state.session = next ? next.id : 'all'; save(); refreshSessions(); render();
     };
-    // El interruptor quedó como indicador de solo lectura: el rastreo se
-    // enciende una vez en Sesión y esta pestaña lo sigue automáticamente.
     document.getElementById('gatMetric').onchange = function (e) { state.metric=e.target.value; renderTime(filtered()); };
   }
   function refreshSessions() {
-    currentSession();
+    if (state.enabled) currentSession();
     var sel=document.getElementById('gatSession'); if(!sel)return;
     sel.innerHTML='<option value="all">Todas las sesiones</option>'+state.sessions.slice().reverse().map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.label)+(s.end?'':' · activa')+'</option>';}).join('');
     sel.value=state.sessions.some(function(s){return s.id===state.session;})?state.session:'all';
   }
-  // El registro no se activa a mano: sigue al tracking de la pestaña Sesión.
-  // Mientras haya captura y un personaje detectado, esta pestaña acumula en
-  // segundo plano aunque el usuario nunca la haya abierto.
+  // Este interruptor es independiente del tracking de red de la pestaña
+  // Sesión: permite dejar la captura disponible y registrar recolección solo
+  // durante la actividad que le interesa al usuario.
   function trackingState() {
     if (!root.AATracker) return { capturing:false, available:false, detected:false };
     var st = AATracker.state();
@@ -271,20 +292,18 @@
     };
   }
   function trackingLabel(st) {
-    if (!st.available) return 'El motor de captura no está disponible';
-    if (!st.capturing) return 'Activá el tracking en la pestaña Sesión';
-    if (!st.detected) return 'Capturando · esperando detectar tu personaje';
-    return 'Registrando automáticamente';
+    if (!state.enabled) return 'Activar seguimiento de recolección';
+    if (!st.available) return 'Activo · motor de captura no disponible';
+    if (!st.capturing) return 'Activo · activá el tracking de red en Sesión';
+    if (!st.detected) return 'Activo · esperando detectar tu personaje';
+    return 'Seguimiento de recolección activo';
   }
   function paintTracking() {
     var st = trackingState(), box = document.getElementById('gatTrack');
     if (!box) return;
-    var on = st.capturing && st.detected;
-    box.classList.toggle('on', on);
+    box.classList.toggle('on', !!state.enabled);
     var toggle = document.getElementById('gatTracking');
-    // El interruptor pasa a ser un indicador: la fuente de verdad es Sesión.
-    toggle.checked = on;
-    toggle.disabled = true;
+    toggle.checked = !!state.enabled;
     document.getElementById('gatTrackText').textContent = trackingLabel(st);
   }
 
@@ -327,14 +346,14 @@
   }
 
   function init() {
+    try { state.enabled = localStorage.getItem(ENABLED_KEY) === '1'; } catch (e) { state.enabled = false; }
     state.sessions=read(SESSION_KEY,[]).filter(function(s){return s&&s.id;});
     state.rows=read(KEY,[]).map(normalize).filter(Boolean);
-    currentSession(); shell();
+    if (state.enabled) currentSession(); shell();
     if(root.AATrackerAnalytics){
       AATrackerAnalytics.subscribe(function(payload,type){
         paintTracking();
         if(type==='gathering') add(payload);
-        if(type==='loot' && payload) add(payload);
       });
       AATrackerAnalytics.detect().then(paintTracking).catch(paintTracking);
     }

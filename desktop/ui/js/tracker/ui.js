@@ -572,6 +572,17 @@
       ['Fama / h', num(snap.famePerHour)],
       ['Plata', num(snap.silver)],
       ['Plata / h', num(snap.silverPerHour)],
+      ['ReSpec', num(snap.respec)],
+      ['ReSpec / h', num(snap.respecPerHour)],
+      ['Plata pagada ReSpec', num(snap.paidSilverForRespec)],
+      ['Poder', num(snap.might)],
+      ['Poder / h', num(snap.mightPerHour)],
+      ['Favor', num(snap.favor)],
+      ['Favor / h', num(snap.favorPerHour)],
+      ['Puntos de facción', num(snap.factionPoints)],
+      ['Puntos de facción / h', num(snap.factionPointsPerHour)],
+      ['Reputación de facción', num(snap.factionStanding)],
+      ['Reputación / h', num(snap.factionStandingPerHour)],
       ['Party', String((snap.party || []).length)]
     ];
     node.innerHTML = cards.map(function (c) {
@@ -674,15 +685,14 @@
         dirty = true;
         if (payload && payload.character) detectingCharacter = false;
         paintControls();
-      } else if (type === 'fame' || type === 'silver' || type === 'respec') {
-        if (latest) {
-          if (type === 'fame' && payload && payload.total != null) latest.fame = payload.total;
-          if (type === 'silver' && payload && payload.total != null) latest.silver = payload.total;
-          if (type === 'respec' && payload && payload.total != null) latest.respec = payload.total;
-          var elapsed = Math.max(1, (Date.now() - (latest.startedAt || Date.now())) / 1000);
-          var hours = elapsed / 3600;
-          latest.famePerHour = hours > 0 ? (latest.fame || 0) / hours : 0;
-          latest.silverPerHour = hours > 0 ? (latest.silver || 0) / hours : 0;
+      } else if (type === 'fame' || type === 'silver' || type === 'respec' || type === 'faction' || type === 'factionStanding' || type === 'might' || type === 'favor') {
+        if (latest && payload) {
+          var totalFields = { fame:'fame', silver:'silver', respec:'respec', faction:'factionPoints', factionStanding:'factionStanding', might:'might', favor:'favor' };
+          var field = totalFields[type];
+          if (field && payload.total != null) latest[field] = payload.total;
+          // Hourly values are calculated by the backend's rolling window (the
+          // same one-hour SlidingWindow used by SAT), not by elapsed session
+          // time in the browser. The next snapshot carries the new rate.
           dirty = true;
         }
       } else if (type === 'damage' || type === 'heal') {
@@ -707,9 +717,8 @@
       var start = latest.startedAt || Date.now();
       var elapsed = Math.max(1, (Date.now() - start) / 1000);
       latest.seconds = elapsed;
-      var hours = elapsed / 3600;
-      latest.famePerHour = hours > 0 ? (latest.fame || 0) / hours : 0;
-      latest.silverPerHour = hours > 0 ? (latest.silver || 0) / hours : 0;
+      // Rates come from the backend rolling windows; do not turn a short
+      // session into a misleading lifetime average here.
       dirty = true;
     }
     setInterval(liveTick, 1000);

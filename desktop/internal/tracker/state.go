@@ -128,16 +128,27 @@ type LootEntry struct {
 
 // MetricsSnapshot keeps the identity prerequisite explicit in the API.
 type MetricsSnapshot struct {
-	Accepted    bool        `json:"accepted"`
-	StartedAt   int64       `json:"startedAt"`
-	Seconds     int64       `json:"seconds"`
-	Fame        int64       `json:"fame"`
-	Silver      int64       `json:"silver"`
-	Respec      int64       `json:"respec"`
-	FamePerHour float64     `json:"famePerHour"`
-	SilverPerH  float64     `json:"silverPerHour"`
-	Combatants  []Combatant `json:"combatants"`
-	Loot        []LootEntry `json:"loot"`
+	Accepted               bool        `json:"accepted"`
+	StartedAt              int64       `json:"startedAt"`
+	Seconds                int64       `json:"seconds"`
+	Fame                   int64       `json:"fame"`
+	Silver                 int64       `json:"silver"`
+	Respec                 int64       `json:"respec"`
+	Might                  int64       `json:"might"`
+	Favor                  int64       `json:"favor"`
+	FactionPoints          int64       `json:"factionPoints"`
+	FactionStanding        int64       `json:"factionStanding"`
+	PaidSilverForRespec    int64       `json:"paidSilverForRespec"`
+	FamePerHour            float64     `json:"famePerHour"`
+	SilverPerHour          float64     `json:"silverPerHour"`
+	RespecPerHour          float64     `json:"respecPerHour"`
+	MightPerHour           float64     `json:"mightPerHour"`
+	FavorPerHour           float64     `json:"favorPerHour"`
+	FactionPointsPerHour   float64     `json:"factionPointsPerHour"`
+	FactionStandingPerHour float64     `json:"factionStandingPerHour"`
+	RespecCostPerHour      float64     `json:"respecCostPerHour"`
+	Combatants             []Combatant `json:"combatants"`
+	Loot                   []LootEntry `json:"loot"`
 }
 
 // Snapshot preserves legacy flat fields while exposing the explicit contract.
@@ -156,11 +167,22 @@ type Snapshot struct {
 	Party             []string        `json:"party"`
 	StartedAt         int64           `json:"startedAt"`
 	Seconds           int64           `json:"seconds"`
-	Fame              int64           `json:"fame"`
-	Silver            int64           `json:"silver"`
-	Respec            int64           `json:"respec"`
-	FamePerHour       float64         `json:"famePerHour"`
-	SilverPerH        float64         `json:"silverPerHour"`
+	Fame                   int64          `json:"fame"`
+	Silver                 int64          `json:"silver"`
+	Respec                 int64          `json:"respec"`
+	Might                  int64          `json:"might"`
+	Favor                  int64          `json:"favor"`
+	FactionPoints          int64          `json:"factionPoints"`
+	FactionStanding        int64          `json:"factionStanding"`
+	PaidSilverForRespec    int64          `json:"paidSilverForRespec"`
+	FamePerHour             float64        `json:"famePerHour"`
+	SilverPerHour           float64        `json:"silverPerHour"`
+	RespecPerHour           float64        `json:"respecPerHour"`
+	MightPerHour            float64        `json:"mightPerHour"`
+	FavorPerHour            float64        `json:"favorPerHour"`
+	FactionPointsPerHour    float64        `json:"factionPointsPerHour"`
+	FactionStandingPerHour  float64        `json:"factionStandingPerHour"`
+	RespecCostPerHour       float64        `json:"respecCostPerHour"`
 	Combatants        []Combatant     `json:"combatants"`
 	Maps              []MapVisit      `json:"maps"`
 	Loot              []LootEntry     `json:"loot"`
@@ -169,9 +191,15 @@ type Snapshot struct {
 }
 
 const (
-	maxLoot = 500
-	maxMaps = 200
+	maxLoot    = 500
+	maxMaps    = 200
+	rateWindow = time.Hour
 )
+
+type rateSample struct {
+	at    time.Time
+	value int64
+}
 
 // State owns the five contracts (capture, identity, entity projection, party,
 // world) and the metrics consumer. Every mutation shares one lock so snapshots
@@ -187,19 +215,26 @@ type State struct {
 	trackingCharacter string
 	demo              bool
 	startedAt         time.Time
-	fame              int64
-	silver            int64
-	respec            int64
-	players           map[string]*Combatant // GUID -> metrics
-	loot              []LootEntry
+	fame             int64
+	silver           int64
+	respec           int64
+	might            int64
+	favor            int64
+	factionPoints    int64
+	factionStanding  int64
+	paidRespecSilver int64
+	rateSamples      map[string][]rateSample
+	players          map[string]*Combatant // GUID -> metrics
+	loot             []LootEntry
 }
 
 func NewState() *State {
 	return &State{
-		capture:   CaptureState{Phase: CaptureOff},
-		identity:  LocalIdentity{Detection: "waiting", FilterMatched: true},
-		startedAt: time.Now(),
-		players:   make(map[string]*Combatant),
+		capture:     CaptureState{Phase: CaptureOff},
+		identity:    LocalIdentity{Detection: "waiting", FilterMatched: true},
+		startedAt:   time.Now(),
+		players:     make(map[string]*Combatant),
+		rateSamples: make(map[string][]rateSample),
 	}
 }
 
@@ -534,6 +569,43 @@ func (s *State) metricsAllowedLocked() bool {
 	return s.identity.Valid && s.identity.FilterMatched
 }
 
+// addRateLocked mirrors SAT's LiveStatsTracker: totals belong to the current
+// session, while the hourly number uses a rolling one-hour window. Keeping the
+// samples beside State makes the snapshot atomic and avoids a UI timer being
+// responsible for the actual metric semantics.
+func (s *State) addRateLocked(kind string, value int64, now time.Time) {
+	if value <= 0 {
+		return
+	}
+	samples := append(s.rateSamples[kind], rateSample{at: now, value: value})
+	cutoff := now.Add(-rateWindow)
+	first := 0
+	for first < len(samples) && samples[first].at.Before(cutoff) { first++ }
+	if first > 0 { samples = samples[first:] }
+	s.rateSamples[kind] = samples
+}
+
+func (s *State) rateLocked(kind string, now time.Time) (int64, float64) {
+	samples := s.rateSamples[kind]
+	if len(samples) == 0 { return 0, 0 }
+	cutoff := now.Add(-rateWindow)
+	first := 0
+	for first < len(samples) && samples[first].at.Before(cutoff) { first++ }
+	if first > 0 { samples = samples[first:] }
+	if len(samples) == 0 { return 0, 0 }
+	sum := int64(0)
+	for _, sample := range samples { sum += sample.value }
+	seconds := now.Sub(samples[0].at).Seconds()
+	if seconds < 1 { seconds = 1 }
+	if seconds > rateWindow.Seconds() { seconds = rateWindow.Seconds() }
+	return sum, seconds
+}
+
+func perHour(sum int64, seconds float64) float64 {
+	if seconds <= 0 { return 0 }
+	return float64(sum) * 3600 / seconds
+}
+
 // SyncRegistry projects the GUID registry into the public EntityRegistry and
 // PartyState contracts. It never changes LocalIdentity; only JoinResponse may.
 func (s *State) syncRegistryLocked(entities []Entity, members []Entity) {
@@ -675,6 +747,11 @@ func (s *State) AddDamageEntity(source, target Entity, amount int64) bool {
 	if !s.metricsAllowedLocked() || !source.InParty {
 		return false
 	}
+	// SAT does not count self-inflicted damage in the outgoing damage meter;
+	// it is still eligible for the separate taken-damage path below.
+	if target.HasObjectID && source.HasObjectID && target.ObjectID == source.ObjectID {
+		return false
+	}
 	c := s.ensureCombatantLocked(source)
 	if c == nil {
 		return false
@@ -683,11 +760,25 @@ func (s *State) AddDamageEntity(source, target Entity, amount int64) bool {
 	if amount > c.BiggestHit {
 		c.BiggestHit = amount
 	}
-	if target.GUID != "" {
-		if victim := s.players[target.GUID]; victim != nil {
-			victim.Taken += amount
-		}
+	return true
+}
+
+// AddTakenDamageEntity mirrors CombatController.AddTakenDamage in SAT. The
+// attacker may be an unknown mob; the target still counts when it is a known
+// local/party player. The old implementation required a party source and
+// therefore reported zero damage received from mobs.
+func (s *State) AddTakenDamageEntity(target Entity, amount int64) bool {
+	if amount <= 0 || target.GUID == "" || !target.InParty {
+		return false
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() {
+		return false
+	}
+	c := s.ensureCombatantLocked(target)
+	if c == nil { return false }
+	c.Taken += amount
 	return true
 }
 
@@ -711,6 +802,28 @@ func (s *State) AddHealingEntity(source Entity, effective, overheal int64) bool 
 		c.Overheal += overheal
 	}
 	return effective > 0 || overheal > 0
+}
+
+func (s *State) AddKillEntity(entity Entity) bool {
+	if entity.GUID == "" || !entity.InParty { return false }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() { return false }
+	c := s.ensureCombatantLocked(entity)
+	if c == nil { return false }
+	c.Kills++
+	return true
+}
+
+func (s *State) AddDeathEntity(entity Entity) bool {
+	if entity.GUID == "" || !entity.InParty { return false }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.metricsAllowedLocked() { return false }
+	c := s.ensureCombatantLocked(entity)
+	if c == nil { return false }
+	c.Deaths++
+	return true
 }
 
 // Legacy name-based methods remain for explicit demo data only. Real packet
@@ -800,33 +913,23 @@ func (s *State) AddKill(killer, victim string) {
 	}
 }
 
-func (s *State) AddFame(v int64) bool {
+func (s *State) addValue(kind string, value int64, total *int64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.metricsAllowedLocked() {
-		return false
-	}
-	s.fame += v
+	if !s.metricsAllowedLocked() || value <= 0 { return false }
+	*total += value
+	s.addRateLocked(kind, value, time.Now())
 	return true
 }
-func (s *State) AddSilver(v int64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.metricsAllowedLocked() {
-		return false
-	}
-	s.silver += v
-	return true
-}
-func (s *State) AddRespec(v int64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.metricsAllowedLocked() {
-		return false
-	}
-	s.respec += v
-	return true
-}
+
+func (s *State) AddFame(v int64) bool { return s.addValue("fame", v, &s.fame) }
+func (s *State) AddSilver(v int64) bool { return s.addValue("silver", v, &s.silver) }
+func (s *State) AddRespec(v int64) bool { return s.addValue("respec", v, &s.respec) }
+func (s *State) AddMight(v int64) bool { return s.addValue("might", v, &s.might) }
+func (s *State) AddFavor(v int64) bool { return s.addValue("favor", v, &s.favor) }
+func (s *State) AddFactionPoints(v int64) bool { return s.addValue("factionPoints", v, &s.factionPoints) }
+func (s *State) AddFactionStanding(v int64) bool { return s.addValue("factionStanding", v, &s.factionStanding) }
+func (s *State) AddPaidRespecSilver(v int64) bool { return s.addValue("paidRespecSilver", v, &s.paidRespecSilver) }
 
 func (s *State) Fame() int64 {
 	s.mu.RLock()
@@ -845,6 +948,11 @@ func (s *State) Respec() int64 {
 	defer s.mu.RUnlock()
 	return s.respec
 }
+
+func (s *State) Might() int64 { s.mu.RLock(); defer s.mu.RUnlock(); return s.might }
+func (s *State) Favor() int64 { s.mu.RLock(); defer s.mu.RUnlock(); return s.favor }
+func (s *State) FactionPoints() int64 { s.mu.RLock(); defer s.mu.RUnlock(); return s.factionPoints }
+func (s *State) FactionStanding() int64 { s.mu.RLock(); defer s.mu.RUnlock(); return s.factionStanding }
 
 func (s *State) AddLoot(entry LootEntry) bool {
 	s.mu.Lock()
@@ -887,6 +995,8 @@ func (s *State) AddLoot(entry LootEntry) bool {
 func (s *State) resetMetricsLocked() {
 	s.startedAt = time.Now()
 	s.fame, s.silver, s.respec = 0, 0, 0
+	s.might, s.favor, s.factionPoints, s.factionStanding, s.paidRespecSilver = 0, 0, 0, 0, 0
+	s.rateSamples = make(map[string][]rateSample)
 	s.players = make(map[string]*Combatant)
 	s.loot = nil
 }
@@ -938,9 +1048,17 @@ func (s *State) Snapshot() Snapshot {
 		}
 		return list[i].Name < list[j].Name
 	})
-	hours := elapsed / 3600
+	nowTime := time.Now()
+	fameRate, fameSeconds := s.rateLocked("fame", nowTime)
+	silverRate, silverSeconds := s.rateLocked("silver", nowTime)
+	respecRate, respecSeconds := s.rateLocked("respec", nowTime)
+	mightRate, mightSeconds := s.rateLocked("might", nowTime)
+	favorRate, favorSeconds := s.rateLocked("favor", nowTime)
+	factionRate, factionSeconds := s.rateLocked("factionPoints", nowTime)
+	standingRate, standingSeconds := s.rateLocked("factionStanding", nowTime)
+	respecCostRate, respecCostSeconds := s.rateLocked("paidRespecSilver", nowTime)
 	maps := append([]MapVisit(nil), s.world.History...)
-	now := time.Now().UnixMilli()
+	now := nowTime.UnixMilli()
 	for i := range maps {
 		if maps[i].Leave == 0 {
 			maps[i].Seconds = (now - maps[i].Enter) / 1000
@@ -965,13 +1083,27 @@ func (s *State) Snapshot() Snapshot {
 	if s.identity.Valid || s.identity.Detection == "partial" {
 		character = s.identity.Name
 	}
-	metrics := MetricsSnapshot{Accepted: s.metricsAllowedLocked(), StartedAt: s.startedAt.UnixMilli(), Seconds: int64(elapsed), Fame: s.fame, Silver: s.silver, Respec: s.respec, FamePerHour: float64(s.fame) / hours, SilverPerH: float64(s.silver) / hours, Combatants: list, Loot: loot}
+	metrics := MetricsSnapshot{
+		Accepted: s.metricsAllowedLocked(), StartedAt: s.startedAt.UnixMilli(), Seconds: int64(elapsed),
+		Fame: s.fame, Silver: s.silver, Respec: s.respec, Might: s.might, Favor: s.favor,
+		FactionPoints: s.factionPoints, FactionStanding: s.factionStanding, PaidSilverForRespec: s.paidRespecSilver,
+		FamePerHour: perHour(fameRate, fameSeconds), SilverPerHour: perHour(silverRate, silverSeconds),
+		RespecPerHour: perHour(respecRate, respecSeconds), MightPerHour: perHour(mightRate, mightSeconds),
+		FavorPerHour: perHour(favorRate, favorSeconds), FactionPointsPerHour: perHour(factionRate, factionSeconds),
+		FactionStandingPerHour: perHour(standingRate, standingSeconds), RespecCostPerHour: perHour(respecCostRate, respecCostSeconds),
+		Combatants: list, Loot: loot,
+	}
 	world := s.world
 	world.History = maps
 	return Snapshot{
 		Capture: s.capture, Identity: s.identity, Entities: append([]Entity(nil), s.entities...), PartyState: PartyState{Members: append([]PartyMemberState(nil), s.party.Members...)}, World: world, Metrics: metrics,
 		Capturing: capturing, Simulated: s.demo, Character: character, TrackingCharacter: s.trackingCharacter, Zone: s.world.Map, Party: partyNames,
-		StartedAt: metrics.StartedAt, Seconds: metrics.Seconds, Fame: s.fame, Silver: s.silver, Respec: s.respec, FamePerHour: metrics.FamePerHour, SilverPerH: metrics.SilverPerH, Combatants: list, Maps: maps, Loot: loot,
+		StartedAt: metrics.StartedAt, Seconds: metrics.Seconds, Fame: s.fame, Silver: s.silver, Respec: s.respec,
+		Might: s.might, Favor: s.favor, FactionPoints: s.factionPoints, FactionStanding: s.factionStanding, PaidSilverForRespec: s.paidRespecSilver,
+		FamePerHour: metrics.FamePerHour, SilverPerHour: metrics.SilverPerHour, RespecPerHour: metrics.RespecPerHour,
+		MightPerHour: metrics.MightPerHour, FavorPerHour: metrics.FavorPerHour, FactionPointsPerHour: metrics.FactionPointsPerHour,
+		FactionStandingPerHour: metrics.FactionStandingPerHour, RespecCostPerHour: metrics.RespecCostPerHour,
+		Combatants: list, Maps: maps, Loot: loot,
 		Packets: s.capture.PacketsReceived, Decoded: s.capture.DecodedMessages,
 	}
 }

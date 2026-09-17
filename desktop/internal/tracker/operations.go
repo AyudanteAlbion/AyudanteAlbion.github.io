@@ -41,6 +41,8 @@ type JoinFinishedData struct{ Zone string }
 type HarvestFinishedData struct {
 	UserObjectID   int64
 	HasUser        bool
+	ObjectID       int64
+	HasObject      bool
 	ItemID         int64
 	Quantity       int64
 	CollectorBonus int64
@@ -54,9 +56,11 @@ func (h HarvestFinishedData) Total() int64 {
 
 type PartyDisbandedData struct{}
 type HealthUpdateData struct {
-	TargetID int64
-	SourceID int64
-	Value    int64
+	TargetID     int64
+	SourceID     int64
+	Value        int64
+	NewHealth    int64
+	HasNewHealth bool
 }
 type HealthUpdatesData struct{ Updates []HealthUpdateData }
 
@@ -206,15 +210,20 @@ func numericSequence(value any) []int64 {
 func (h *handlers) decodeHealthUpdates(params map[byte]any) HealthUpdatesData {
 	target, _ := h.paramNum("HealthUpdates", params, "targets")
 	valuesRaw, _ := h.param("HealthUpdates", params, "values")
+	newHealthRaw, _ := h.param("HealthUpdates", params, "newHealth")
 	sourcesRaw, _ := h.param("HealthUpdates", params, "sources")
-	values, sources := numericSequence(valuesRaw), numericSequence(sourcesRaw)
+	values, newHealth, sources := numericSequence(valuesRaw), numericSequence(newHealthRaw), numericSequence(sourcesRaw)
 	result := HealthUpdatesData{Updates: make([]HealthUpdateData, 0, len(values))}
 	for index, value := range values {
 		source := int64(0)
 		if index < len(sources) {
 			source = sources[index]
 		}
-		result.Updates = append(result.Updates, HealthUpdateData{TargetID: target, SourceID: source, Value: value})
+		update := HealthUpdateData{TargetID: target, SourceID: source, Value: value}
+		if index < len(newHealth) {
+			update.NewHealth, update.HasNewHealth = newHealth[index], true
+		}
+		result.Updates = append(result.Updates, update)
 	}
 	return result
 }
@@ -245,6 +254,11 @@ func (h *handlers) decodeHarvestFinished(params map[byte]any) (HarvestFinishedDa
 	if index, ok := h.codes.Param("HarvestFinished", "id"); ok {
 		if id, ok := num(params[index]); ok {
 			data.UserObjectID, data.HasUser = id, true
+		}
+	}
+	if index, ok := h.codes.Param("HarvestFinished", "objectId"); ok {
+		if id, ok := num(params[index]); ok {
+			data.ObjectID, data.HasObject = id, true
 		}
 	}
 	for field, target := range map[string]*int64{

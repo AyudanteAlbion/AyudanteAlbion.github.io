@@ -22,6 +22,8 @@ type fishingCatch struct {
 
 type fishingState struct {
 	active     bool
+	eventID    int64
+	catchID    int64
 	rodItem    int64
 	bitten     bool
 	discovered map[int64]bool
@@ -34,6 +36,7 @@ func (h *handlers) fishingStart(params map[byte]any) {
 		return
 	}
 	state := &fishingState{active: true}
+	if eventID, ok := h.paramNum("FishingStart", params, "eventId"); ok { state.eventID = eventID }
 	if rod, ok := h.paramNum("FishingStart", params, "rod"); ok {
 		state.rodItem = rod
 	}
@@ -41,9 +44,14 @@ func (h *handlers) fishingStart(params map[byte]any) {
 }
 
 // fishingCatch marca que el pez mordió: a partir de acá se aceptan ítems.
-func (h *handlers) fishingCatch() {
+func (h *handlers) fishingCatch(params map[byte]any) {
 	if h.fishing != nil {
+		// SAT clears discoveries and confirmations for every new catch action;
+		// otherwise a second cast could replay the first fish.
 		h.fishing.bitten = true
+		if actionID, ok := h.paramNum("FishingCatch", params, "actionId"); ok { h.fishing.catchID = actionID }
+		h.fishing.discovered = make(map[int64]bool)
+		h.fishing.confirmed = nil
 	}
 }
 
@@ -75,7 +83,10 @@ func (h *handlers) fishingReward(params map[byte]any) {
 	if !ok {
 		return
 	}
-	if state.discovered != nil && !state.discovered[itemIndex] {
+	// A reward is valid only if the item appeared after the current bite.
+	// The reference controller never accepts a reward from an empty discovery
+	// set; accepting it made unrelated rewards look like fish.
+	if state.discovered == nil || !state.discovered[itemIndex] {
 		return
 	}
 	quantity, _ := h.paramNum("RewardGranted", params, "quantity")
@@ -83,6 +94,7 @@ func (h *handlers) fishingReward(params map[byte]any) {
 		quantity = 1
 	}
 	state.confirmed = append(state.confirmed, fishingCatch{itemIndex: itemIndex, quantity: quantity})
+	delete(state.discovered, itemIndex)
 }
 
 // fishingFinish cierra la pesca: si terminó bien, publica una recolección por
@@ -99,7 +111,7 @@ func (h *handlers) fishingFinish(params map[byte]any) {
 	}
 	for _, catch := range state.confirmed {
 		h.hub.Publish(NewEvent("gathering", map[string]any{
-			"uid":      fmt.Sprintf("fish-%d-%d", time.Now().UnixNano(), catch.itemIndex),
+			"uid":      fmt.Sprintf("fish-%d-%d", func() int64 { if state.catchID > 0 { return state.catchID }; if state.eventID > 0 { return state.eventID }; return time.Now().UnixNano() }(), catch.itemIndex),
 			"ts":       time.Now().UnixMilli(),
 			"itemId":   fmt.Sprintf("%d", catch.itemIndex),
 			"quantity": catch.quantity,
